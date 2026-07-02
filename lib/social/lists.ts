@@ -1,17 +1,25 @@
 import { prisma } from "@/lib/db/prisma";
+import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
 
 export async function createList(
   userId: string,
   data: { title: string; description?: string | null; visibility?: "PUBLIC" | "PRIVATE" }
 ) {
-  return prisma.list.create({
+  const visibility = data.visibility ?? "PUBLIC";
+  const list = await prisma.list.create({
     data: {
       userId,
       title: data.title,
       description: data.description || null,
-      visibility: data.visibility ?? "PUBLIC"
+      visibility
     }
   });
+
+  if (visibility === "PUBLIC") {
+    await recordActivity({ userId, type: "LIST_CREATED", listId: list.id, visibility: "PUBLIC" });
+  }
+
+  return list;
 }
 
 export async function getListWithItems(listId: string) {
@@ -72,6 +80,10 @@ export async function updateList(
       ...(data.visibility !== undefined ? { visibility: data.visibility } : {})
     }
   });
+
+  if (data.visibility !== undefined) {
+    await syncActivityVisibility({ listId }, data.visibility);
+  }
 
   return { ok: true as const, list };
 }

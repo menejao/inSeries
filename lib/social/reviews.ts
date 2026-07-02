@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
 
 export async function upsertReview(
   userId: string,
@@ -8,21 +9,32 @@ export async function upsertReview(
   const series = await prisma.series.findUnique({ where: { id: seriesId }, select: { id: true } });
   if (!series) return { ok: false as const, error: "series_not_found" as const };
 
+  const existing = await prisma.review.findUnique({ where: { userId_seriesId: { userId, seriesId } } });
+  const visibility = data.visibility ?? "PUBLIC";
+
   const review = await prisma.review.upsert({
     where: { userId_seriesId: { userId, seriesId } },
     update: {
       rating: data.rating,
       body: data.body,
-      visibility: data.visibility ?? "PUBLIC"
+      visibility
     },
     create: {
       userId,
       seriesId,
       rating: data.rating,
       body: data.body,
-      visibility: data.visibility ?? "PUBLIC"
+      visibility
     }
   });
+
+  if (!existing) {
+    if (visibility === "PUBLIC") {
+      await recordActivity({ userId, type: "REVIEW_CREATED", seriesId, reviewId: review.id, visibility: "PUBLIC" });
+    }
+  } else if (existing.visibility !== visibility) {
+    await syncActivityVisibility({ reviewId: review.id }, visibility);
+  }
 
   return { ok: true as const, review };
 }

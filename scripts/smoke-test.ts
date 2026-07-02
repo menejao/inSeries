@@ -50,6 +50,10 @@ function check(label: string, condition: boolean, detail?: unknown) {
   }
 }
 
+function countOccurrences(haystack: string, needle: string) {
+  return haystack.split(needle).length - 1;
+}
+
 async function registerUser(jar: CookieJar, label: string) {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const email = `${label}-${suffix}@inseries.test`;
@@ -326,6 +330,110 @@ async function main() {
   });
   check("usuario A reverte perfil para publico", revertPrivate.status === 200, revertPrivate.body);
 
+  // ---- Feed de atividades: geracao, feed pessoal/global, privacidade ----
+  const reFollow = await request(jarA, `/api/users/${userB.username}/follow`, { method: "POST" });
+  check("usuario A volta a seguir usuario B (para testar feed pessoal)", reFollow.status === 200, reFollow.body);
+
+  const bStatus = await request(jarB, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "WATCHING" })
+  });
+  check("usuario B altera status da serie (gera atividade)", bStatus.status === 200, bStatus.body);
+
+  const bMarkWatched = await request(jarB, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: true })
+  });
+  check("usuario B marca episodio assistido (gera atividade)", bMarkWatched.status === 200, bMarkWatched.body);
+
+  const meBAfterMark = await request(jarB, "/me");
+  const episodeWatchedCountAfterMark = countOccurrences(String(meBAfterMark.body), "S01E01");
+
+  const bUnmarkWatched = await request(jarB, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: false })
+  });
+  check("usuario B desmarca episodio (200, sem erro)", bUnmarkWatched.status === 200, bUnmarkWatched.body);
+
+  const meBAfterUnmark = await request(jarB, "/me");
+  const episodeWatchedCountAfterUnmark = countOccurrences(String(meBAfterUnmark.body), "S01E01");
+  check(
+    "desmarcar episodio nao cria atividade duplicada (contagem identica antes/depois do desmarcar)",
+    episodeWatchedCountAfterMark > 0 && episodeWatchedCountAfterUnmark === episodeWatchedCountAfterMark,
+    { episodeWatchedCountAfterMark, episodeWatchedCountAfterUnmark }
+  );
+
+  const reviewMarker = `Review publica de ${userB.username} para o feed`;
+  const listMarker = `Lista publica de ${userB.username} para o feed`;
+
+  const bReview = await request(jarB, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 5, body: reviewMarker, visibility: "PUBLIC" })
+  });
+  check("usuario B cria review publica (gera atividade)", bReview.status === 200, bReview.body);
+
+  const bList = await request(jarB, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: listMarker, visibility: "PUBLIC" })
+  });
+  check("usuario B cria lista publica (gera atividade)", bList.status === 201, bList.body);
+
+  const feedGuest = await request({ value: "" }, "/feed");
+  check(
+    "feed sem sessao mostra CTA de login (nao redireciona)",
+    feedGuest.status === 200 && String(feedGuest.body).includes("Entre para ver seu feed"),
+    feedGuest.status
+  );
+
+  const feedPersonalA = await request(jarA, "/feed");
+  check(
+    "feed pessoal de A mostra atividades de B (que A segue)",
+    feedPersonalA.status === 200 &&
+      String(feedPersonalA.body).includes(reviewMarker) &&
+      String(feedPersonalA.body).includes(listMarker),
+    feedPersonalA.status
+  );
+
+  const feedGlobalBefore = await request({ value: "" }, "/feed?view=global");
+  check(
+    "feed global mostra atividades publicas de B",
+    feedGlobalBefore.status === 200 && String(feedGlobalBefore.body).includes(listMarker),
+    feedGlobalBefore.status
+  );
+
+  const bGoesPrivate = await request(jarB, "/api/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ isProfilePrivate: true })
+  });
+  check("usuario B define perfil como privado", bGoesPrivate.status === 200, bGoesPrivate.body);
+
+  const feedGlobalAfterPrivate = await request({ value: "" }, "/feed?view=global");
+  check(
+    "perfil privado nao aparece no feed global",
+    feedGlobalAfterPrivate.status === 200 && !String(feedGlobalAfterPrivate.body).includes(listMarker),
+    feedGlobalAfterPrivate.status
+  );
+
+  const feedPersonalAAfterPrivate = await request(jarA, "/feed");
+  check(
+    "atividade privada nao aparece para terceiros no feed pessoal",
+    feedPersonalAAfterPrivate.status === 200 &&
+      !String(feedPersonalAAfterPrivate.body).includes(reviewMarker),
+    feedPersonalAAfterPrivate.status
+  );
+
+  const meBOwnActivity = await request(jarB, "/me");
+  check(
+    "/me de B continua mostrando a propria atividade mesmo com perfil privado",
+    meBOwnActivity.status === 200 && String(meBOwnActivity.body).includes(listMarker),
+    meBOwnActivity.status
+  );
+
+  await request(jarB, "/api/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ isProfilePrivate: false })
+  });
+
   // ---- Encerramento ----
   await request(jarA, "/api/auth/logout", { method: "POST" });
   jarA.value = "";
@@ -340,7 +448,9 @@ async function main() {
     console.error(`Smoke test falhou: ${failures} verificacao(oes) com erro.`);
     process.exitCode = 1;
   } else {
-    console.log("Smoke test concluido com sucesso: fluxo principal, calendario e fundacao social validados ponta a ponta.");
+    console.log(
+      "Smoke test concluido com sucesso: fluxo principal, calendario, fundacao social e feed de atividades validados ponta a ponta."
+    );
   }
 }
 

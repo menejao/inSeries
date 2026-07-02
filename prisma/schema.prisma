@@ -39,6 +39,15 @@ enum ExternalEntityType {
   EPISODE
 }
 
+enum ActivityType {
+  EPISODE_WATCHED
+  SERIES_STATUS_CHANGED
+  SERIES_COMPLETED
+  REVIEW_CREATED
+  LIST_CREATED
+  USER_FOLLOWED
+}
+
 model User {
   id                  String               @id @default(cuid())
   name                String
@@ -60,7 +69,8 @@ model User {
   reviews             Review[]
   ratings             Rating[]
   lists               List[]
-  activities          Activity[]
+  activities          Activity[]           @relation("ActivityUser")
+  targetedActivities  Activity[]           @relation("ActivityTargetUser")
   notifications       Notification[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -86,6 +96,7 @@ model Series {
   statuses            UserSeriesStatus[]
   externalMappings    ExternalSourceMapping[]
   listItems           ListItem[]
+  activities          Activity[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -123,6 +134,7 @@ model Episode {
   externalId          String?
   season              Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   progress            UserEpisodeProgress[]
+  activities          Activity[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -181,6 +193,7 @@ model Review {
   visibility          Visibility           @default(PUBLIC)
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  activities          Activity[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -208,6 +221,7 @@ model List {
   visibility          Visibility           @default(PUBLIC)
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   items               ListItem[]
+  activities          Activity[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -241,11 +255,25 @@ model Notification {
 model Activity {
   id                  String               @id @default(cuid())
   userId              String
-  kind                String
-  payload             Json
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                ActivityType
+  seriesId            String?
+  episodeId           String?
+  reviewId            String?
+  listId              String?
+  targetUserId        String?
+  metadata            Json?
+  visibility          Visibility           @default(PUBLIC)
+  user                User                 @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+  series              Series?              @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episode             Episode?             @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  review              Review?              @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  list                List?                @relation(fields: [listId], references: [id], onDelete: Cascade)
+  targetUser          User?                @relation("ActivityTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([visibility, createdAt])
 }
 
 model ExternalSourceMapping {

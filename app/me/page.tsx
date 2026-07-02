@@ -3,10 +3,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
+import { ActivityCard } from "@/components/feed/activity-card";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
+import { getRecentActivityForUser } from "@/lib/social/activity";
 
 const tabs = [
   { href: "/me", label: "Resumo" },
@@ -44,6 +46,7 @@ export default async function MePage() {
   const progressList = await Promise.all(uniqueSeriesIds.map((seriesId) => calculateSeriesProgress(user.id, seriesId)));
   const watchedSeries = progressList.filter(Boolean);
   const upcomingEpisodes = await getUpcomingEpisodesForUser(user.id, 5);
+  const recentActivity = await getRecentActivityForUser(user.id, 5);
   const averageProgress = watchedSeries.length
     ? Math.round(watchedSeries.reduce((sum, item) => sum + (item?.percentage ?? 0), 0) / watchedSeries.length)
     : 0;
@@ -90,6 +93,23 @@ export default async function MePage() {
           </div>
         ) : (
           <EmptyState title="Nenhum lancamento previsto" copy="Quando houver novos episodios das suas series, eles aparecem aqui." />
+        )}
+      </div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-ink">Atividade recente</h2>
+          <Link href="/feed" className="text-sm font-semibold text-amber-200">
+            Ver feed
+          </Link>
+        </div>
+        {recentActivity.length ? (
+          <div className="space-y-3">
+            {recentActivity.map((activity) => (
+              <ActivityCard key={activity.id} activity={activity} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Nenhuma atividade ainda" copy="Suas acoes recentes (episodios assistidos, reviews, listas) aparecem aqui." />
         )}
       </div>
       <div className="space-y-3">

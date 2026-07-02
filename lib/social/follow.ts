@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { recordActivity } from "@/lib/social/activity";
 
 export type FollowResult =
   | { ok: true; following: true }
@@ -14,11 +15,14 @@ export async function followUserByUsername(followerId: string, targetUsername: s
     return { ok: false, error: "cannot_follow_self" };
   }
 
-  await prisma.follow.upsert({
-    where: { followerId_followingId: { followerId, followingId: target.id } },
-    update: {},
-    create: { followerId, followingId: target.id }
+  const existing = await prisma.follow.findUnique({
+    where: { followerId_followingId: { followerId, followingId: target.id } }
   });
+
+  if (!existing) {
+    await prisma.follow.create({ data: { followerId, followingId: target.id } });
+    await recordActivity({ userId: followerId, type: "USER_FOLLOWED", targetUserId: target.id });
+  }
 
   return { ok: true, following: true };
 }

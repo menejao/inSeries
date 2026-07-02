@@ -74,7 +74,7 @@ Campos em `User`, todos aplicados no perfil publico, nas listas e nas reviews ex
 - `showWatchedSeries`: exibe series concluidas
 - `showLists`: exibe listas publicas no perfil
 - `showReviews`: exibe reviews publicas no perfil
-- `showActivity`: reservado para atividade futura (feed nao implementado nesta sprint)
+- `showActivity`: mostra/oculta a atividade do usuario no feed e no perfil (ver secao Feed de atividades)
 
 Nenhum endpoint publico retorna listas, reviews ou series privadas de outro usuario; a checagem de dono (`userId` da sessao) e feita em toda escrita.
 
@@ -107,6 +107,42 @@ Nenhum endpoint publico retorna listas, reviews ou series privadas de outro usua
 - No dashboard `/me`, secao **Proximos episodios** lista os 5 proximos episodios nao assistidos das series acompanhadas, com link para o calendario completo
 - `lib/jobs/registry.ts` (`futureCalendarJobs`) prepara a arquitetura para sincronizacao futura (novos episodios, mudanca de datas, temporadas anunciadas) sem implementar um cron real nesta sprint
 
+## Feed de atividades
+
+`/feed` transforma acoes reais dos usuarios em descoberta social: o que as pessoas que voce segue estao assistindo, avaliando e listando, na mesma linha do Letterboxd mas com foco exclusivo em series.
+
+### Tipos de atividade (`ActivityType`)
+
+- `EPISODE_WATCHED`: gerada ao marcar um episodio como assistido (nao ao desmarcar)
+- `SERIES_STATUS_CHANGED`: gerada quando o usuario troca explicitamente o status de uma serie (`/api/series/[id]/status`) para um valor diferente do anterior
+- `SERIES_COMPLETED`: gerada quando uma serie passa a ter status `COMPLETED`, seja por troca explicita de status ou como efeito de marcar o ultimo episodio pendente
+- `REVIEW_CREATED`: gerada apenas na criacao da primeira review publica de um usuario para uma serie; editar a review depois nao gera nova atividade
+- `LIST_CREATED`: gerada apenas quando a lista criada e publica
+- `USER_FOLLOWED`: gerada ao seguir outro usuario (idempotente; nao duplica em re-follow)
+
+Cada `Activity` referencia opcionalmente `seriesId`, `episodeId`, `reviewId`, `listId` e `targetUserId`, com `onDelete: Cascade`: se a serie, episodio, review, lista ou usuario relacionado for removido, a atividade correspondente desaparece junto (sem registros orfaos).
+
+Nao geram atividade: desmarcar um episodio, criar review ou lista privada, reenviar o mesmo status sem mudanca (correcao silenciosa).
+
+### Privacidade do feed
+
+Toda leitura de atividades (feed pessoal, feed global, `/me`, perfil publico) respeita, em tempo de leitura (nao apenas na criacao):
+
+- `isProfilePrivate`: perfil privado nunca aparece para terceiros, nem atividades antigas
+- `showActivity`: se desativado, nenhuma atividade do usuario aparece para terceiros
+- `showWatchedSeries` / `showWatchingSeries`: controla `EPISODE_WATCHED`/`SERIES_COMPLETED` e `SERIES_STATUS_CHANGED` respectivamente
+- `showLists` e `showReviews`: controlam `LIST_CREATED` e `REVIEW_CREATED`
+- Alterar a visibilidade de uma lista ou review existente sincroniza a visibilidade da atividade associada
+- O proprio usuario sempre ve sua atividade completa em `/me`, independente das proprias configuracoes de privacidade
+
+### Rotas e componentes
+
+- `/feed`: aba **Para voce** (atividades proprias + de quem voce segue) e aba **Global** (atividades publicas recentes de toda a comunidade); usuario nao autenticado ve CTA para login na aba pessoal, mas a aba global continua publica
+- `/me`: secao **Atividade recente** com as ultimas 5 atividades e link para o feed completo
+- `/profile/[username]`: secao **Atividade** com atividades publicas daquele usuario, respeitando toda a privacidade acima
+- `components/feed/activity-card.tsx`: card reutilizavel (avatar, nome/username, acao, serie/episodio/review/lista relacionados, data relativa, links)
+- Navegacao: **Feed** no menu desktop; no mobile, como a bottom navigation ja estava com 6 itens, o Feed foi colocado em um menu secundario no cabecalho (visivel apenas em telas pequenas) para nao sobrecarregar a barra inferior
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:
@@ -130,7 +166,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 11. reviews: criar, editar (upsert), apagar, e confirmar que a review de um usuario nao e afetada pela review de outro na mesma serie;
 12. privacidade: perfil privado oculta dados para terceiros mas o dono continua vendo tudo;
 13. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
-14. logout e confirmacao de que a sessao foi invalidada.
+14. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
+15. logout e confirmacao de que a sessao foi invalidada.
 
 ## Comandos
 

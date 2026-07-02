@@ -7,6 +7,7 @@ export async function Navbar() {
   const desktopNav = [
     { href: "/", label: "Home" },
     { href: "/series", label: "Series" },
+    { href: "/feed", label: "Feed" },
     { href: "/me", label: "Minha Area" },
     { href: "/calendar", label: "Calendario" },
     { href: "/lists", label: "Listas" },

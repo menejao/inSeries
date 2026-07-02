@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FollowButton } from "@/components/social/follow-button";
+import { ActivityCard } from "@/components/feed/activity-card";
 import { getCurrentUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import {
@@ -14,6 +15,7 @@ import {
   getWatchStateSeries,
   isFollowing
 } from "@/lib/social/profile";
+import { getProfileActivity } from "@/lib/social/activity";
 import { formatDate, getInitials } from "@/lib/utils";
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -34,8 +36,9 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   const canSeeCompleted = isOwner || (!profile.isProfilePrivate && profile.showWatchedSeries);
   const canSeeLists = isOwner || (!profile.isProfilePrivate && profile.showLists);
   const canSeeReviews = isOwner || (!profile.isProfilePrivate && profile.showReviews);
+  const canSeeActivity = isOwner || (!profile.isProfilePrivate && profile.showActivity);
 
-  const [watchingSeries, completedSeries, lists, reviews] = await Promise.all([
+  const [watchingSeries, completedSeries, lists, reviews, activity] = await Promise.all([
     canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING") : Promise.resolve([]),
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
     canSeeLists
@@ -56,7 +59,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
             take: 12
           })
         : getPublicReviewsForUser(profile.id)
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    canSeeActivity ? getProfileActivity(profile.id, viewer?.id ?? null, 10) : Promise.resolve([])
   ]);
 
   return (
@@ -200,6 +204,23 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
               )
             ) : (
               <EmptyState title="Oculto" copy="Este usuario optou por nao exibir reviews." />
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-semibold text-ink">Atividade</h2>
+            {canSeeActivity ? (
+              activity.length ? (
+                <div className="space-y-3">
+                  {activity.map((item) => (
+                    <ActivityCard key={item.id} activity={item} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="Nenhuma atividade publica" copy="Acoes publicas deste usuario aparecem aqui." />
+              )
+            ) : (
+              <EmptyState title="Oculto" copy="Este usuario optou por nao exibir atividade." />
             )}
           </section>
         </>
