@@ -8,6 +8,7 @@ export async function Navbar() {
     { href: "/", label: "Home" },
     { href: "/series", label: "Series" },
     { href: "/me", label: "Minha Area" },
+    { href: "/calendar", label: "Calendario" },
     { href: "/lists", label: "Listas" },
     { href: user ? `/profile/${user.username}` : "/login", label: "Perfil" },
     { href: "/settings", label: "Configuracoes" }

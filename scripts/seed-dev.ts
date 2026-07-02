@@ -45,6 +45,26 @@ function buildEpisodes(seasonNumber: number): EpisodeSeed[] {
   });
 }
 
+function relativeDate(offsetDays: number) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString();
+}
+
+function buildRelativeEpisodes(seasonNumber: number, offsets: number[]): EpisodeSeed[] {
+  return offsets.map((offsetDays, index) => {
+    const number = index + 1;
+    return {
+      number,
+      title: `Temporada ${seasonNumber} Episodio ${number}`,
+      overview: `Episodio de calendario de teste (offset ${offsetDays} dia(s) a partir de hoje).`,
+      runtimeMinutes: 42,
+      airedAt: relativeDate(offsetDays)
+    };
+  });
+}
+
 const seriesSeeds: SeriesSeed[] = [
   {
     slug: "serie-teste-um",
@@ -61,7 +81,9 @@ const seriesSeeds: SeriesSeed[] = [
     popularityScore: 90,
     seasons: [
       { number: 1, title: "Temporada 1", airYear: 2021, episodes: buildEpisodes(1) },
-      { number: 2, title: "Temporada 2", airYear: 2022, episodes: buildEpisodes(2) }
+      { number: 2, title: "Temporada 2", airYear: 2022, episodes: buildEpisodes(2) },
+      { number: 3, title: "Temporada 3", airYear: new Date().getFullYear(), episodes: buildRelativeEpisodes(3, [0, 3, 20]) },
+      { number: 4, title: "Temporada 4", airYear: new Date().getFullYear() + 1, episodes: [] }
     ]
   },
   {
@@ -169,7 +191,9 @@ async function main() {
     console.log(`Serie seedada: ${series.title} (${series.id})`);
   }
 
-  console.log("Seed dev concluido: 2 series, 2 temporadas por serie, 5 episodios por temporada.");
+  console.log(
+    "Seed dev concluido: 2 series com pelo menos 2 temporadas e 5 episodios cada; Serie Teste Um inclui ainda temporada com episodios de hoje/semana/futuro e uma temporada futura anunciada sem episodios, para validar o calendario."
+  );
 }
 
 main()

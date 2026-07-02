@@ -132,6 +132,65 @@ async function main() {
     remarkWatched.body
   );
 
+  // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
+  const seriesDetail = await request(jarA, "/api/catalog/series");
+  const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);
+  const allEpisodes: Array<{ id: string; title: string; airedOn: string }> = (trackedSeries?.seasons ?? []).flatMap(
+    (season: Json) => season.episodes ?? []
+  );
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const todayEpisode = allEpisodes.find((episode) => episode.airedOn === todayStr);
+  const futureSeason = (trackedSeries?.seasons ?? []).find((season: Json) => (season.episodes ?? []).length === 0);
+
+  const calendarGuest = await request({ value: "" }, "/calendar");
+  check(
+    "calendario sem sessao mostra CTA de login (nao redireciona)",
+    calendarGuest.status === 200 && String(calendarGuest.body).includes("Entre para ver seu calendario"),
+    calendarGuest.status
+  );
+
+  const calendarPersonal = await request(jarA, "/calendar");
+  check("calendario pessoal carrega (200)", calendarPersonal.status === 200, calendarPersonal.status);
+  check(
+    "calendario pessoal mostra episodio de hoje na secao Hoje",
+    Boolean(todayEpisode) && String(calendarPersonal.body).includes(todayEpisode?.title ?? "__none__"),
+    todayEpisode
+  );
+  check(
+    "calendario pessoal mostra temporada futura sem episodios",
+    Boolean(futureSeason) && String(calendarPersonal.body).includes(futureSeason?.title ?? "__none__"),
+    futureSeason
+  );
+
+  const calendarGlobalToday = await request(jarA, "/calendar?view=global&range=today");
+  check(
+    "calendario global (hoje) mostra episodio lancado hoje",
+    calendarGlobalToday.status === 200 && Boolean(todayEpisode) && String(calendarGlobalToday.body).includes(todayEpisode?.title ?? "__none__"),
+    todayEpisode
+  );
+
+  const calendarOnlyMine = await request(jarA, "/calendar?view=global&range=month&onlyMine=1");
+  check(
+    "filtro apenas minhas series funciona (inclui serie que o usuario acompanha)",
+    calendarOnlyMine.status === 200 && String(calendarOnlyMine.body).includes(trackedSeries?.title ?? "__none__"),
+    trackedSeries?.title
+  );
+
+  const nextEpisodeSeriesPage = await request(jarA, `/series/${seriesId}`);
+  check(
+    "pagina da serie mostra secao Proximo episodio",
+    nextEpisodeSeriesPage.status === 200 && String(nextEpisodeSeriesPage.body).includes("Proximo episodio"),
+    nextEpisodeSeriesPage.status
+  );
+
+  const dashboard = await request(jarA, "/me");
+  check(
+    "dashboard /me mostra secao Proximos episodios",
+    dashboard.status === 200 && String(dashboard.body).includes("Proximos episodios"),
+    dashboard.status
+  );
+
   // ---- Fundacao social: follow, listas, reviews, privacidade, ownership ----
   const jarB: CookieJar = { value: "" };
   const userB = await registerUser(jarB, "userb");
@@ -281,7 +340,7 @@ async function main() {
     console.error(`Smoke test falhou: ${failures} verificacao(oes) com erro.`);
     process.exitCode = 1;
   } else {
-    console.log("Smoke test concluido com sucesso: fluxo principal e fundacao social validados ponta a ponta.");
+    console.log("Smoke test concluido com sucesso: fluxo principal, calendario e fundacao social validados ponta a ponta.");
   }
 }
 

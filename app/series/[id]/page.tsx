@@ -12,6 +12,9 @@ import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
+import { getNextEpisodeForSeries } from "@/lib/calendar/queries";
+import { formatShortDate } from "@/lib/calendar/dates";
+import { formatEpisodeCode } from "@/lib/utils";
 
 export default async function SeriesDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -49,6 +52,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   const progress = user && dbAvailable ? await calculateSeriesProgress(user.id, series.id) : null;
   const reviews = dbAvailable ? await getSeriesReviews(series.id, user?.id) : [];
   const ownReview = user && dbAvailable ? await getOwnReview(user.id, series.id) : null;
+  const nextEpisode = dbAvailable ? await getNextEpisodeForSeries(series.id) : null;
 
   const hydratedSeasons = series.seasons.map((season) => ({
     ...season,
@@ -118,6 +122,33 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
           )}
         </div>
+      </section>
+
+      <section>
+        <Card>
+          <h2 className="text-xl font-semibold text-ink">Proximo episodio</h2>
+          {nextEpisode ? (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-ink">
+                  {formatEpisodeCode(nextEpisode.seasonNumber, nextEpisode.number)} · {nextEpisode.title}
+                </p>
+                <p className="mt-1 text-sm text-slate-300">{formatShortDate(nextEpisode.airedAt)}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {nextEpisode.daysRemaining <= 0 ? "Lanca hoje" : `Faltam ${nextEpisode.daysRemaining} dia(s)`}
+                </p>
+              </div>
+              <Link
+                href={`/series/${series.slug}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-ember px-4 text-sm font-semibold text-night"
+              >
+                Abrir serie
+              </Link>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-slate-300">Serie sem episodios futuros.</p>
+          )}
+        </Card>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">

@@ -42,7 +42,7 @@ O Postgres sobe com `user: inseries`, `password: inseries`, `database: inseries`
 
 ## Catalogo
 
-- `npm run seed:dev`: cria localmente 2 series, 2 temporadas por serie e 5 episodios por temporada, sem depender de chave do TMDb. Use para validar cadastro, login, status e progresso com banco real
+- `npm run seed:dev`: cria localmente 2 series com pelo menos 2 temporadas e 5 episodios cada, sem depender de chave do TMDb; a "Serie Teste Um" ganha ainda uma temporada com episodios de hoje/esta semana/futuro e uma temporada futura sem episodios, para exercitar todas as secoes do calendario. Use para validar cadastro, login, status, progresso e calendario com banco real
 - `npm run seed:catalog` (alias `npm run catalog:seed`): importa series populares do TMDb para o banco; e ignorado automaticamente se `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN` nao estiverem configurados ou se o banco estiver indisponivel
 - `POST /api/catalog/import`: prepara importacao sob demanda via `tmdbId`
 - `/series`: consulta banco e usa fallback mock apenas quando o banco estiver indisponivel
@@ -94,6 +94,19 @@ Nenhum endpoint publico retorna listas, reviews ou series privadas de outro usua
 - Reviews publicas aparecem na pagina da serie e no perfil do autor; review privada so aparece para o proprio autor
 - Review de episodio nao foi implementada nesta sprint
 
+## Calendario
+
+`/calendar` centraliza o que importa para cada usuario: episodios lancados, futuros e temporadas anunciadas das series que ele acompanha, usando exclusivamente datas ja persistidas no banco (originadas do TMDb via `Episode.airedAt`).
+
+- Usuario autenticado ve **Meu calendario** por padrao; usuario nao autenticado recebe CTA para login (nao ha redirecionamento por middleware, a propria pagina exibe o convite)
+- Calendario pessoal considera apenas series com status `WATCHING` ou `WANT_TO_WATCH`; series pausadas, abandonadas ou concluidas nao aparecem
+- Secoes: **Hoje**, **Esta Semana**, **Proximos Lancamentos**, **Temporadas Futuras** (temporadas cadastradas sem episodios ainda detalhados), **Atrasados** (ja lancados e nao assistidos) e **Assistidos Recentemente** (ultimos 14 dias); cada secao tem empty state proprio
+- Cada card mostra poster da serie, imagem do episodio, titulo da serie, codigo `TxxExx`, titulo do episodio, data, status do usuario, botao "Marcar assistido" (reaproveita o mesmo componente de progresso da pagina da serie) e link para abrir a serie
+- Aba **Todos os lancamentos**: navegacao por Hoje/Semana/Mes e filtros (genero, idioma, apenas minhas series, apenas ineditos, apenas nao assistidos) consultando somente o banco, nunca o TMDb diretamente na pagina; filtros de plataforma e pais ficam com a estrutura pronta na UI, aguardando os campos correspondentes no catalogo
+- Na pagina da serie, secao **Proximo episodio** mostra numero, titulo, data e dias restantes do proximo episodio com data futura conhecida, ou a mensagem "Serie sem episodios futuros." quando nao ha previsao
+- No dashboard `/me`, secao **Proximos episodios** lista os 5 proximos episodios nao assistidos das series acompanhadas, com link para o calendario completo
+- `lib/jobs/registry.ts` (`futureCalendarJobs`) prepara a arquitetura para sincronizacao futura (novos episodios, mudanca de datas, temporadas anunciadas) sem implementar um cron real nesta sprint
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:
@@ -116,7 +129,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 10. listas: criar, editar, adicionar serie, remover serie, apagar, e confirmar que outro usuario nao consegue editar/apagar lista alheia (403);
 11. reviews: criar, editar (upsert), apagar, e confirmar que a review de um usuario nao e afetada pela review de outro na mesma serie;
 12. privacidade: perfil privado oculta dados para terceiros mas o dono continua vendo tudo;
-13. logout e confirmacao de que a sessao foi invalidada.
+13. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
+14. logout e confirmacao de que a sessao foi invalidada.
 
 ## Comandos
 

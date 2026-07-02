@@ -2,9 +2,11 @@
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
+import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
+import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
 
 const tabs = [
   { href: "/me", label: "Resumo" },
@@ -41,6 +43,7 @@ export default async function MePage() {
   const uniqueSeriesIds = [...new Set(statuses.map((item) => item.seriesId))];
   const progressList = await Promise.all(uniqueSeriesIds.map((seriesId) => calculateSeriesProgress(user.id, seriesId)));
   const watchedSeries = progressList.filter(Boolean);
+  const upcomingEpisodes = await getUpcomingEpisodesForUser(user.id, 5);
   const averageProgress = watchedSeries.length
     ? Math.round(watchedSeries.reduce((sum, item) => sum + (item?.percentage ?? 0), 0) / watchedSeries.length)
     : 0;
@@ -72,6 +75,23 @@ export default async function MePage() {
         <p className="text-sm text-slate-300">Progresso medio</p>
         <p className="mt-2 text-3xl font-black text-ink">{averageProgress}%</p>
       </Card>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-ink">Proximos episodios</h2>
+          <Link href="/calendar" className="text-sm font-semibold text-amber-200">
+            Ver calendario
+          </Link>
+        </div>
+        {upcomingEpisodes.length ? (
+          <div className="space-y-3">
+            {upcomingEpisodes.map((episode) => (
+              <EpisodeCalendarCard key={episode.id} episode={episode} authenticated />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Nenhum lancamento previsto" copy="Quando houver novos episodios das suas series, eles aparecem aqui." />
+        )}
+      </div>
       <div className="space-y-3">
         <h2 className="text-xl font-semibold text-ink">Ultimos episodios assistidos</h2>
         {recentEpisodes.length ? (
