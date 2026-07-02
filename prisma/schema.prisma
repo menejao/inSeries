@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SeriesLifecycleStatus {
+  RETURNING
+  ENDED
+  CANCELED
+  IN_PRODUCTION
+  PILOT
+}
+
+enum WatchState {
+  WANT_TO_WATCH
+  WATCHING
+  PAUSED
+  DROPPED
+  COMPLETED
+}
+
+enum Visibility {
+  PUBLIC
+  FOLLOWERS
+  PRIVATE
+}
+
+enum ExternalSource {
+  TMDB
+}
+
+enum ExternalEntityType {
+  SERIES
+  SEASON
+  EPISODE
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  name                String
+  username            String               @unique
+  email               String               @unique
+  passwordHash        String
+  avatarUrl           String?
+  bio                 String?
+  isProfilePrivate    Boolean              @default(false)
+  showWatchedSeries   Boolean              @default(true)
+  showLists           Boolean              @default(true)
+  showReviews         Boolean              @default(true)
+  showActivity        Boolean              @default(true)
+  statuses            UserSeriesStatus[]
+  episodeProgress     UserEpisodeProgress[]
+  followers           Follow[]             @relation("followers")
+  following           Follow[]             @relation("following")
+  reviews             Review[]
+  ratings             Rating[]
+  lists               List[]
+  activities          Activity[]
+  notifications       Notification[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Series {
+  id                  String               @id @default(cuid())
+  slug                String               @unique
+  title               String
+  originalTitle       String?
+  overview            String?
+  posterUrl           String?
+  backdropUrl         String?
+  firstAirYear        Int?
+  language            String?
+  network             String?
+  genres              String[]
+  status              SeriesLifecycleStatus
+  popularityScore     Float?
+  seasons             Season[]
+  reviews             Review[]
+  ratings             Rating[]
+  statuses            UserSeriesStatus[]
+  externalMappings    ExternalSourceMapping[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Season {
+  id                  String               @id @default(cuid())
+  seriesId            String
+  number              Int
+  title               String
+  overview            String?
+  posterUrl           String?
+  airYear             Int?
+  episodeCount        Int                  @default(0)
+  externalSource      ExternalSource?
+  externalId          String?
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodes            Episode[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([seriesId, number])
+  @@unique([externalSource, externalId])
+}
+
+model Episode {
+  id                  String               @id @default(cuid())
+  seasonId            String
+  number              Int
+  title               String
+  overview            String?
+  stillUrl            String?
+  runtimeMinutes      Int?
+  airedAt             DateTime?
+  externalSource      ExternalSource?
+  externalId          String?
+  season              Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  progress            UserEpisodeProgress[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([seasonId, number])
+  @@unique([externalSource, externalId])
+}
+
+model UserSeriesStatus {
+  id                  String               @id @default(cuid())
+  userId              String
+  seriesId            String
+  state               WatchState
+  completionPercent   Float                @default(0)
+  lastActivityAt      DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, seriesId])
+}
+
+model UserEpisodeProgress {
+  id                  String               @id @default(cuid())
+  userId              String
+  episodeId           String
+  watched             Boolean              @default(false)
+  watchedAt           DateTime?
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode             Episode              @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, episodeId])
+}
+
+model Follow {
+  id                  String               @id @default(cuid())
+  followerId          String
+  followingId         String
+  follower            User                 @relation("following", fields: [followerId], references: [id], onDelete: Cascade)
+  following           User                 @relation("followers", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model Review {
+  id                  String               @id @default(cuid())
+  userId              String
+  seriesId            String
+  rating              Int
+  body                String
+  visibility          Visibility           @default(PUBLIC)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Rating {
+  id                  String               @id @default(cuid())
+  userId              String
+  seriesId            String
+  value               Int
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, seriesId])
+}
+
+model List {
+  id                  String               @id @default(cuid())
+  userId              String
+  title               String
+  description         String?
+  visibility          Visibility           @default(PUBLIC)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items               ListItem[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ListItem {
+  id                  String               @id @default(cuid())
+  listId              String
+  seriesId            String
+  position            Int
+  note                String?
+  list                List                 @relation(fields: [listId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([listId, seriesId])
+  @@unique([listId, position])
+}
+
+model Notification {
+  id                  String               @id @default(cuid())
+  userId              String
+  kind                String
+  payload             Json
+  seenAt              DateTime?
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model Activity {
+  id                  String               @id @default(cuid())
+  userId              String
+  kind                String
+  payload             Json
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ExternalSourceMapping {
+  id                  String               @id @default(cuid())
+  seriesId            String
+  source              ExternalSource
+  entityType          ExternalEntityType   @default(SERIES)
+  externalId          String
+  lastSyncedAt        DateTime?
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([source, entityType, externalId])
+}
