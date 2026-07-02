@@ -49,6 +49,7 @@ model User {
   bio                 String?
   isProfilePrivate    Boolean              @default(false)
   showWatchedSeries   Boolean              @default(true)
+  showWatchingSeries  Boolean              @default(true)
   showLists           Boolean              @default(true)
   showReviews         Boolean              @default(true)
   showActivity        Boolean              @default(true)
@@ -84,6 +85,7 @@ model Series {
   ratings             Rating[]
   statuses            UserSeriesStatus[]
   externalMappings    ExternalSourceMapping[]
+  listItems           ListItem[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -181,6 +183,8 @@ model Review {
   series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, seriesId])
 }
 
 model Rating {
@@ -215,6 +219,7 @@ model ListItem {
   position            Int
   note                String?
   list                List                 @relation(fields: [listId], references: [id], onDelete: Cascade)
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 

@@ -1,6 +1,8 @@
-﻿import { notFound } from "next/navigation";
+﻿import Link from "next/link";
+import { notFound } from "next/navigation";
 import { EpisodeRow } from "@/components/series/episode-row";
 import { SeriesStatusActions } from "@/components/series/series-status-actions";
+import { ReviewForm } from "@/components/reviews/review-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -9,6 +11,7 @@ import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
+import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
 
 export default async function SeriesDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,6 +47,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       )
     : new Set<string>();
   const progress = user && dbAvailable ? await calculateSeriesProgress(user.id, series.id) : null;
+  const reviews = dbAvailable ? await getSeriesReviews(series.id, user?.id) : [];
+  const ownReview = user && dbAvailable ? await getOwnReview(user.id, series.id) : null;
 
   const hydratedSeasons = series.seasons.map((season) => ({
     ...season,
@@ -111,6 +116,37 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             ))
           ) : (
             <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <ReviewForm
+          seriesId={series.id}
+          authenticated={Boolean(user)}
+          initialReview={
+            ownReview ? { rating: ownReview.rating, body: ownReview.body, visibility: ownReview.visibility } : null
+          }
+        />
+        <div className="space-y-3">
+          <h2 className="text-xl font-semibold text-ink">Reviews</h2>
+          {reviews.length ? (
+            reviews.map((review) => (
+              <Card key={review.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/profile/${review.user.username}`} className="font-semibold text-ink">
+                    @{review.user.username}
+                  </Link>
+                  <Badge>{review.rating}/5</Badge>
+                </div>
+                <p className="mt-2 text-sm text-slate-300">{review.body}</p>
+                {user && review.userId === user.id && review.visibility !== "PUBLIC" ? (
+                  <Badge className="mt-2">Somente voce</Badge>
+                ) : null}
+              </Card>
+            ))
+          ) : (
+            <EmptyState title="Nenhuma review ainda" copy="Seja o primeiro a avaliar esta serie." />
           )}
         </div>
       </section>

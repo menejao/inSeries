@@ -10,7 +10,8 @@ const tabs = [
   { href: "/me", label: "Resumo" },
   { href: "/me/watching", label: "Assistindo" },
   { href: "/me/completed", label: "Concluidas" },
-  { href: "/me/watchlist", label: "Watchlist" }
+  { href: "/me/watchlist", label: "Watchlist" },
+  { href: "/me/lists", label: "Listas" }
 ];
 
 export default async function WatchingPage() {
