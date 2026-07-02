@@ -37,7 +37,7 @@ export async function getListWithItems(listId: string) {
 
 export async function listPublicLists() {
   return prisma.list.findMany({
-    where: { visibility: "PUBLIC" },
+    where: { visibility: "PUBLIC", hiddenByAdminAt: null },
     include: {
       user: { select: { username: true, name: true } },
       _count: { select: { items: true } }

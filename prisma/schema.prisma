@@ -63,6 +63,12 @@ enum CatalogSyncStatus {
   PARTIAL
 }
 
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
 model User {
   id                  String               @id @default(cuid())
   name                String
@@ -71,6 +77,8 @@ model User {
   passwordHash        String
   avatarUrl           String?
   bio                 String?
+  role                UserRole             @default(USER)
+  lastLoginAt         DateTime?
   isProfilePrivate    Boolean              @default(false)
   showWatchedSeries   Boolean              @default(true)
   showWatchingSeries  Boolean              @default(true)
@@ -87,8 +95,11 @@ model User {
   activities          Activity[]           @relation("ActivityUser")
   targetedActivities  Activity[]           @relation("ActivityTargetUser")
   notifications       Notification[]
+  adminAuditLogs      AdminAuditLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([role])
 }
 
 model Series {
@@ -214,6 +225,7 @@ model Review {
   rating              Int
   body                String
   visibility          Visibility           @default(PUBLIC)
+  hiddenByAdminAt     DateTime?
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   series              Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   activities          Activity[]
@@ -242,6 +254,7 @@ model List {
   title               String
   description         String?
   visibility          Visibility           @default(PUBLIC)
+  hiddenByAdminAt     DateTime?
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   items               ListItem[]
   activities          Activity[]
@@ -333,4 +346,19 @@ model CatalogSyncRun {
 
   @@index([type, startedAt])
   @@index([status])
+}
+
+model AdminAuditLog {
+  id            String   @id @default(cuid())
+  adminUserId   String
+  action        String
+  entity        String
+  entityId      String?
+  metadata      Json?
+  result        String   @default("SUCCESS")
+  adminUser     User     @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([adminUserId, createdAt])
+  @@index([entity, entityId])
 }

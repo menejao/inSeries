@@ -43,7 +43,7 @@ export async function getWatchStateSeries(userId: string, state: "WATCHING" | "C
 
 export async function getPublicListsForUser(userId: string) {
   return prisma.list.findMany({
-    where: { userId, visibility: "PUBLIC" },
+    where: { userId, visibility: "PUBLIC", hiddenByAdminAt: null },
     include: { _count: { select: { items: true } } },
     orderBy: { updatedAt: "desc" }
   });
@@ -51,7 +51,7 @@ export async function getPublicListsForUser(userId: string) {
 
 export async function getPublicReviewsForUser(userId: string) {
   return prisma.review.findMany({
-    where: { userId, visibility: "PUBLIC" },
+    where: { userId, visibility: "PUBLIC", hiddenByAdminAt: null },
     include: { series: { select: { id: true, slug: true, title: true } } },
     orderBy: { updatedAt: "desc" },
     take: 12

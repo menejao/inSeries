@@ -1,12 +1,16 @@
-﻿import type { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
 const protectedRoutes = ["/me", "/settings"];
+const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
 export async function middleware(request: NextRequest) {
-  const isProtected = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route));
-  if (!isProtected) {
+  const { pathname } = request.nextUrl;
+  const isAdminRoute = pathname.startsWith("/admin");
+  const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
+
+  if (!isProtected && !isAdminRoute) {
     return NextResponse.next();
   }
 
@@ -17,9 +21,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (isAdminRoute && !adminRoles.has(session.role ?? "USER")) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/me/:path*", "/settings/:path*"]
+  matcher: ["/me/:path*", "/settings/:path*", "/admin/:path*"]
 };

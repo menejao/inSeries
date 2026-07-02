@@ -22,7 +22,7 @@ export default async function ListDetailsPage({ params }: { params: Promise<{ id
   const viewer = await getCurrentUser();
   const isOwner = viewer?.id === list.userId;
 
-  if (list.visibility !== "PUBLIC" && !isOwner) {
+  if ((list.visibility !== "PUBLIC" || list.hiddenByAdminAt) && !isOwner) {
     notFound();
   }
 

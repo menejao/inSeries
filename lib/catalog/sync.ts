@@ -60,6 +60,32 @@ async function createRun(type: CatalogSyncType) {
   return prisma.catalogSyncRun.create({ data: { source: "TMDB", type, status: "RUNNING" } });
 }
 
+/**
+ * Prevents two syncs of the same type from running concurrently: if one is
+ * already RUNNING, callers should short-circuit and report it instead of
+ * starting a second run that would race the first for the same rows.
+ */
+async function findRunningRun(type: CatalogSyncType) {
+  return prisma.catalogSyncRun.findFirst({
+    where: { type, status: "RUNNING" },
+    orderBy: { startedAt: "desc" }
+  });
+}
+
+function alreadyRunningSummary(existingRun: { id: string; startedAt: Date }, type: CatalogSyncType): CatalogSyncSummary {
+  return {
+    ...emptyCounts(),
+    runId: existingRun.id,
+    type,
+    status: "RUNNING",
+    startedAt: existingRun.startedAt,
+    finishedAt: existingRun.startedAt,
+    durationMs: 0,
+    errorMessage: "Ja existe uma sincronizacao deste tipo em andamento.",
+    errors: []
+  };
+}
+
 async function finishRun(
   runId: string,
   type: CatalogSyncType,
@@ -170,6 +196,9 @@ async function syncOneSeries(tmdbId: string | number, label: string, counts: Cat
  */
 export async function syncPopularSeries(options: { pages?: number } = {}): Promise<CatalogSyncSummary> {
   const type: CatalogSyncType = "POPULAR_SERIES";
+  const runningRun = await findRunningRun(type);
+  if (runningRun) return alreadyRunningSummary(runningRun, type);
+
   const run = await createRun(type);
 
   if (!getTmdbCredentials().isConfigured) {
@@ -207,6 +236,9 @@ export async function syncPopularSeries(options: { pages?: number } = {}): Promi
  */
 export async function syncExistingSeriesDetails(seriesIds?: string[]): Promise<CatalogSyncSummary> {
   const type: CatalogSyncType = "SERIES_DETAILS";
+  const runningRun = await findRunningRun(type);
+  if (runningRun) return alreadyRunningSummary(runningRun, type);
+
   const run = await createRun(type);
 
   if (!getTmdbCredentials().isConfigured) {
@@ -237,6 +269,9 @@ export async function syncExistingSeriesDetails(seriesIds?: string[]): Promise<C
 /** Combines popular-series discovery with a refresh of already-catalogued series, in a single tracked run. */
 export async function syncFullRefresh(options: { pages?: number } = {}): Promise<CatalogSyncSummary> {
   const type: CatalogSyncType = "FULL_REFRESH";
+  const runningRun = await findRunningRun(type);
+  if (runningRun) return alreadyRunningSummary(runningRun, type);
+
   const run = await createRun(type);
 
   if (!getTmdbCredentials().isConfigured) {

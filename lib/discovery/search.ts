@@ -265,7 +265,7 @@ export async function searchPublicLists(q: string, limit = 10): Promise<ListSear
 
   try {
     const rows = await prisma.list.findMany({
-      where: { visibility: "PUBLIC", title: { contains: q, mode: "insensitive" } },
+      where: { visibility: "PUBLIC", hiddenByAdminAt: null, title: { contains: q, mode: "insensitive" } },
       include: { user: { select: { username: true, name: true } } },
       take: Math.min(limit, MAX_PAGE_SIZE)
     });
@@ -290,7 +290,7 @@ export async function searchPublicReviews(q: string, limit = 10): Promise<Review
 
   try {
     const rows = await prisma.review.findMany({
-      where: { visibility: "PUBLIC", body: { contains: q, mode: "insensitive" } },
+      where: { visibility: "PUBLIC", hiddenByAdminAt: null, body: { contains: q, mode: "insensitive" } },
       include: {
         user: { select: { username: true, name: true } },
         series: { select: { slug: true, title: true } }

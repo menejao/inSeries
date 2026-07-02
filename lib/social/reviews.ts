@@ -48,7 +48,7 @@ export async function getSeriesReviews(seriesId: string, viewerId?: string | nul
   return prisma.review.findMany({
     where: {
       seriesId,
-      OR: [{ visibility: "PUBLIC" }, ...(viewerId ? [{ userId: viewerId }] : [])]
+      OR: [{ visibility: "PUBLIC", hiddenByAdminAt: null }, ...(viewerId ? [{ userId: viewerId }] : [])]
     },
     include: { user: { select: { id: true, name: true, username: true, avatarUrl: true } } },
     orderBy: { updatedAt: "desc" }

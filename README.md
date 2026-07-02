@@ -235,6 +235,54 @@ Toda leitura de atividades (feed pessoal, feed global, `/me`, perfil publico) re
 - `components/feed/activity-card.tsx`: card reutilizavel (avatar, nome/username, acao, serie/episodio/review/lista relacionados, data relativa, links)
 - Navegacao: **Feed** no menu desktop; no mobile, como a bottom navigation ja estava com 6 itens, o Feed foi colocado em um menu secundario no cabecalho (visivel apenas em telas pequenas) para nao sobrecarregar a barra inferior
 
+## Workspace administrativo
+
+Area interna em `/admin` para gestao do catalogo, sincronizacoes, saude do sistema e moderacao inicial, sem afetar a experiencia do usuario final.
+
+### RBAC (controle de acesso por papel)
+
+- `User.role`: `USER` (padrao) | `MODERATOR` | `ADMIN`
+- Permissoes (`lib/admin/rbac.ts`): `admin.read`, `admin.catalog`, `admin.sync`, `admin.users`, `admin.reviews`, `admin.lists`, `admin.system`
+  - `USER`: nenhuma permissao administrativa
+  - `MODERATOR`: `admin.read`, `admin.reviews`, `admin.lists`
+  - `ADMIN`: todas as permissoes
+- **Dupla camada de protecao, nunca so a UI**:
+  1. `middleware.ts`: bloqueio rapido em `/admin/:path*` usando o papel (`role`) embutido no cookie de sessao assinado (sem round-trip ao banco, compativel com edge runtime); redireciona convidados para `/login` e usuarios sem permissao para `/`
+  2. Toda pagina/rota `/admin/*` chama `requireAdminUser()`/`getAdminApiUser()` (`lib/admin/rbac.ts`), que **revalida o papel diretamente no banco** a cada requisicao — o token de sessao nunca e a unica fonte de verdade
+- `role` e incluido no token de sessao no cadastro e no login; login tambem atualiza `User.lastLoginAt`
+
+### Rotas do workspace
+
+- `/admin`: dashboard com indicadores reais (usuarios, series, temporadas, episodios, reviews, listas, follows, atividades) e ultima sincronizacao (status/duracao)
+- `/admin/catalog` e `/admin/catalog/[id]`: busca e detalhe somente leitura do catalogo interno (ids externos, `ExternalSourceMapping`, datas, status, popularidade, nota TMDb) — sem edicao destrutiva nesta sprint
+- `/admin/sync`: historico de `CatalogSyncRun` (data, duracao, status, origem, tipo, importados/atualizados, erros) e botoes para disparar manualmente "Sincronizar populares" e "Sincronizar series existentes", cada um com confirmacao antes de iniciar; nunca permite duas sincronizacoes do mesmo tipo rodando em paralelo (retorna a execucao em andamento em vez de duplicar)
+- `/admin/users`: listagem somente leitura (nome, usuario, email, papel, data de cadastro, ultimo acesso, contagem de reviews/listas/seguidores/seguindo) — sem alteracao de senha ou progresso
+- `/admin/reviews`: lista todas as reviews (autor, serie, nota, data, visibilidade) com acoes de **ocultar/restaurar** (nunca exclusao permanente)
+- `/admin/lists`: lista todas as listas (autor, titulo, quantidade de series, visibilidade, data) com acoes de **ocultar/restaurar** (nunca exclusao permanente)
+- `/admin/system`: versao da aplicacao, ambiente, versao do Prisma, alvo do banco (host/porta/nome, sem credenciais), quantidade de migrations aplicadas, status do banco e versao do Node — nunca expõe segredos/API keys
+- `/admin/logs`: consulta ao `AdminAuditLog`
+
+### Moderacao (ocultar/restaurar)
+
+- Campo `hiddenByAdminAt` em `Review` e `List`, **independente** do campo `visibility` controlado pelo proprio usuario — moderacao do admin nunca e desfeita silenciosamente por uma acao do usuario
+- Toda leitura publica (pagina da serie, perfil, `/lists`, busca) passa a exigir `hiddenByAdminAt: null` alem de `visibility: PUBLIC`
+- Ocultar/restaurar tambem sincroniza a visibilidade da `Activity` associada (`lib/social/activity.ts`), para que o item some/volte tambem do feed
+- Implementado em `lib/admin/moderation.ts`: `hideReview`, `restoreReview`, `hideList`, `restoreList`
+
+### Auditoria (`AdminAuditLog`)
+
+- Toda acao administrativa relevante grava um registro: `adminUserId`, `action`, `entity`, `entityId`, `metadata`, `result`, `createdAt`
+- Acoes registradas nesta sprint: `START_SYNC`, `HIDE_REVIEW`, `RESTORE_REVIEW`, `HIDE_LIST`, `RESTORE_LIST`
+- Gravado por `lib/admin/audit.ts` (`recordAdminAudit`), consultado em `/admin/logs`
+
+### Seed do admin de desenvolvimento
+
+```
+npm run seed:admin
+```
+
+Cria/atualiza um usuario fixo `admin@inseries.dev` / senha `admin12345` com `role: ADMIN`, usado tambem pelo smoke test.
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:
@@ -260,7 +308,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 13. privacidade: perfil privado oculta dados para terceiros mas o dono continua vendo tudo;
 14. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
 15. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
-16. logout e confirmacao de que a sessao foi invalidada.
+16. logout e confirmacao de que a sessao foi invalidada;
+17. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`.
 
 ## Comandos
 
@@ -269,6 +318,7 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 - `npx prisma migrate dev`: aplica migrations no banco local
 - `npx prisma generate`: gera o Prisma Client
 - `npm run seed:dev`: popula catalogo de teste variado (5 series, status/genero/ano/popularidade/nota diferentes) para validar progresso, calendario e descoberta
+- `npm run seed:admin`: cria/atualiza o usuario admin de desenvolvimento (`admin@inseries.dev` / `admin12345`, `role: ADMIN`) usado no workspace `/admin` e no smoke test
 - `npm run seed:catalog`: executa seed do catalogo real via TMDb (opcional)
 - `npm run sync:popular [paginas]`: sincroniza series populares do TMDb (idempotente, registra `CatalogSyncRun`)
 - `npm run sync:series`: sincroniza detalhes/temporadas/episodios das series ja catalogadas

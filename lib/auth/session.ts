@@ -6,6 +6,7 @@ type SessionPayload = {
   email: string;
   username: string;
   name: string;
+  role?: string;
   exp: number;
 };
 

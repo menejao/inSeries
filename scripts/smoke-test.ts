@@ -537,6 +537,175 @@ async function main() {
     body: JSON.stringify({ isProfilePrivate: false })
   });
 
+  // ---- Workspace administrativo: RBAC, dashboard, moderacao, sync, auditoria ----
+  const guestJar: CookieJar = { value: "" };
+  const adminOnlyRoutesGuest = await request(guestJar, "/admin");
+  check(
+    "convidado sem sessao e redirecionado ao acessar /admin",
+    adminOnlyRoutesGuest.status === 307 || adminOnlyRoutesGuest.status === 302,
+    adminOnlyRoutesGuest.status
+  );
+
+  const userTriesAdmin = await request(jarA, "/admin");
+  check(
+    "usuario comum (role USER) e bloqueado de /admin (redirect, nao 200)",
+    userTriesAdmin.status === 307 || userTriesAdmin.status === 302,
+    userTriesAdmin.status
+  );
+
+  const jarAdmin: CookieJar = { value: "" };
+  const adminLogin = await request(jarAdmin, "/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: "admin@inseries.dev", password: "admin12345" })
+  });
+  check(
+    "login do admin de desenvolvimento funciona (rode `npm run seed:admin` antes do smoke test)",
+    adminLogin.status === 200,
+    adminLogin.body
+  );
+
+  const adminDashboard = await request(jarAdmin, "/admin");
+  check(
+    "admin acessa /admin e ve o dashboard",
+    adminDashboard.status === 200 && String(adminDashboard.body).includes("Dashboard"),
+    adminDashboard.status
+  );
+
+  const adminCatalog = await request(jarAdmin, "/admin/catalog");
+  check(
+    "admin acessa /admin/catalog e ve o catalogo interno",
+    adminCatalog.status === 200 && String(adminCatalog.body).includes("Serie Teste Um"),
+    adminCatalog.status
+  );
+
+  const adminSyncPage = await request(jarAdmin, "/admin/sync");
+  check("admin acessa /admin/sync", adminSyncPage.status === 200, adminSyncPage.status);
+
+  const userTriesTriggerSync = await request(jarA, "/api/admin/sync/popular", { method: "POST" });
+  check("usuario comum nao pode disparar sync (403)", userTriesTriggerSync.status === 403, userTriesTriggerSync.body);
+
+  const adminTriggersSync = await request(jarAdmin, "/api/admin/sync/popular", { method: "POST" });
+  check(
+    "admin dispara sync popular; sem TMDB key retorna erro amigavel (nao quebra)",
+    adminTriggersSync.status === 200 && Boolean(adminTriggersSync.body?.summary),
+    adminTriggersSync.body
+  );
+
+  const adminUsersPage = await request(jarAdmin, "/admin/users");
+  check(
+    "admin acessa /admin/users e ve usuarios cadastrados",
+    adminUsersPage.status === 200 && String(adminUsersPage.body).includes(userA.username),
+    adminUsersPage.status
+  );
+
+  const adminSystemPage = await request(jarAdmin, "/admin/system");
+  check(
+    "admin acessa /admin/system e ve informacoes tecnicas",
+    adminSystemPage.status === 200 && String(adminSystemPage.body).includes("Versao do Node"),
+    adminSystemPage.status
+  );
+
+  const moderationReviewMarker = "Review para moderacao pelo smoke test";
+  const moderationReview = await request(jarA, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 3, body: moderationReviewMarker, visibility: "PUBLIC" })
+  });
+  const moderationReviewId: string | undefined = moderationReview.body?.data?.id;
+  check("usuario A cria review para teste de moderacao", moderationReview.status === 200 && Boolean(moderationReviewId), moderationReview.body);
+
+  const moderationListMarker = "Lista para moderacao pelo smoke test";
+  const moderationList = await request(jarA, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: moderationListMarker, visibility: "PUBLIC" })
+  });
+  const moderationListId: string | undefined = moderationList.body?.data?.id;
+  check("usuario A cria lista para teste de moderacao", moderationList.status === 201 && Boolean(moderationListId), moderationList.body);
+
+  if (moderationReviewId) {
+    const seriesBeforeHide = await request(guestJar, `/series/${seriesId}`);
+    check(
+      "review visivel publicamente antes da moderacao",
+      seriesBeforeHide.status === 200 && String(seriesBeforeHide.body).includes(moderationReviewMarker),
+      seriesBeforeHide.status
+    );
+
+    const userTriesHideReview = await request(jarA, `/api/admin/reviews/${moderationReviewId}/hide`, { method: "POST" });
+    check("usuario comum nao pode ocultar review (403)", userTriesHideReview.status === 403, userTriesHideReview.body);
+
+    const hideReviewResponse = await request(jarAdmin, `/api/admin/reviews/${moderationReviewId}/hide`, { method: "POST" });
+    check("admin oculta review (200)", hideReviewResponse.status === 200, hideReviewResponse.body);
+
+    const seriesAfterHide = await request(guestJar, `/series/${seriesId}`);
+    check(
+      "review oculta pelo admin nao aparece mais publicamente",
+      seriesAfterHide.status === 200 && !String(seriesAfterHide.body).includes(moderationReviewMarker),
+      seriesAfterHide.status
+    );
+
+    const restoreReviewResponse = await request(jarAdmin, `/api/admin/reviews/${moderationReviewId}/restore`, { method: "POST" });
+    check("admin restaura review (200)", restoreReviewResponse.status === 200, restoreReviewResponse.body);
+
+    const seriesAfterRestore = await request(guestJar, `/series/${seriesId}`);
+    check(
+      "review restaurada volta a aparecer publicamente",
+      seriesAfterRestore.status === 200 && String(seriesAfterRestore.body).includes(moderationReviewMarker),
+      seriesAfterRestore.status
+    );
+
+    await request(jarA, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
+  }
+
+  if (moderationListId) {
+    const listsBeforeHide = await request(guestJar, "/lists");
+    check(
+      "lista visivel publicamente antes da moderacao",
+      listsBeforeHide.status === 200 && String(listsBeforeHide.body).includes(moderationListMarker),
+      listsBeforeHide.status
+    );
+
+    const hideListResponse = await request(jarAdmin, `/api/admin/lists/${moderationListId}/hide`, { method: "POST" });
+    check("admin oculta lista (200)", hideListResponse.status === 200, hideListResponse.body);
+
+    const listsAfterHide = await request(guestJar, "/lists");
+    check(
+      "lista oculta pelo admin nao aparece mais na listagem publica",
+      listsAfterHide.status === 200 && !String(listsAfterHide.body).includes(moderationListMarker),
+      listsAfterHide.status
+    );
+
+    const restoreListResponse = await request(jarAdmin, `/api/admin/lists/${moderationListId}/restore`, { method: "POST" });
+    check("admin restaura lista (200)", restoreListResponse.status === 200, restoreListResponse.body);
+
+    const listsAfterRestore = await request(guestJar, "/lists");
+    check(
+      "lista restaurada volta a aparecer na listagem publica",
+      listsAfterRestore.status === 200 && String(listsAfterRestore.body).includes(moderationListMarker),
+      listsAfterRestore.status
+    );
+
+    await request(jarA, `/api/lists/${moderationListId}`, { method: "DELETE" });
+  }
+
+  const adminReviewsPage = await request(jarAdmin, "/admin/reviews");
+  check("admin acessa /admin/reviews", adminReviewsPage.status === 200, adminReviewsPage.status);
+
+  const adminListsPage = await request(jarAdmin, "/admin/lists");
+  check("admin acessa /admin/lists", adminListsPage.status === 200, adminListsPage.status);
+
+  const adminLogsPage = await request(jarAdmin, "/admin/logs");
+  check(
+    "AdminAuditLog registra as acoes de moderacao e sync (visiveis em /admin/logs)",
+    adminLogsPage.status === 200 &&
+      String(adminLogsPage.body).includes("HIDE_REVIEW") &&
+      String(adminLogsPage.body).includes("RESTORE_REVIEW") &&
+      String(adminLogsPage.body).includes("HIDE_LIST") &&
+      String(adminLogsPage.body).includes("RESTORE_LIST") &&
+      String(adminLogsPage.body).includes("START_SYNC"),
+    adminLogsPage.status
+  );
+
+  await request(jarAdmin, "/api/auth/logout", { method: "POST" });
+
   // ---- Encerramento ----
   await request(jarA, "/api/auth/logout", { method: "POST" });
   jarA.value = "";
