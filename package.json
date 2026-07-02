@@ -16,6 +16,7 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "sync:popular": "tsx scripts/sync-popular.ts",
     "sync:series": "tsx scripts/sync-series.ts",
+    "notifications:episodes": "tsx scripts/notify-new-episodes.ts",
     "smoke:test": "tsx scripts/smoke-test.ts"
   },
   "dependencies": {

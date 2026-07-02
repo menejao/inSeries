@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
+import { notifyFollowersOfPublicList } from "@/lib/notifications/events";
 
 export async function createList(
   userId: string,
@@ -17,6 +18,7 @@ export async function createList(
 
   if (visibility === "PUBLIC") {
     await recordActivity({ userId, type: "LIST_CREATED", listId: list.id, visibility: "PUBLIC" });
+    await notifyFollowersOfPublicList(userId, list.id);
   }
 
   return list;

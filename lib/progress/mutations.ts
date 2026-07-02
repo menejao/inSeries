@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { recordActivity } from "@/lib/social/activity";
+import { notifySeriesCompleted } from "@/lib/notifications/events";
 
 export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
   const previous = await prisma.userSeriesStatus.findUnique({
@@ -41,6 +42,7 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
         seriesId,
         metadata: { from: previous?.state ?? null }
       });
+      await notifySeriesCompleted(userId, seriesId);
     } else if (state !== "COMPLETED") {
       await recordActivity({
         userId,
@@ -140,6 +142,7 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
       seriesId: episode.season.seriesId,
       metadata: { from: previousStatus?.state ?? null }
     });
+    await notifySeriesCompleted(userId, episode.season.seriesId);
   }
 
   return progress;

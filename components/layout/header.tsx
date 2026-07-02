@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 
 export function Header() {
   return (
@@ -23,6 +24,7 @@ export function Header() {
         <Link href="/feed" className="rounded-full bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200">
           Feed
         </Link>
+        <NotificationsNavLink className="rounded-full bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200" />
       </nav>
     </header>
   );

@@ -1,3 +1,5 @@
+import { generateNewEpisodeAvailableNotifications } from "@/lib/notifications/episode-availability";
+
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -536,6 +538,167 @@ async function main() {
     method: "PATCH",
     body: JSON.stringify({ isProfilePrivate: false })
   });
+
+  // ---- Notificacoes: fundacao, eventos sociais, privacidade, leitura ----
+  const jarC: CookieJar = { value: "" };
+  const userC = await registerUser(jarC, "userc");
+  const jarD: CookieJar = { value: "" };
+  const userD = await registerUser(jarD, "userd");
+
+  const cFollowsD = await request(jarC, `/api/users/${userD.username}/follow`, { method: "POST" });
+  check("usuario C segue usuario D (fundacao de notificacoes)", cFollowsD.status === 200, cFollowsD.body);
+
+  const dNotificationsAfterFollow = await request(jarD, "/api/notifications");
+  check(
+    "seguir gera notificacao FOLLOWED_YOU para o usuario seguido",
+    dNotificationsAfterFollow.status === 200 &&
+      dNotificationsAfterFollow.body?.data?.items?.some(
+        (n: Json) => n.type === "FOLLOWED_YOU" && n.actorUser?.username === userC.username
+      ),
+    dNotificationsAfterFollow.body
+  );
+
+  const dPublicReview = await request(jarD, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 5, body: "Review publica de D para notificacoes", visibility: "PUBLIC" })
+  });
+  check("usuario D cria review publica", dPublicReview.status === 200, dPublicReview.body);
+
+  const cNotificationsAfterPublicReview = await request(jarC, "/api/notifications");
+  check(
+    "review publica de seguido gera notificacao REVIEW_FROM_FOLLOWING",
+    cNotificationsAfterPublicReview.status === 200 &&
+      cNotificationsAfterPublicReview.body?.data?.items?.some(
+        (n: Json) => n.type === "REVIEW_FROM_FOLLOWING" && n.actorUser?.username === userD.username
+      ),
+    cNotificationsAfterPublicReview.body
+  );
+
+  await request(jarD, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
+
+  const dPrivateReview = await request(jarD, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 3, body: "Review privada de D, nao deve notificar", visibility: "PRIVATE" })
+  });
+  check("usuario D cria review privada", dPrivateReview.status === 200, dPrivateReview.body);
+
+  const cNotificationsAfterPrivateReview = await request(jarC, "/api/notifications");
+  const reviewNotificationCountAfterPrivate = (cNotificationsAfterPrivateReview.body?.data?.items ?? []).filter(
+    (n: Json) => n.type === "REVIEW_FROM_FOLLOWING"
+  ).length;
+  check(
+    "review privada de seguido nao gera notificacao adicional",
+    cNotificationsAfterPrivateReview.status === 200 && reviewNotificationCountAfterPrivate === 1,
+    { reviewNotificationCountAfterPrivate }
+  );
+
+  await request(jarD, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
+
+  const dPublicList = await request(jarD, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: "Lista publica de D para notificacoes", visibility: "PUBLIC" })
+  });
+  const dPublicListId: string | undefined = dPublicList.body?.data?.id;
+  check("usuario D cria lista publica", dPublicList.status === 201 && Boolean(dPublicListId), dPublicList.body);
+
+  const cNotificationsAfterPublicList = await request(jarC, "/api/notifications");
+  check(
+    "lista publica de seguido gera notificacao LIST_FROM_FOLLOWING",
+    cNotificationsAfterPublicList.status === 200 &&
+      cNotificationsAfterPublicList.body?.data?.items?.some(
+        (n: Json) => n.type === "LIST_FROM_FOLLOWING" && n.actorUser?.username === userD.username
+      ),
+    cNotificationsAfterPublicList.body
+  );
+
+  const dPrivateList = await request(jarD, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: "Lista privada de D, nao deve notificar", visibility: "PRIVATE" })
+  });
+  const dPrivateListId: string | undefined = dPrivateList.body?.data?.id;
+  check("usuario D cria lista privada", dPrivateList.status === 201 && Boolean(dPrivateListId), dPrivateList.body);
+
+  const cNotificationsAfterPrivateList = await request(jarC, "/api/notifications");
+  const listNotificationCountAfterPrivate = (cNotificationsAfterPrivateList.body?.data?.items ?? []).filter(
+    (n: Json) => n.type === "LIST_FROM_FOLLOWING"
+  ).length;
+  check(
+    "lista privada de seguido nao gera notificacao adicional",
+    cNotificationsAfterPrivateList.status === 200 && listNotificationCountAfterPrivate === 1,
+    { listNotificationCountAfterPrivate }
+  );
+
+  await request(jarD, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
+
+  if (dPublicListId) await request(jarD, `/api/lists/${dPublicListId}`, { method: "DELETE" });
+  if (dPrivateListId) await request(jarD, `/api/lists/${dPrivateListId}`, { method: "DELETE" });
+
+  const dCompletesSeries = await request(jarD, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "COMPLETED" })
+  });
+  check("usuario D conclui a serie", dCompletesSeries.status === 200, dCompletesSeries.body);
+
+  const dNotificationsAfterCompletion = await request(jarD, "/api/notifications");
+  check(
+    "concluir serie gera notificacao SERIES_COMPLETED para o proprio usuario",
+    dNotificationsAfterCompletion.status === 200 &&
+      dNotificationsAfterCompletion.body?.data?.items?.some((n: Json) => n.type === "SERIES_COMPLETED"),
+    dNotificationsAfterCompletion.body
+  );
+
+  const cNotificationsBeforeRead = await request(jarC, "/api/notifications");
+  const cUnreadBefore = cNotificationsBeforeRead.body?.data?.unreadCount;
+  const cFirstNotificationId: string | undefined = cNotificationsBeforeRead.body?.data?.items?.[0]?.id;
+  check("contador de nao lidas reflete notificacoes pendentes de C", typeof cUnreadBefore === "number" && cUnreadBefore > 0, cUnreadBefore);
+
+  if (cFirstNotificationId) {
+    const dTriesToReadCNotification = await request(jarD, `/api/notifications/${cFirstNotificationId}/read`, { method: "POST" });
+    check(
+      "usuario D nao consegue marcar notificacao de C como lida (403)",
+      dTriesToReadCNotification.status === 403,
+      dTriesToReadCNotification.body
+    );
+
+    const cMarksOwnNotificationRead = await request(jarC, `/api/notifications/${cFirstNotificationId}/read`, { method: "POST" });
+    check("usuario C marca a propria notificacao como lida", cMarksOwnNotificationRead.status === 200, cMarksOwnNotificationRead.body);
+
+    const cNotificationsAfterRead = await request(jarC, "/api/notifications");
+    const unreadAfterMarkingOne = cNotificationsAfterRead.body?.data?.unreadCount;
+    check(
+      "contador de nao lidas de C diminui apos marcar uma como lida",
+      typeof unreadAfterMarkingOne === "number" && unreadAfterMarkingOne === cUnreadBefore - 1,
+      { cUnreadBefore, unreadAfterMarkingOne }
+    );
+  }
+
+  const cMarksAllRead = await request(jarC, "/api/notifications/read-all", { method: "POST" });
+  check("usuario C marca todas as notificacoes como lidas", cMarksAllRead.status === 200, cMarksAllRead.body);
+
+  const cNotificationsAfterMarkAll = await request(jarC, "/api/notifications");
+  check(
+    "contador de nao lidas de C chega a zero apos marcar todas como lidas",
+    cNotificationsAfterMarkAll.status === 200 && cNotificationsAfterMarkAll.body?.data?.unreadCount === 0,
+    cNotificationsAfterMarkAll.body
+  );
+
+  const guestTriesNotifications = await request({ value: "" }, "/notifications");
+  check(
+    "usuario nao autenticado e redirecionado ao acessar /notifications",
+    guestTriesNotifications.status === 307 || guestTriesNotifications.status === 302,
+    guestTriesNotifications.status
+  );
+
+  const cNotificationsPage = await request(jarC, "/notifications");
+  check("usuario autenticado acessa /notifications", cNotificationsPage.status === 200, cNotificationsPage.status);
+
+  const firstEpisodeScriptRun = await generateNewEpisodeAvailableNotifications();
+  const secondEpisodeScriptRun = await generateNewEpisodeAvailableNotifications();
+  check(
+    "script de episodios disponiveis nao duplica notificacoes ao rodar novamente",
+    secondEpisodeScriptRun === 0,
+    { firstEpisodeScriptRun, secondEpisodeScriptRun }
+  );
 
   // ---- Workspace administrativo: RBAC, dashboard, moderacao, sync, auditoria ----
   const guestJar: CookieJar = { value: "" };

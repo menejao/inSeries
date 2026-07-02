@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
+import { notifyFollowersOfPublicReview } from "@/lib/notifications/events";
 
 export async function upsertReview(
   userId: string,
@@ -31,6 +32,7 @@ export async function upsertReview(
   if (!existing) {
     if (visibility === "PUBLIC") {
       await recordActivity({ userId, type: "REVIEW_CREATED", seriesId, reviewId: review.id, visibility: "PUBLIC" });
+      await notifyFollowersOfPublicReview(userId, review.id, seriesId);
     }
   } else if (existing.visibility !== visibility) {
     await syncActivityVisibility({ reviewId: review.id }, visibility);

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
-const protectedRoutes = ["/me", "/settings"];
+const protectedRoutes = ["/me", "/settings", "/notifications"];
 const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
 export async function middleware(request: NextRequest) {
@@ -29,5 +29,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/me/:path*", "/settings/:path*", "/admin/:path*"]
+  matcher: ["/me/:path*", "/settings/:path*", "/admin/:path*", "/notifications/:path*"]
 };

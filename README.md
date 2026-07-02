@@ -235,6 +235,58 @@ Toda leitura de atividades (feed pessoal, feed global, `/me`, perfil publico) re
 - `components/feed/activity-card.tsx`: card reutilizavel (avatar, nome/username, acao, serie/episodio/review/lista relacionados, data relativa, links)
 - Navegacao: **Feed** no menu desktop; no mobile, como a bottom navigation ja estava com 6 itens, o Feed foi colocado em um menu secundario no cabecalho (visivel apenas em telas pequenas) para nao sobrecarregar a barra inferior
 
+## Notificacoes
+
+Fundacao de notificacoes internas persistidas no banco. Nesta sprint **nao** ha push notification, e-mail, WebSocket/realtime ou digest — apenas infraestrutura interna confiavel, pronta para esses canais evoluirem depois.
+
+### Modelo (`Notification`)
+
+Campos: `id`, `userId` (destinatario), `type`, `title`, `body`, `href`, `readAt`, `actorUserId` (opcional, quem gerou o evento), `seriesId`/`episodeId`/`reviewId`/`listId` (opcionais, para linkar o conteudo relacionado), `metadata`, `createdAt`. Indices em `[userId, createdAt]`, `[userId, readAt]` e `[createdAt]`.
+
+Tipos (`NotificationType`): `NEW_EPISODE_AVAILABLE`, `FOLLOWED_YOU`, `REVIEW_FROM_FOLLOWING`, `LIST_FROM_FOLLOWING`, `SERIES_COMPLETED`, `ADMIN_NOTICE`.
+
+### Servico isolado (`lib/notifications/service.ts`)
+
+Nenhuma pagina cria notificacao diretamente — tudo passa por este servico: `createNotification`, `notificationExists` (dedup), `listNotifications`, `countUnreadNotifications`, `markNotificationRead`, `markAllNotificationsRead`, e `createAdminNotice` (fundacao do `ADMIN_NOTICE`, sem UI de broadcast ainda).
+
+A logica de cada evento (quem notificar, com qual privacidade) fica em `lib/notifications/events.ts`, chamada pelos servicos de dominio existentes (nunca por componentes React):
+
+- **`FOLLOWED_YOU`**: `lib/social/follow.ts` chama `notifyUserFollowed` apenas quando um novo `Follow` e criado (nunca em follow duplicado/idempotente)
+- **`REVIEW_FROM_FOLLOWING`**: `lib/social/reviews.ts` chama `notifyFollowersOfPublicReview` apenas na criacao de uma review nova com `visibility: PUBLIC`; nunca em edicao. So notifica se o autor **nao** estiver com perfil privado e tiver `showActivity`/`showReviews` habilitados
+- **`LIST_FROM_FOLLOWING`**: mesmo contrato, em `lib/social/lists.ts` (`notifyFollowersOfPublicList`), gated por `showLists`
+- **`SERIES_COMPLETED`**: `lib/progress/mutations.ts` chama `notifySeriesCompleted` para o proprio usuario, nos dois caminhos que levam a conclusao (mudar status manualmente para `COMPLETED` ou completar via ultimo episodio assistido), sempre que o estado anterior nao era `COMPLETED`
+- **`NEW_EPISODE_AVAILABLE`**: preparado em `lib/notifications/episode-availability.ts` (ver script abaixo), nao e disparado em tempo real
+
+Nenhum evento social notifica com base em conteudo oculto: perfil privado, `showActivity`, `showReviews`, `showLists` e visibilidade `PRIVATE`/`FOLLOWERS` sempre bloqueiam a notificacao correspondente.
+
+### Rotas e indicador
+
+- `/notifications`: lista as notificacoes do usuario autenticado (mais recentes primeiro), com badge de nao lida, botao **Marcar como lida** por item e **Marcar todas como lidas**; usuario nao autenticado e redirecionado para `/login` (protegido em `middleware.ts`)
+- Indicador no menu (`components/notifications/notifications-nav-link.tsx`): mostra "Notificacoes" ou "Notificacoes (N)" com a contagem de nao lidas; presente no menu desktop e no menu secundario mobile do cabecalho; atualizado a cada carregamento de pagina (nao e realtime)
+
+### Endpoints
+
+- `GET /api/notifications`: lista notificacoes do usuario autenticado + `unreadCount`
+- `POST /api/notifications/[id]/read`: marca uma notificacao como lida; retorna 403 se o id pertencer a outro usuario, 404 se nao existir
+- `POST /api/notifications/read-all`: marca todas as notificacoes do usuario autenticado como lidas
+
+Todos exigem sessao valida (401 sem sessao) e validam que o usuario so altera as proprias notificacoes.
+
+### Script de episodios disponiveis
+
+```
+npm run notifications:episodes
+```
+
+Executa `generateNewEpisodeAvailableNotifications()`: para cada `UserSeriesStatus` em `WATCHING` ou `WANT_TO_WATCH`, busca episodios da serie com `airedAt` no passado, ignora episodios ja assistidos pelo usuario e ignora quem ja foi notificado daquele episodio (idempotente — rodar de novo nao duplica). Pensado para rodar manualmente ou, futuramente, via cron; nao ha agendamento automatico nesta sprint.
+
+### Limitacoes atuais e proximos passos
+
+- Sem push notification, e-mail, WebSocket/realtime, digest semanal ou app nativo
+- Sem painel administrativo completo de broadcast (`createAdminNotice` existe como funcao, sem UI dedicada)
+- Sem preferencias avancadas de notificacao por usuario (ainda usa os flags de privacidade existentes)
+- Proximos passos previstos: canal de push, envio de e-mail, notificacao em tempo real (WebSocket/SSE), digest semanal, lembretes de episodio agendados, e uma tela administrativa de broadcast sobre `createAdminNotice`
+
 ## Workspace administrativo
 
 Area interna em `/admin` para gestao do catalogo, sincronizacoes, saude do sistema e moderacao inicial, sem afetar a experiencia do usuario final.
@@ -309,7 +361,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 14. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
 15. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
 16. logout e confirmacao de que a sessao foi invalidada;
-17. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`.
+17. notificacoes: seguir gera `FOLLOWED_YOU`; review publica de quem se segue gera `REVIEW_FROM_FOLLOWING` e review privada nao gera notificacao adicional; lista publica de quem se segue gera `LIST_FROM_FOLLOWING` e lista privada nao gera notificacao adicional; concluir uma serie gera `SERIES_COMPLETED` para o proprio usuario; contador de nao lidas, marcar uma como lida e marcar todas como lidas; usuario nao consegue ler/alterar notificacao de outro (403); `/notifications` exige sessao (redireciona convidado); script `notifications:episodes` roda duas vezes seguidas sem duplicar notificacoes;
+18. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`.
 
 ## Comandos
 
@@ -322,6 +375,7 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 - `npm run seed:catalog`: executa seed do catalogo real via TMDb (opcional)
 - `npm run sync:popular [paginas]`: sincroniza series populares do TMDb (idempotente, registra `CatalogSyncRun`)
 - `npm run sync:series`: sincroniza detalhes/temporadas/episodios das series ja catalogadas
+- `npm run notifications:episodes`: gera notificacoes `NEW_EPISODE_AVAILABLE` para quem acompanha series com episodios ja lancados (idempotente, nao ha cron real ainda)
 - `npm run dev`: sobe ambiente local
 - `npm run smoke:test`: roda o smoke test HTTP do fluxo principal
 - `npm run typecheck`: valida TypeScript
