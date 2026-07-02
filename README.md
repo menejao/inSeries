@@ -48,6 +48,58 @@ O Postgres sobe com `user: inseries`, `password: inseries`, `database: inseries`
 - `/series`: descoberta e busca real do catalogo (ver secao Descoberta e busca abaixo); usa fallback mock apenas quando o banco estiver indisponivel
 - `/series/[id]`: mostra serie, temporadas, episodios, progresso do usuario autenticado e reviews da comunidade
 
+## Sincronizacao do catalogo (TMDb)
+
+O catalogo cresce e se mantem atualizado via sincronizacao controlada com o TMDb, isolada em `lib/catalog/sync.ts`. Nenhuma pagina ou rota chama o TMDb diretamente: tudo passa por essa camada, que registra cada execucao e nunca toca dados criados por usuarios.
+
+### Variaveis de ambiente
+
+- `TMDB_API_KEY` ou `TMDB_ACCESS_TOKEN` (pelo menos uma): credenciais do TMDb. Sem nenhuma delas, todo sync (script ou seed de catalogo) aborta com mensagem clara e sem derrubar o restante da aplicacao
+- `TMDB_BASE_URL`: base da API (padrao `https://api.themoviedb.org/3`)
+- `TMDB_LANGUAGE`: idioma preferido (padrao `pt-BR`, com fallback automatico para `en-US` quando a TMDb nao tem tradução)
+
+### Diferenca entre seed dev, seed catalog e sync
+
+- `npm run seed:dev`: dados **fixos locais**, sem TMDb, para desenvolvimento e testes (calendario, descoberta, progresso)
+- `npm run seed:catalog`: importacao **unica** de series populares do TMDb (primeira pagina), pensada para popular o catalogo uma vez
+- `npm run sync:popular` / `npm run sync:series`: sincronizacao **rastreavel e repetivel** — cada execucao vira uma linha em `CatalogSyncRun`, idempotente, pensada para rodar periodicamente (manual ou, no futuro, agendada)
+
+### Rodando a sincronizacao
+
+- `npm run sync:popular [paginas]`: descobre e importa/atualiza series populares do TMDb (1 pagina por padrao, ate 5); cada serie fica isolada — uma falha em uma serie vira um erro reportado, nao aborta as demais
+- `npm run sync:series`: refaz o fetch de detalhes/temporadas/episodios de todas as series ja catalogadas (via `ExternalSourceMapping`), sem redescobrir a lista de populares
+- Sem `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN`, ambos abortam com mensagem clara, saem com codigo de erro e ainda assim registram um `CatalogSyncRun` com status `FAILED` (auditavel mesmo quando mal configurado)
+- Ao final, o terminal mostra um resumo: status (`SUCCESS`/`PARTIAL`/`FAILED`), duracao, quantidade importada/atualizada de series/temporadas/episodios, principais erros e o id do `CatalogSyncRun`
+- Nenhum segredo (API key/token) e logado em nenhum momento, inclusive em erros de rede
+
+### Modelo `CatalogSyncRun`
+
+Registra toda execucao de sync: `source`, `type` (`POPULAR_SERIES`, `SERIES_DETAILS`, `SERIES_SEASONS`, `SERIES_EPISODES`, `FULL_REFRESH`), `status` (`RUNNING`, `SUCCESS`, `FAILED`, `PARTIAL`), `startedAt`/`finishedAt`, contadores de importado/atualizado por serie/temporada/episodio, `errorMessage` e `metadata` (lista de erros por serie, quando houver).
+
+### Idempotencia
+
+- Series sao casadas pelo id externo do TMDb (`ExternalSourceMapping`), nao pelo slug: se o titulo mudar no TMDb (e o slug junto), a sincronizacao **atualiza** a serie existente em vez de criar uma duplicata
+- Temporadas e episodios tem duas chaves unicas cada (`seriesId+number` / `seasonId+number` e `externalSource+externalId`); o upsert verifica existencia explicitamente antes de criar/atualizar, evitando a violacao de unicidade que uma chamada ingenua de `upsert()` do Prisma causaria ao re-sincronizar a mesma temporada/episodio duas vezes
+- Rodar `sync:popular` ou `sync:series` varias vezes seguidas nunca duplica series, temporadas ou episodios — apenas atualiza metadados quando mudam
+- O sync so escreve em `Series`, `Season`, `Episode` e `ExternalSourceMapping`; nunca cria, atualiza ou apaga `UserSeriesStatus`, `UserEpisodeProgress`, `Review`, `List`, `ListItem` ou `Activity` — progresso, reviews, listas e atividades do usuario sao sempre preservados
+- Erros em uma serie especifica (404, temporada sem episodios, imagem ausente, série sem data) ficam isolados: a execucao continua para as demais e o run final fica `PARTIAL` em vez de `FAILED`
+
+### Tratamento de erros
+
+`lib/tmdb/service.ts` trata timeout (10s, via `AbortController`), 401 (credenciais invalidas), 404 (recurso inexistente), 429 (rate limit) e falhas de rede genericas, sempre com mensagens seguras (sem vazar a URL com a API key). `lib/catalog/sync.ts` isola cada serie individualmente: uma falha vira uma entrada em `errors` no resumo, sem interromper as demais.
+
+### Impacto no calendario e na busca
+
+Nenhuma fonte paralela: `/calendar`, `/api/search` e `/series` sempre leem `Series`/`Season`/`Episode` do banco. Como o sync escreve nessas mesmas tabelas (mesmo caminho de upsert usado pelo seed de catalogo e pela importacao manual via `/api/catalog/import`), qualquer serie/temporada/episodio sincronizado fica automaticamente disponivel para descoberta, filtros e calendario assim que a sincronizacao termina — sem cache ou indice paralelo para manter sincronizado.
+
+### Jobs futuros (nao implementados nesta sprint)
+
+`lib/jobs/registry.ts` (`futureCatalogSyncJobs`) documenta a agenda prevista para um scheduler futuro (cron, Vercel Cron ou fila), sem cron real implementado:
+
+- `daily-popular-series-sync` (diario): `syncPopularSeries({ pages: 2 })`
+- `daily-upcoming-episodes-sync` (diario): atualiza detalhes das series que usuarios estao assistindo/querem assistir
+- `weekly-full-metadata-refresh` (semanal): `syncFullRefresh({ pages: 3 })`, cobrindo populares + todo o catalogo existente
+
 ## Descoberta e busca
 
 Camada isolada em `lib/discovery/search.ts`, reutilizavel por catalogo, calendario, listas, perfil e uma futura busca dedicada — nenhuma logica de filtro/ordenacao/paginacao fica na pagina.
@@ -218,6 +270,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 - `npx prisma generate`: gera o Prisma Client
 - `npm run seed:dev`: popula catalogo de teste variado (5 series, status/genero/ano/popularidade/nota diferentes) para validar progresso, calendario e descoberta
 - `npm run seed:catalog`: executa seed do catalogo real via TMDb (opcional)
+- `npm run sync:popular [paginas]`: sincroniza series populares do TMDb (idempotente, registra `CatalogSyncRun`)
+- `npm run sync:series`: sincroniza detalhes/temporadas/episodios das series ja catalogadas
 - `npm run dev`: sobe ambiente local
 - `npm run smoke:test`: roda o smoke test HTTP do fluxo principal
 - `npm run typecheck`: valida TypeScript

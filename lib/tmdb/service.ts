@@ -6,12 +6,15 @@ import type {
   TmdbSeriesDetails
 } from "@/lib/catalog/normalize";
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export class TmdbConfigurationError extends Error {}
 export class TmdbApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
   }
 }
+export class TmdbTimeoutError extends Error {}
 
 function createHeaders() {
   const credentials = getTmdbCredentials();
@@ -43,10 +46,34 @@ async function tmdbFetch<T>(path: string, searchParams?: URLSearchParams): Promi
     url.searchParams.set("api_key", apiKey);
   }
 
-  const response = await fetch(url, {
-    headers,
-    next: { revalidate: 60 * 60 }
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers,
+      next: { revalidate: 60 * 60 },
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new TmdbTimeoutError(`TMDb nao respondeu em ${REQUEST_TIMEOUT_MS}ms.`);
+    }
+    // Network-level failures can carry the request URL (with api_key) in their
+    // message/stack; never let that reach logs. Re-throw a sanitized error instead.
+    throw new TmdbApiError("Falha de rede ao contatar o TMDb.", 0);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 401) {
+    throw new TmdbApiError("TMDb rejeitou as credenciais (401). Verifique TMDB_API_KEY/TMDB_ACCESS_TOKEN.", 401);
+  }
+
+  if (response.status === 404) {
+    throw new TmdbApiError("Recurso nao encontrado no TMDb (404).", 404);
+  }
 
   if (response.status === 429) {
     throw new TmdbApiError("TMDb rate limit atingido. Tente novamente em instantes.", 429);
