@@ -29,6 +29,7 @@ type SeriesSeed = {
   genres: string[];
   status: "RETURNING" | "ENDED" | "CANCELED" | "IN_PRODUCTION" | "PILOT";
   popularityScore: number;
+  voteAverage: number | null;
   seasons: SeasonSeed[];
 };
 
@@ -65,6 +66,8 @@ function buildRelativeEpisodes(seasonNumber: number, offsets: number[]): Episode
   });
 }
 
+const nextYear = new Date().getFullYear() + 1;
+
 const seriesSeeds: SeriesSeed[] = [
   {
     slug: "serie-teste-um",
@@ -79,11 +82,12 @@ const seriesSeeds: SeriesSeed[] = [
     genres: ["Drama", "Teste"],
     status: "RETURNING",
     popularityScore: 90,
+    voteAverage: 8.5,
     seasons: [
       { number: 1, title: "Temporada 1", airYear: 2021, episodes: buildEpisodes(1) },
       { number: 2, title: "Temporada 2", airYear: 2022, episodes: buildEpisodes(2) },
       { number: 3, title: "Temporada 3", airYear: new Date().getFullYear(), episodes: buildRelativeEpisodes(3, [0, 3, 20]) },
-      { number: 4, title: "Temporada 4", airYear: new Date().getFullYear() + 1, episodes: [] }
+      { number: 4, title: "Temporada 4", airYear: nextYear, episodes: [] }
     ]
   },
   {
@@ -99,10 +103,59 @@ const seriesSeeds: SeriesSeed[] = [
     genres: ["Comedia", "Teste"],
     status: "ENDED",
     popularityScore: 75,
+    voteAverage: 6.0,
     seasons: [
       { number: 1, title: "Temporada 1", airYear: 2019, episodes: buildEpisodes(1) },
       { number: 2, title: "Temporada 2", airYear: 2020, episodes: buildEpisodes(2) }
     ]
+  },
+  {
+    slug: "serie-teste-tres",
+    title: "Serie Teste Tres",
+    originalTitle: "Test Series Three",
+    overview: "Terceira serie fixa de desenvolvimento, cancelada apos uma temporada, usada para variar status/genero/ano nos filtros.",
+    posterUrl: "",
+    backdropUrl: "",
+    firstAirYear: 2016,
+    language: "pt-BR",
+    network: "inSeries Dev",
+    genres: ["Mystery", "Teste"],
+    status: "CANCELED",
+    popularityScore: 60,
+    voteAverage: 4.2,
+    seasons: [{ number: 1, title: "Temporada 1", airYear: 2016, episodes: buildEpisodes(1) }]
+  },
+  {
+    slug: "serie-teste-quatro",
+    title: "Serie Teste Quatro",
+    originalTitle: "Test Series Four",
+    overview: "Quarta serie fixa de desenvolvimento, ainda em producao, sem episodios lancados nem nota ainda.",
+    posterUrl: "",
+    backdropUrl: "",
+    firstAirYear: nextYear,
+    language: "pt-BR",
+    network: "inSeries Dev",
+    genres: ["Sci-Fi", "Teste"],
+    status: "IN_PRODUCTION",
+    popularityScore: 40,
+    voteAverage: null,
+    seasons: []
+  },
+  {
+    slug: "serie-teste-cinco",
+    title: "Serie Teste Cinco",
+    originalTitle: "Test Series Five",
+    overview: "Quinta serie fixa de desenvolvimento, piloto anunciado, usada para validar series futuras nos filtros.",
+    posterUrl: "",
+    backdropUrl: "",
+    firstAirYear: nextYear,
+    language: "pt-BR",
+    network: "inSeries Dev",
+    genres: ["Action & Adventure", "Teste"],
+    status: "PILOT",
+    popularityScore: 20,
+    voteAverage: 7.8,
+    seasons: []
   }
 ];
 
@@ -120,7 +173,8 @@ async function seedSeries(seed: SeriesSeed) {
       network: seed.network,
       genres: seed.genres,
       status: seed.status,
-      popularityScore: seed.popularityScore
+      popularityScore: seed.popularityScore,
+      voteAverage: seed.voteAverage
     },
     create: {
       slug: seed.slug,
@@ -134,7 +188,8 @@ async function seedSeries(seed: SeriesSeed) {
       network: seed.network,
       genres: seed.genres,
       status: seed.status,
-      popularityScore: seed.popularityScore
+      popularityScore: seed.popularityScore,
+      voteAverage: seed.voteAverage
     }
   });
 
@@ -192,7 +247,9 @@ async function main() {
   }
 
   console.log(
-    "Seed dev concluido: 2 series com pelo menos 2 temporadas e 5 episodios cada; Serie Teste Um inclui ainda temporada com episodios de hoje/semana/futuro e uma temporada futura anunciada sem episodios, para validar o calendario."
+    "Seed dev concluido: 5 series cobrindo os 5 status do catalogo (RETURNING, ENDED, CANCELED, IN_PRODUCTION, PILOT), anos de 2016 a " +
+      `${nextYear}, generos variados, popularidade e nota (voteAverage) diferentes entre si, para exercitar filtros e ordenacao de descoberta. ` +
+      "Serie Teste Um mantem pelo menos 2 temporadas e 5 episodios, alem de episodios de hoje/semana/futuro e uma temporada futura sem episodios, para validar o calendario."
   );
 }
 

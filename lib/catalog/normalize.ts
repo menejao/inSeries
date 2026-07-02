@@ -11,6 +11,8 @@ export type TmdbListSeriesItem = {
   first_air_date?: string;
   original_language?: string;
   popularity?: number;
+  vote_average?: number;
+  vote_count?: number;
   genres?: Array<{ id: number; name: string }>;
   genre_ids?: number[];
   origin_country?: string[];
@@ -54,6 +56,8 @@ export type NormalizedCatalogSeries = Series & {
   };
   seasons: NormalizedCatalogSeason[];
   popularityScore?: number;
+  voteAverage?: number;
+  voteCount?: number;
 };
 
 export type NormalizedCatalogSeason = Season & {
@@ -141,6 +145,8 @@ export function normalizeTmdbSeries(payload: TmdbSeriesDetails): NormalizedCatal
     backdropUrl: toImageUrl(payload.backdrop_path, "original"),
     seasons,
     popularityScore: payload.popularity,
+    voteAverage: payload.vote_average,
+    voteCount: payload.vote_count,
     external: {
       source: "TMDB",
       entityType: "SERIES",

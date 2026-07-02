@@ -108,6 +108,109 @@ async function main() {
     return;
   }
 
+  // ---- Descoberta e busca: filtros de /series e /api/search ----
+  const seriesNoFilter = await request(jarA, "/series");
+  check(
+    "/series sem filtro lista series seedadas",
+    seriesNoFilter.status === 200 && String(seriesNoFilter.body).includes("Serie Teste Um"),
+    seriesNoFilter.status
+  );
+
+  const seriesByQuery = await request(jarA, "/series?q=Tres");
+  check(
+    "/series?q= filtra por texto (encontra, exclui outras)",
+    seriesByQuery.status === 200 &&
+      String(seriesByQuery.body).includes("Serie Teste Tres") &&
+      !String(seriesByQuery.body).includes("Serie Teste Um"),
+    seriesByQuery.status
+  );
+
+  const seriesByGenre = await request(jarA, "/series?genre=Mystery");
+  check(
+    "/series?genre= filtra por genero (so series com o genero aparecem)",
+    seriesByGenre.status === 200 &&
+      String(seriesByGenre.body).includes("Serie Teste Tres") &&
+      !String(seriesByGenre.body).includes("Serie Teste Um"),
+    seriesByGenre.status
+  );
+
+  const seriesByStatus = await request(jarA, "/series?status=IN_PRODUCTION");
+  check(
+    "/series?status= filtra por status do catalogo",
+    seriesByStatus.status === 200 &&
+      String(seriesByStatus.body).includes("Serie Teste Quatro") &&
+      !String(seriesByStatus.body).includes("Serie Teste Um"),
+    seriesByStatus.status
+  );
+
+  const seriesByYear = await request(jarA, "/series?year=2016");
+  check(
+    "/series?year= filtra por ano de estreia",
+    seriesByYear.status === 200 &&
+      String(seriesByYear.body).includes("Serie Teste Tres") &&
+      !String(seriesByYear.body).includes("Serie Teste Um"),
+    seriesByYear.status
+  );
+
+  const seriesSortPopular = await request(jarA, "/series?sort=popular");
+  const popularBody = String(seriesSortPopular.body);
+  check(
+    "/series?sort=popular ordena por popularidade desc",
+    seriesSortPopular.status === 200 && popularBody.indexOf("Serie Teste Um") < popularBody.indexOf("Serie Teste Cinco"),
+    seriesSortPopular.status
+  );
+
+  const seriesSortLatest = await request(jarA, "/series?sort=latest");
+  const latestBody = String(seriesSortLatest.body);
+  check(
+    "/series?sort=latest ordena por data de estreia desc",
+    seriesSortLatest.status === 200 && latestBody.indexOf("Serie Teste Quatro") < latestBody.indexOf("Serie Teste Tres"),
+    seriesSortLatest.status
+  );
+
+  const seriesSortTitle = await request(jarA, "/series?sort=title");
+  const titleBody = String(seriesSortTitle.body);
+  check(
+    "/series?sort=title ordena alfabeticamente",
+    seriesSortTitle.status === 200 && titleBody.indexOf("Serie Teste Cinco") < titleBody.indexOf("Serie Teste Um"),
+    seriesSortTitle.status
+  );
+
+  const seriesSortRating = await request(jarA, "/series?sort=rating");
+  const ratingBody = String(seriesSortRating.body);
+  check(
+    "/series?sort=rating ordena por nota desc (sem nota fica por ultimo)",
+    seriesSortRating.status === 200 &&
+      ratingBody.indexOf("Serie Teste Um") < ratingBody.indexOf("Serie Teste Quatro"),
+    seriesSortRating.status
+  );
+
+  const apiSearchAll = await request(jarA, "/api/search?type=series");
+  check(
+    "/api/search?type=series sem q retorna series",
+    apiSearchAll.status === 200 && Array.isArray(apiSearchAll.body?.data?.series) && apiSearchAll.body.data.series.length > 0,
+    apiSearchAll.body
+  );
+
+  const apiSearchQuery = await request(jarA, "/api/search?type=series&q=Cinco");
+  check(
+    "/api/search?type=series&q= filtra corretamente",
+    apiSearchQuery.status === 200 &&
+      apiSearchQuery.body?.data?.series?.length === 1 &&
+      apiSearchQuery.body?.data?.series?.[0]?.title === "Serie Teste Cinco",
+    apiSearchQuery.body
+  );
+
+  const apiSearchOtherTypes = await request(jarA, "/api/search?type=all&q=Teste");
+  check(
+    "/api/search?type=all prepara users/lists/reviews (arrays presentes)",
+    apiSearchOtherTypes.status === 200 &&
+      Array.isArray(apiSearchOtherTypes.body?.data?.users) &&
+      Array.isArray(apiSearchOtherTypes.body?.data?.lists) &&
+      Array.isArray(apiSearchOtherTypes.body?.data?.reviews),
+    apiSearchOtherTypes.body
+  );
+
   const setStatus = await request(jarA, `/api/series/${seriesId}/status`, {
     method: "POST",
     body: JSON.stringify({ seriesId, state: "WATCHING" })
@@ -449,7 +552,7 @@ async function main() {
     process.exitCode = 1;
   } else {
     console.log(
-      "Smoke test concluido com sucesso: fluxo principal, calendario, fundacao social e feed de atividades validados ponta a ponta."
+      "Smoke test concluido com sucesso: fluxo principal, descoberta/busca, calendario, fundacao social e feed de atividades validados ponta a ponta."
     );
   }
 }

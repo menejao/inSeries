@@ -27,6 +27,7 @@ function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons: { inc
     popularity: model.popularityScore ? model.popularityScore.toFixed(0) : "0",
     posterUrl: model.posterUrl ?? "",
     backdropUrl: model.backdropUrl ?? "",
+    voteAverage: model.voteAverage ?? null,
     seasons: model.seasons
       .sort((a, b) => a.number - b.number)
       .map((season) => ({
@@ -143,7 +144,9 @@ async function upsertNormalizedSeries(series: NormalizedCatalogSeries) {
       network: series.platform,
       genres: series.genres,
       status: mapStatusToPrisma(series.status),
-      popularityScore: series.popularityScore ?? null
+      popularityScore: series.popularityScore ?? null,
+      voteAverage: series.voteAverage ?? null,
+      voteCount: series.voteCount ?? null
     },
     create: {
       slug: series.slug,
@@ -157,7 +160,9 @@ async function upsertNormalizedSeries(series: NormalizedCatalogSeries) {
       network: series.platform,
       genres: series.genres,
       status: mapStatusToPrisma(series.status),
-      popularityScore: series.popularityScore ?? null
+      popularityScore: series.popularityScore ?? null,
+      voteAverage: series.voteAverage ?? null,
+      voteCount: series.voteCount ?? null
     }
   });
 

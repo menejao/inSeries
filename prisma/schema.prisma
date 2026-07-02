@@ -90,6 +90,8 @@ model Series {
   genres              String[]
   status              SeriesLifecycleStatus
   popularityScore     Float?
+  voteAverage         Float?
+  voteCount           Int?
   seasons             Season[]
   reviews             Review[]
   ratings             Rating[]
@@ -99,6 +101,12 @@ model Series {
   activities          Activity[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([status])
+  @@index([firstAirYear])
+  @@index([popularityScore])
+  @@index([voteAverage])
+  @@index([title])
 }
 
 model Season {

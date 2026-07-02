@@ -42,11 +42,51 @@ O Postgres sobe com `user: inseries`, `password: inseries`, `database: inseries`
 
 ## Catalogo
 
-- `npm run seed:dev`: cria localmente 2 series com pelo menos 2 temporadas e 5 episodios cada, sem depender de chave do TMDb; a "Serie Teste Um" ganha ainda uma temporada com episodios de hoje/esta semana/futuro e uma temporada futura sem episodios, para exercitar todas as secoes do calendario. Use para validar cadastro, login, status, progresso e calendario com banco real
-- `npm run seed:catalog` (alias `npm run catalog:seed`): importa series populares do TMDb para o banco; e ignorado automaticamente se `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN` nao estiverem configurados ou se o banco estiver indisponivel
+- `npm run seed:dev`: cria localmente 5 series cobrindo os 5 status do catalogo (`RETURNING`, `ENDED`, `CANCELED`, `IN_PRODUCTION`, `PILOT`), anos, generos, popularidade e nota (`voteAverage`) diferentes entre si, sem depender de chave do TMDb; a "Serie Teste Um" ganha ainda uma temporada com episodios de hoje/esta semana/futuro e uma temporada futura sem episodios, para exercitar calendario e filtros de descoberta juntos
+- `npm run seed:catalog` (alias `npm run catalog:seed`): importa series populares do TMDb para o banco (incluindo `voteAverage`/`voteCount` reais); e ignorado automaticamente se `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN` nao estiverem configurados ou se o banco estiver indisponivel
 - `POST /api/catalog/import`: prepara importacao sob demanda via `tmdbId`
-- `/series`: consulta banco e usa fallback mock apenas quando o banco estiver indisponivel
+- `/series`: descoberta e busca real do catalogo (ver secao Descoberta e busca abaixo); usa fallback mock apenas quando o banco estiver indisponivel
 - `/series/[id]`: mostra serie, temporadas, episodios, progresso do usuario autenticado e reviews da comunidade
+
+## Descoberta e busca
+
+Camada isolada em `lib/discovery/search.ts`, reutilizavel por catalogo, calendario, listas, perfil e uma futura busca dedicada — nenhuma logica de filtro/ordenacao/paginacao fica na pagina.
+
+### Filtros e ordenacao de `/series`
+
+Query params, combinaveis livremente:
+
+- `q`: busca case-insensitive em titulo, titulo original e sinopse
+- `genre`: filtra por genero exato (valores vem do banco, nunca hardcoded)
+- `status`: filtra por status do catalogo (`RETURNING`, `ENDED`, `CANCELED`, `IN_PRODUCTION`, `PILOT`)
+- `year`: filtra por ano de estreia (`firstAirYear`)
+- `sort`: `popular` (padrao, por `popularityScore`), `latest` (por ano de estreia), `title` (alfabetica) ou `rating` (por `voteAverage`, series sem nota ficam sempre por ultimo)
+- `page`: paginacao (12 series por pagina, limite maximo de 50)
+
+Exemplo: `/series?q=dark&genre=Drama&year=2024&sort=popular&page=1`
+
+Metadados de filtro (`getCatalogFilterMetadata`) — generos, anos e status disponiveis, e total de series — vem sempre do banco (`DISTINCT` nas colunas reais), nunca de uma lista fixa no codigo.
+
+### `POST/GET /api/search`
+
+Endpoint dedicado para busca global, preparado para reuso por outras telas:
+
+- `q`: termo de busca
+- `type`: `series` (padrao), `users`, `lists`, `reviews` ou `all`
+- `limit`: maximo de resultados por tipo (ate 50)
+
+Nesta sprint, `type=series` e totalmente funcional (mesma query layer de `/series`). `type=users`, `type=lists` e `type=reviews` ja tem implementacao real e simples (busca por username/nome, titulo de lista publica e corpo de review publica, respectivamente) — arquitetura preparada para uma busca global completa, sem UI dedicada ainda. Privacidade e respeitada: apenas listas e reviews com `visibility: PUBLIC` sao retornadas; usuarios expoem apenas campos ja publicos (username, nome, avatar).
+
+### `SearchProvider` (preparacao para motor de busca dedicado)
+
+`lib/discovery/provider.ts` define o contrato `SearchProvider` e a implementacao atual `DatabaseSearchProvider` (consulta Postgres direto via Prisma). Todo call site usa `searchProvider` (nunca Prisma diretamente), entao trocar para `MeilisearchProvider` ou `ElasticsearchProvider` no futuro (nao implementados nesta sprint) exige apenas satisfazer o mesmo contrato e trocar a instancia exportada — nenhuma pagina ou API precisa mudar.
+
+### Performance basica
+
+- Paginacao obrigatoria com limite maximo de 50 itens por pagina
+- Indices Prisma em `status`, `firstAirYear`, `popularityScore`, `voteAverage` e `title` (colunas usadas em filtro/ordenacao)
+- Busca por texto sempre case-insensitive (`mode: "insensitive"`)
+- Uma unica query de contagem (`count`) + uma de listagem por requisicao, sem N+1: a listagem de `/series` nao carrega temporadas/episodios (desnecessarios para o card), diferente da pagina de detalhe da serie
 
 ## Fundacao social
 
@@ -159,15 +199,16 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 4. `/api/auth/me` autenticado;
 5. bloqueio de `/me` sem sessao;
 6. leitura do catalogo seedado;
-7. alteracao de status da serie para `WATCHING`;
-8. marcar, desmarcar e marcar novamente um episodio, validando recalculo de progresso e proximo episodio;
-9. cadastro de um segundo usuario e fundacao social: seguir/deixar de seguir, contadores de seguidores, bloqueio de auto-follow e follow duplicado;
-10. listas: criar, editar, adicionar serie, remover serie, apagar, e confirmar que outro usuario nao consegue editar/apagar lista alheia (403);
-11. reviews: criar, editar (upsert), apagar, e confirmar que a review de um usuario nao e afetada pela review de outro na mesma serie;
-12. privacidade: perfil privado oculta dados para terceiros mas o dono continua vendo tudo;
-13. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
-14. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
-15. logout e confirmacao de que a sessao foi invalidada.
+7. descoberta e busca: `/series` sem filtro, `q`, `genre`, `status`, `year`, `sort` (`popular`/`latest`/`title`/`rating`) e `/api/search` (`type=series` e `type=all`, incluindo os arrays preparados de `users`/`lists`/`reviews`);
+8. alteracao de status da serie para `WATCHING`;
+9. marcar, desmarcar e marcar novamente um episodio, validando recalculo de progresso e proximo episodio;
+10. cadastro de um segundo usuario e fundacao social: seguir/deixar de seguir, contadores de seguidores, bloqueio de auto-follow e follow duplicado;
+11. listas: criar, editar, adicionar serie, remover serie, apagar, e confirmar que outro usuario nao consegue editar/apagar lista alheia (403);
+12. reviews: criar, editar (upsert), apagar, e confirmar que a review de um usuario nao e afetada pela review de outro na mesma serie;
+13. privacidade: perfil privado oculta dados para terceiros mas o dono continua vendo tudo;
+14. calendario: CTA de login sem sessao, calendario pessoal exibindo episodio de hoje e temporada futura, calendario global filtrado por periodo e por "apenas minhas series", secao "Proximo episodio" na pagina da serie e secao "Proximos episodios" no dashboard `/me`;
+15. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
+16. logout e confirmacao de que a sessao foi invalidada.
 
 ## Comandos
 
@@ -175,7 +216,7 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 - `docker compose up -d`: sobe o Postgres local
 - `npx prisma migrate dev`: aplica migrations no banco local
 - `npx prisma generate`: gera o Prisma Client
-- `npm run seed:dev`: popula catalogo minimo de teste (2 series, 2 temporadas, 5 episodios cada)
+- `npm run seed:dev`: popula catalogo de teste variado (5 series, status/genero/ano/popularidade/nota diferentes) para validar progresso, calendario e descoberta
 - `npm run seed:catalog`: executa seed do catalogo real via TMDb (opcional)
 - `npm run dev`: sobe ambiente local
 - `npm run smoke:test`: roda o smoke test HTTP do fluxo principal

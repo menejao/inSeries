@@ -37,6 +37,7 @@ export type Series = {
   backdropUrl: string;
   seasons: Season[];
   userState?: WatchState;
+  voteAverage?: number | null;
 };
 
 export type UserProfile = {
