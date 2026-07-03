@@ -797,6 +797,64 @@ Ver "Engine e eventos" acima — o principio central e "avaliar so o que o event
 - Sem conquistas ocultas definidas ainda — o campo `hidden` e a logica que o respeita (`locked` nunca inclui conquistas ocultas) existem, prontos para uma conquista secreta futura
 - Pontuacao e nivel sao só indicadores — não desbloqueiam nenhuma funcionalidade nem alteram limites em outras areas do app
 
+## Assistir a seguir
+
+Tela (`/watch-next`) pensada para ser o atalho principal do usuario: para cada serie acompanhada (assistindo ou planejada), mostra so o proximo episodio pendente — nao a lista inteira de series, nao todos os episodios. Marcar um episodio como assistido atualiza o item na hora, reutilizando integralmente a mutation de progresso ja existente.
+
+### Query Layer (`lib/watch-next/`)
+
+Nenhuma pagina calcula "o que assistir" diretamente — todas chamam `getWatchNextForUser(userId, options)`.
+
+- `types.ts` — `WatchNextItem` (serie, episodio, contagens `pendingAfterNext`/`totalPending`, flags `isOverdue`/`isNew`/`isPremiere`) e `WatchNextResult` (`items` + `hasTrackedSeries`, usado para escolher qual empty state mostrar).
+- `queries.ts` — `getWatchNextForUser(userId, { limit? })`: unica funcao, usada pela pagina `/watch-next`, pela secao em `/me` e por `GET /api/me/watch-next`.
+
+### Regras de listagem (Fase 4)
+
+Busca `UserSeriesStatus` com `state` em `WATCHING`/`WANT_TO_WATCH` (mesmo par que `lib/calendar/queries.ts` ja usa como "series ativas") — `COMPLETED`, `DROPPED` e `PAUSED` nunca aparecem. Para cada serie, um episodio so conta como pendente se **ja tiver sido lancado** (`airedAt <= agora`) e **nao estiver assistido** — um episodio futuro nunca e tratado como pendencia obrigatoria, mesmo que seja o proximo da fila. Series sem nenhum episodio pendente (aired-and-unwatched) simplesmente nao aparecem na lista — e assim que uma serie "sai" da tela ao ficar em dia.
+
+### Proximo episodio e formato "T05 | E01 +N" (Fase 5)
+
+Entre os episodios lancados-e-nao-assistidos de uma serie (ja ordenados por temporada/episodio, pois `season`/`episode` sao buscados com `orderBy` ascendente), o primeiro da lista e o "proximo episodio". `pendingAfterNext` e quantos ficam depois dele; `totalPending` e `pendingAfterNext + 1`. O card (`components/watch-next/watch-next-card.tsx`) renderiza isso como `T05 | E01` ou, quando ha mais pendencias, `T05 | E01 +7` — literalmente o formato pedido, calculado a partir desses dois numeros, nunca hardcoded.
+
+### Marcar como assistido (Fase 7)
+
+`components/watch-next/watch-next-mark-button.tsx` chama exatamente o mesmo endpoint que qualquer outro botao "marcar assistido" no app (`POST /api/episodes/[id]/progress` → `toggleEpisodeProgress`, o mesmo de `EpisodeWatchButton`) — nenhuma regra de progresso paralela foi criada. Depois de marcar, `router.refresh()` faz o servidor recalcular `getWatchNextForUser` do zero: o item avanca para o proximo episodio pendente da mesma serie, ou a serie desaparece da lista se nao sobrar nada — e como progresso/estatisticas/recomendacoes/calendario/conquistas ja leem do mesmo `UserEpisodeProgress`/`UserSeriesStatus` atualizados por essa mutation, todos eles refletem a marcacao automaticamente, sem nenhum código novo.
+
+### Agrupamentos (Fase 8)
+
+A pagina principal e o titulo "Assistir a seguir"; dentro dela, os itens sao divididos em duas secoes usando a flag `isOverdue` (episodio lancado ha mais de 3 dias): "Atrasados" primeiro (mais urgente), depois "Lancados recentemente". Ordenado globalmente por data de lancamento do proximo episodio (mais antigo primeiro).
+
+### Badges (Fase 6)
+
+`isNew` (lancado nos ultimos 3 dias) e `isPremiere` (`episode.number === 1`, estreia de temporada) combinam-se num badge: `PREMIERE` quando ambos, `NOVO` quando so recente, nenhum badge caso contrario.
+
+### Empty states (Fase 9)
+
+`hasTrackedSeries` (vem de `WatchNextResult`) distingue os dois casos exigidos: usuario sem nenhuma serie `WATCHING`/`WANT_TO_WATCH` ve "Voce ainda nao segue nenhuma serie." com CTA para `/series`; usuario que acompanha series mas nao tem nada pendente ve "Voce esta em dia com suas series." com CTA para `/calendar`.
+
+### Dashboard (`/me`) e navegacao (Fase 10 e 2)
+
+Secao "Assistir a seguir" logo apos o card de progresso medio (o primeiro conteudo relevante da area pessoal), limitada aos 5 primeiros itens, com link "Ver todos" para `/watch-next`. Nova aba "Assistir a seguir" em `/me/*`, novo item no navbar desktop e no bottom nav mobile (usando o mesmo `PlayIcon`).
+
+### API — `GET /api/me/watch-next`
+
+Autenticado (401 se anonimo), aceita `?limit=` (max 50) no mesmo padrao de `/api/recommendations`. Retorna `{ items, hasTrackedSeries }` — o mesmo objeto que a pagina e o dashboard renderizam.
+
+### Mobile (Fase 11)
+
+Lista vertical unica (sem grid), botao "Marcar assistido" em largura total no mobile (`w-full sm:w-auto`) e tamanho `lg`, sem nenhuma interacao que dependa de hover, `loading.tsx` com skeletons (`components/ui/skeleton.tsx`) enquanto a pagina busca os dados.
+
+### Bug real encontrado e corrigido: redirecionamento de anonimos
+
+Toda pagina protegida do app (`/me`, `/settings`, `/notifications`) e redirecionada para `/login` pelo **middleware** (`middleware.ts`), nao só pela chamada a `requireUser()` dentro da pagina — e foi exatamente essa dependencia dupla que expos um bug real nesta sprint: `/watch-next` tinha `requireUser()` na pagina (igual a todas as outras), mas **nao** estava na lista `protectedRoutes` do middleware. Como a pagina tem um `loading.tsx` (Fase 11 exige skeleton), o Next.js automaticamente envolve seu conteudo num limite de Suspense; quando o `redirect()` de `requireUser()` acontece dentro desse limite depois que o streaming ja comecou, o Next.js nao consegue mais enviar um status HTTP 307 "limpo" e degrada para um redirecionamento via `<meta http-equiv="refresh">` no HTML — o que faz um teste automatizado (ou qualquer cliente sem JavaScript) ver `200 OK` em vez de um redirect real. A correcao foi adicionar `/watch-next` a `protectedRoutes` em `middleware.ts`, para o redirecionamento acontecer ali (como em toda outra rota protegida) antes mesmo da pagina renderizar. Nenhuma outra rota foi afetada por essa mudanca de uma linha.
+
+### Limitacoes atuais
+
+- Series pausadas (`PAUSED`) nunca aparecem nesta sprint — o proprio ticket marcou isso como "configuravel futuramente", nao implementado agora
+- Sem separacao fina "por data exata de lancamento" (ex.: agrupar por dia) — so a divisao Atrasados/Lancados recentemente (limiar de 3 dias)
+- Sem swipe actions, player, streaming, integracao com plataformas ou download — fora de escopo desta sprint
+- Sem notificacao especifica desta tela — reusa as notificacoes ja existentes (`SERIES_COMPLETED`, `ACHIEVEMENT_UNLOCKED`, etc.) geradas pela mesma mutation de progresso
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:

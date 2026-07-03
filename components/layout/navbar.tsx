@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, CheckCircleIcon, FilmIcon, HomeIcon, ListIcon, SettingsIcon, TvIcon, UserIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, FilmIcon, HomeIcon, ListIcon, PlayIcon, SettingsIcon, TvIcon, UserIcon } from "@/components/ui/icons";
 
 export async function Navbar() {
   const user = await getCurrentUser();
 
   const desktopNav = [
     { href: "/", label: "Home", icon: HomeIcon },
+    { href: "/watch-next", label: "Assistir a seguir", icon: PlayIcon },
     { href: "/series", label: "Series", icon: TvIcon },
     { href: "/feed", label: "Feed", icon: FilmIcon },
     { href: "/me", label: "Minha Area", icon: CheckCircleIcon },

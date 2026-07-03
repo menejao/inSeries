@@ -595,6 +595,164 @@ async function main() {
     meWithAchievementsCta.status
   );
 
+  // ---- Assistir a seguir: query layer, formato T05|E01+N, marcar assistido, exclusoes, dashboard, privacidade ----
+  const watchNextGuestPage = await request({ value: "" }, "/watch-next");
+  check(
+    "acesso anonimo a /watch-next redireciona (privacidade)",
+    watchNextGuestPage.status === 307 || watchNextGuestPage.status === 302,
+    watchNextGuestPage.status
+  );
+
+  const watchNextGuestApi = await request({ value: "" }, "/api/me/watch-next");
+  check("acesso anonimo a /api/me/watch-next retorna 401", watchNextGuestApi.status === 401, watchNextGuestApi.body);
+
+  const jarWatchNextEmpty: CookieJar = { value: "" };
+  await registerUser(jarWatchNextEmpty, "userwnempty");
+  const watchNextEmptyApi = await request(jarWatchNextEmpty, "/api/me/watch-next");
+  check(
+    "usuario sem series acompanhadas nao tem itens em Assistir a seguir",
+    watchNextEmptyApi.status === 200 &&
+      Array.isArray(watchNextEmptyApi.body?.data?.items) &&
+      watchNextEmptyApi.body.data.items.length === 0 &&
+      watchNextEmptyApi.body.data.hasTrackedSeries === false,
+    watchNextEmptyApi.body
+  );
+  const watchNextEmptyPage = await request(jarWatchNextEmpty, "/watch-next");
+  check(
+    "pagina /watch-next mostra empty state para quem nao segue nenhuma serie",
+    watchNextEmptyPage.status === 200 && String(watchNextEmptyPage.body).includes("Voce ainda nao segue nenhuma serie"),
+    watchNextEmptyPage.status
+  );
+
+  const secondSeriesIdForWatchNext: string | undefined = catalog.body?.data?.[1]?.id;
+  const thirdSeriesIdForWatchNext: string | undefined = catalog.body?.data?.[2]?.id;
+
+  const jarWatchNextA: CookieJar = { value: "" };
+  await registerUser(jarWatchNextA, "userwna");
+  await request(jarWatchNextA, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "WATCHING" })
+  });
+
+  const watchNextA1 = await request(jarWatchNextA, "/api/me/watch-next");
+  const watchNextA1Item = watchNextA1.body?.data?.items?.[0];
+  check(
+    "serie watching aparece com o primeiro episodio pendente (T01|E01) e contagem +N",
+    watchNextA1.status === 200 &&
+      watchNextA1Item?.episode?.seasonNumber === 1 &&
+      watchNextA1Item?.episode?.number === 1 &&
+      watchNextA1Item?.pendingAfterNext === 10 &&
+      watchNextA1Item?.totalPending === 11,
+    watchNextA1.body?.data
+  );
+
+  const watchNextAPage = await request(jarWatchNextA, "/watch-next");
+  check(
+    "pagina /watch-next exibe o formato T01 | E01 +10",
+    watchNextAPage.status === 200 && String(watchNextAPage.body).includes("T01 | E01 +10"),
+    watchNextAPage.status
+  );
+
+  const markFirstFromWatchNext = await request(jarWatchNextA, `/api/episodes/${watchNextA1Item.episode.id}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId: watchNextA1Item.episode.id, watched: true })
+  });
+  check("marcar episodio assistido via mutation existente funciona", markFirstFromWatchNext.status === 200, markFirstFromWatchNext.body);
+
+  const watchNextA2 = await request(jarWatchNextA, "/api/me/watch-next");
+  const watchNextA2Item = watchNextA2.body?.data?.items?.[0];
+  check(
+    "apos marcar, o proximo episodio pendente da mesma serie aparece (T01|E02, +9)",
+    watchNextA2.status === 200 &&
+      watchNextA2Item?.series?.id === seriesId &&
+      watchNextA2Item?.episode?.number === 2 &&
+      watchNextA2Item?.pendingAfterNext === 9,
+    watchNextA2.body?.data
+  );
+
+  let lastWatchNextForA = watchNextA2;
+  for (let i = 0; i < 12; i++) {
+    const current = await request(jarWatchNextA, "/api/me/watch-next");
+    const currentItem = current.body?.data?.items?.[0];
+    if (!currentItem) {
+      lastWatchNextForA = current;
+      break;
+    }
+    await request(jarWatchNextA, `/api/episodes/${currentItem.episode.id}/progress`, {
+      method: "POST",
+      body: JSON.stringify({ episodeId: currentItem.episode.id, watched: true })
+    });
+  }
+  check(
+    "apos marcar todos os episodios pendentes, a serie some da lista (mas o usuario continua tendo series acompanhadas)",
+    Array.isArray(lastWatchNextForA.body?.data?.items) &&
+      lastWatchNextForA.body.data.items.length === 0 &&
+      lastWatchNextForA.body.data.hasTrackedSeries === true,
+    lastWatchNextForA.body?.data
+  );
+  const watchNextAUpToDatePage = await request(jarWatchNextA, "/watch-next");
+  check(
+    "pagina /watch-next mostra empty state de 'em dia' quando nao ha pendencias",
+    watchNextAUpToDatePage.status === 200 && String(watchNextAUpToDatePage.body).includes("Voce esta em dia com suas series"),
+    watchNextAUpToDatePage.status
+  );
+
+  const jarWatchNextB: CookieJar = { value: "" };
+  await registerUser(jarWatchNextB, "userwnb");
+  if (secondSeriesIdForWatchNext) {
+    await request(jarWatchNextB, `/api/series/${secondSeriesIdForWatchNext}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: secondSeriesIdForWatchNext, state: "WANT_TO_WATCH" })
+    });
+  }
+  const watchNextBApi = await request(jarWatchNextB, "/api/me/watch-next");
+  check(
+    "serie plan_to_watch (WANT_TO_WATCH) tambem aparece em Assistir a seguir",
+    !secondSeriesIdForWatchNext ||
+      (watchNextBApi.status === 200 &&
+        watchNextBApi.body?.data?.items?.some((item: Json) => item.series.id === secondSeriesIdForWatchNext && item.userState === "WANT_TO_WATCH")),
+    watchNextBApi.body?.data
+  );
+
+  const jarWatchNextC: CookieJar = { value: "" };
+  await registerUser(jarWatchNextC, "userwnc");
+  if (secondSeriesIdForWatchNext) {
+    await request(jarWatchNextC, `/api/series/${secondSeriesIdForWatchNext}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: secondSeriesIdForWatchNext, state: "COMPLETED" })
+    });
+  }
+  if (thirdSeriesIdForWatchNext) {
+    await request(jarWatchNextC, `/api/series/${thirdSeriesIdForWatchNext}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: thirdSeriesIdForWatchNext, state: "DROPPED" })
+    });
+  }
+  const watchNextCApi = await request(jarWatchNextC, "/api/me/watch-next");
+  check(
+    "series completed e dropped nunca aparecem em Assistir a seguir",
+    watchNextCApi.status === 200 &&
+      !watchNextCApi.body?.data?.items?.some(
+        (item: Json) => item.series.id === secondSeriesIdForWatchNext || item.series.id === thirdSeriesIdForWatchNext
+      ),
+    watchNextCApi.body?.data
+  );
+
+  const jarWatchNextDashboard: CookieJar = { value: "" };
+  await registerUser(jarWatchNextDashboard, "userwndash");
+  await request(jarWatchNextDashboard, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "WATCHING" })
+  });
+  const meWithWatchNextCta = await request(jarWatchNextDashboard, "/me");
+  check(
+    "dashboard /me mostra secao Assistir a seguir com link Ver todos",
+    meWithWatchNextCta.status === 200 &&
+      String(meWithWatchNextCta.body).includes("Assistir a seguir") &&
+      String(meWithWatchNextCta.body).includes("Ver todos"),
+    meWithWatchNextCta.status
+  );
+
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");
   const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);

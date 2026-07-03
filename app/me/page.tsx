@@ -3,11 +3,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MeTabs } from "@/components/me/me-tabs";
-import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon, SparklesIcon, TrophyIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon, PlayIcon, SparklesIcon, TrophyIcon } from "@/components/ui/icons";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { RecommendationCard } from "@/components/recommendations/recommendation-card";
 import { LevelProgressCard } from "@/components/achievements/level-progress-card";
+import { WatchNextCard } from "@/components/watch-next/watch-next-card";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
@@ -16,9 +17,11 @@ import { getRecentActivityForUser } from "@/lib/social/activity";
 import { getRecommendationsForUser } from "@/lib/recommendations";
 import { listAvailableRecaps } from "@/lib/recap";
 import { getUserAchievementsOverview } from "@/lib/gamification";
+import { getWatchNextForUser } from "@/lib/watch-next";
 
 export default async function MePage() {
   const user = await requireUser();
+  const watchNext = await getWatchNextForUser(user.id, { limit: 5 });
   const recommendations = await getRecommendationsForUser(user.id, { limit: 10 });
   const recapAvailability = await listAvailableRecaps(user.id);
   const currentYear = new Date().getUTCFullYear();
@@ -87,6 +90,24 @@ export default async function MePage() {
         </div>
         <Progress value={averageProgress} label="Progresso medio" />
       </Card>
+      {watchNext.items.length ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+              <PlayIcon className="h-5 w-5 text-subtle" />
+              Assistir a seguir
+            </h2>
+            <Link href="/watch-next" className="link-accent text-sm">
+              Ver todos
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {watchNext.items.map((item) => (
+              <WatchNextCard key={item.episode.id} item={item} />
+            ))}
+          </div>
+        </section>
+      ) : null}
       {recommendations.enabled && recommendations.items.length ? (
         <section className="space-y-3">
           <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">

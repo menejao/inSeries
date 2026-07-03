@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
-import { CalendarIcon, CheckCircleIcon, CompassIcon, HomeIcon, ListIcon, UserIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, CompassIcon, HomeIcon, ListIcon, PlayIcon, UserIcon } from "@/components/ui/icons";
 
 export async function BottomNav() {
   const user = await getCurrentUser();
 
   const mobileNav = [
     { href: "/", label: "Home", icon: HomeIcon },
+    { href: "/watch-next", label: "A seguir", icon: PlayIcon },
     { href: "/series", label: "Buscar", icon: CompassIcon },
     { href: "/me", label: "Minha Area", icon: CheckCircleIcon },
     { href: "/calendar", label: "Calendario", icon: CalendarIcon },
@@ -19,7 +20,7 @@ export async function BottomNav() {
       aria-label="Navegacao principal"
       className="safe-pb fixed inset-x-3 bottom-3 z-40 rounded-[2rem] border border-border bg-surface-strong/95 p-1.5 shadow-raised backdrop-blur-md md:hidden"
     >
-      <div className="grid grid-cols-6 gap-0.5 text-center">
+      <div className="grid grid-cols-7 gap-0.5 text-center">
         {mobileNav.map((item) => (
           <Link
             key={item.href}
