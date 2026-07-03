@@ -3,7 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MeTabs } from "@/components/me/me-tabs";
-import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon, SparklesIcon } from "@/components/ui/icons";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { RecommendationCard } from "@/components/recommendations/recommendation-card";
@@ -13,10 +13,15 @@ import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { getRecommendationsForUser } from "@/lib/recommendations";
+import { listAvailableRecaps } from "@/lib/recap";
 
 export default async function MePage() {
   const user = await requireUser();
   const recommendations = await getRecommendationsForUser(user.id, { limit: 10 });
+  const recapAvailability = await listAvailableRecaps(user.id);
+  const currentYear = new Date().getUTCFullYear();
+  const currentYearRecap = recapAvailability.enabled ? recapAvailability.availability.years.find((y) => y.year === currentYear) : undefined;
+  const latestMonthRecap = recapAvailability.enabled ? recapAvailability.availability.months[0] : undefined;
   const statuses = await prisma.userSeriesStatus.findMany({
     where: { userId: user.id },
     include: { series: true },
@@ -90,6 +95,37 @@ export default async function MePage() {
               <RecommendationCard key={recommendation.series.id} recommendation={recommendation} />
             ))}
           </div>
+        </section>
+      ) : null}
+      {currentYearRecap || latestMonthRecap ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+            <SparklesIcon className="h-5 w-5 text-subtle" />
+            Seu Recap
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {currentYearRecap ? (
+              <Link href={`/me/recap/${currentYearRecap.year}`}>
+                <Card interactive padding="sm">
+                  <p className="eyebrow">Recap anual</p>
+                  <p className="mt-1 font-semibold capitalize text-ink">{currentYearRecap.label}</p>
+                  <p className="text-sm text-muted">{currentYearRecap.episodesWatched} episodio(s) assistidos</p>
+                </Card>
+              </Link>
+            ) : null}
+            {latestMonthRecap ? (
+              <Link href={`/me/recap/${latestMonthRecap.year}/${latestMonthRecap.month}`}>
+                <Card interactive padding="sm">
+                  <p className="eyebrow">Ultimo mes</p>
+                  <p className="mt-1 font-semibold capitalize text-ink">{latestMonthRecap.label}</p>
+                  <p className="text-sm text-muted">{latestMonthRecap.episodesWatched} episodio(s) assistidos</p>
+                </Card>
+              </Link>
+            ) : null}
+          </div>
+          <Link href="/me/recap" className="link-accent text-sm">
+            Ver todos os recaps
+          </Link>
         </section>
       ) : null}
       <section className="space-y-3">

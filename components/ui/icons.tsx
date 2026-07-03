@@ -197,3 +197,10 @@ export const EyeOffIcon = createIcon(
 export const PencilIcon = createIcon(
   <path d="M4 20h4L19.5 8.5a2 2 0 0 0 0-2.8L18.3 4.5a2 2 0 0 0-2.8 0L4 16v4Z" />
 );
+
+export const SparklesIcon = createIcon(
+  <>
+    <path d="M12 3.5 13.4 8.6 18.5 10l-5.1 1.4L12 16.5l-1.4-5.1L5.5 10l5.1-1.4L12 3.5Z" />
+    <path d="M18.5 14.5 19.2 17l2.5.7-2.5.7-.7 2.5-.7-2.5-2.5-.7 2.5-.7.7-2.5Z" />
+  </>
+);

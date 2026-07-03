@@ -35,6 +35,7 @@ const envSchema = z.object({
   FEATURE_LISTS: optionalNonEmpty(),
   FEATURE_FEED: optionalNonEmpty(),
   FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty(),
+  FEATURE_RECAP: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_GENRE: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_SIMILAR: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_POPULAR: optionalNonEmpty(),
@@ -140,7 +141,10 @@ export const config = {
     reviews: parseBooleanFlag(rawEnv.FEATURE_REVIEWS, true),
     lists: parseBooleanFlag(rawEnv.FEATURE_LISTS, true),
     feed: parseBooleanFlag(rawEnv.FEATURE_FEED, true),
-    experimentalSearch: parseBooleanFlag(rawEnv.FEATURE_EXPERIMENTAL_SEARCH, false)
+    experimentalSearch: parseBooleanFlag(rawEnv.FEATURE_EXPERIMENTAL_SEARCH, false),
+    // Recap reuses the (already shipped, tested) Analytics Layer as its only
+    // data source — same "ship it enabled" reasoning as recommendations above.
+    recap: parseBooleanFlag(rawEnv.FEATURE_RECAP, true)
   }
 };
 

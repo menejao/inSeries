@@ -8,10 +8,11 @@ export type InsightInput = {
   watchedEpisodes: WatchedEpisodeRecord[];
 };
 
-function getMostWatchedSeries(watchedEpisodes: WatchedEpisodeRecord[]): { title: string; count: number } | null {
-  const counts = new Map<string, { title: string; count: number }>();
+/** Exported for reuse by the Recap layer ("serie mais assistida no periodo") — same rule, no duplication. */
+export function getMostWatchedSeries(watchedEpisodes: WatchedEpisodeRecord[]): { seriesId: string; title: string; count: number } | null {
+  const counts = new Map<string, { seriesId: string; title: string; count: number }>();
   for (const episode of watchedEpisodes) {
-    const entry = counts.get(episode.seriesId) ?? { title: episode.seriesTitle, count: 0 };
+    const entry = counts.get(episode.seriesId) ?? { seriesId: episode.seriesId, title: episode.seriesTitle, count: 0 };
     entry.count += 1;
     counts.set(episode.seriesId, entry);
   }

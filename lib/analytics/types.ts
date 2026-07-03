@@ -11,6 +11,7 @@ import type { WatchState } from "@prisma/client";
  */
 export type WatchedEpisodeRecord = {
   episodeId: string;
+  episodeTitle: string;
   seriesId: string;
   seriesTitle: string;
   seriesGenres: string[];

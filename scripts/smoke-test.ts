@@ -384,6 +384,108 @@ async function main() {
     dashboardWithRecs.status
   );
 
+  // ---- Recap: geracao mensal/anual, insights, privacidade, feature flag, validacao de periodo ----
+  const recapNow = new Date();
+  const recapYear = recapNow.getUTCFullYear();
+  const recapMonth = recapNow.getUTCMonth() + 1;
+
+  const recapGuestApi = await request({ value: "" }, "/api/me/recap");
+  check("acesso anonimo a /api/me/recap retorna 401", recapGuestApi.status === 401, recapGuestApi.body);
+
+  const recapGuestYearApi = await request({ value: "" }, `/api/me/recap/${recapYear}`);
+  check("acesso anonimo a /api/me/recap/[year] retorna 401", recapGuestYearApi.status === 401, recapGuestYearApi.body);
+
+  const recapGuestMonthApi = await request({ value: "" }, `/api/me/recap/${recapYear}/${recapMonth}`);
+  check("acesso anonimo a /api/me/recap/[year]/[month] retorna 401", recapGuestMonthApi.status === 401, recapGuestMonthApi.body);
+
+  const recapGuestPage = await request({ value: "" }, "/me/recap");
+  check(
+    "acesso anonimo a /me/recap redireciona (privacidade)",
+    recapGuestPage.status === 307 || recapGuestPage.status === 302,
+    recapGuestPage.status
+  );
+
+  const recapEmptyAvailability = await request(jarStatsEmpty, "/api/me/recap");
+  check(
+    "usuario sem historico nao tem nenhum periodo de recap disponivel (empty state)",
+    recapEmptyAvailability.status === 200 &&
+      Array.isArray(recapEmptyAvailability.body?.data?.years) &&
+      recapEmptyAvailability.body.data.years.length === 0 &&
+      Array.isArray(recapEmptyAvailability.body?.data?.months) &&
+      recapEmptyAvailability.body.data.months.length === 0,
+    recapEmptyAvailability.body
+  );
+  const recapEmptyDashboard = await request(jarStatsEmpty, "/me/recap");
+  check(
+    "pagina /me/recap mostra empty state para usuario sem historico",
+    recapEmptyDashboard.status === 200 && String(recapEmptyDashboard.body).includes("Ainda sem recap"),
+    recapEmptyDashboard.status
+  );
+
+  const recapMonthlyA = await request(jarA, `/api/me/recap/${recapYear}/${recapMonth}`);
+  const recapMonthlyData = recapMonthlyA.body?.data;
+  check(
+    "recap mensal de A usa os mesmos numeros do Analytics Layer (episodios e minutos batem com /api/me/stats)",
+    recapMonthlyA.status === 200 &&
+      recapMonthlyData?.episodesWatched === statsData?.overview?.episodesWatched &&
+      recapMonthlyData?.minutesWatched === statsData?.watchTime?.minutesWatched,
+    { recapMonthlyData, statsOverview: statsData?.overview }
+  );
+  check(
+    "recap mensal de A calcula generos coerentes com o historico (mesmo genero principal das estatisticas)",
+    recapMonthlyData?.genres?.topGenre?.genre === statsData?.genres?.topGenre?.genre,
+    { recapGenres: recapMonthlyData?.genres, statsGenres: statsData?.genres }
+  );
+  check("recap mensal de A gera insights narrativos", Array.isArray(recapMonthlyData?.insights) && recapMonthlyData.insights.length > 0, recapMonthlyData?.insights);
+  check(
+    "recap mensal de A prepara estrutura de compartilhamento privada (shareSlug presente, isPublic false)",
+    typeof recapMonthlyData?.sharing?.shareSlug === "string" &&
+      recapMonthlyData.sharing.shareSlug.length > 0 &&
+      recapMonthlyData.sharing.isPublic === false,
+    recapMonthlyData?.sharing
+  );
+
+  const recapYearlyA = await request(jarA, `/api/me/recap/${recapYear}`);
+  check(
+    "recap anual de A tambem reflete o historico (mesmo total de episodios)",
+    recapYearlyA.status === 200 && recapYearlyA.body?.data?.episodesWatched === statsData?.overview?.episodesWatched,
+    recapYearlyA.body
+  );
+
+  const recapFuturePeriod = await request(jarA, `/api/me/recap/${recapYear + 1}`);
+  check("recap anual de periodo futuro e rejeitado (400)", recapFuturePeriod.status === 400, recapFuturePeriod.body);
+
+  const recapInvalidMonth = await request(jarA, `/api/me/recap/${recapYear}/13`);
+  check("recap mensal com mes invalido e rejeitado (400)", recapInvalidMonth.status === 400, recapInvalidMonth.body);
+
+  const recapPersonalMonthly = await request(jarRecsPersonal, `/api/me/recap/${recapYear}/${recapMonth}`);
+  check(
+    "recap mensal reflete series concluidas no periodo",
+    recapPersonalMonthly.status === 200 &&
+      recapPersonalMonthly.body?.data?.seriesCompletedCount === 1 &&
+      recapPersonalMonthly.body?.data?.seriesCompleted?.includes("Serie Teste Um"),
+    recapPersonalMonthly.body?.data
+  );
+
+  const recapDashboard = await request(jarA, "/me/recap");
+  check(
+    "dashboard /me/recap lista os recaps disponiveis do usuario",
+    recapDashboard.status === 200 && String(recapDashboard.body).includes("Recaps anuais") && String(recapDashboard.body).includes("Recaps mensais"),
+    recapDashboard.status
+  );
+
+  const recapMonthlyPage = await request(jarA, `/me/recap/${recapYear}/${recapMonth}`);
+  check(
+    "pagina de recap mensal renderiza as secoes principais",
+    recapMonthlyPage.status === 200 &&
+      String(recapMonthlyPage.body).includes("Numeros principais") &&
+      String(recapMonthlyPage.body).includes("Compartilhamento"),
+    recapMonthlyPage.status
+  );
+
+  const meWithRecapCta = await request(jarA, "/me");
+  check("dashboard /me mostra CTA Seu Recap", meWithRecapCta.status === 200 && String(meWithRecapCta.body).includes("Seu Recap"), meWithRecapCta.status);
+
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");
   const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);

@@ -19,6 +19,7 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
         episode: {
           select: {
             number: true,
+            title: true,
             runtimeMinutes: true,
             season: {
               select: {
@@ -60,6 +61,7 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
     .filter((row) => row.watchedAt !== null)
     .map((row) => ({
       episodeId: row.episodeId,
+      episodeTitle: row.episode.title,
       seriesId: row.episode.season.series.id,
       seriesTitle: row.episode.season.series.title,
       seriesGenres: row.episode.season.series.genres,

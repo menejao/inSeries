@@ -504,9 +504,9 @@ Toda a logica de calculo vive aqui, isolada das paginas React — nenhuma pagina
 - `overview.ts` — Fase 3: contagens por status (concluidas/assistindo/pausadas/abandonadas/planejadas), temporadas concluidas, episodios assistidos/restantes, % medio de conclusao, media de episodios por serie, dias desde o cadastro.
 - `watch-time.ts` — Fase 4: minutos/horas/dias assistidos, media por episodio e por serie.
 - `genres.ts` — Fase 6: ranking de generos e percentual.
-- `timeline.ts` — Fase 5: series temporais (por dia/semana/mes/ano) e `getMonthlyRecapData`/`getYearlyRecapData`, preparadas para um futuro Recap mas **nao expostas em nenhuma UI ainda** (sem geracao automatica).
-- `streaks.ts` — Fase 8: sequencia atual, maior sequencia, dias ativos, primeiro/ultimo episodio assistido.
-- `insights.ts` — Fase 7: insights automaticos, cada um uma regra pura e independente numa lista (`INSIGHT_RULES`) — adicionar um insight novo e so acrescentar uma funcao a lista.
+- `timeline.ts` — Fase 5: series temporais (por dia/semana/mes/ano) e `getMonthlyRecapData`/`getYearlyRecapData`. Essas duas funcoes ficaram preparadas mas nao usadas por uma sprint inteira; agora que o Recap existe (ver `## Recap` abaixo), ele **nao** as chama diretamente — o campo `seriesCompleted` delas na verdade significa "series com episodio assistido no periodo", nao "series concluidas", o que colidiria com o significado mais preciso que o Recap precisa. O Recap reusa os calculadores que elas tambem usam (`computeGenreStats`, `computeStreakStats`) e mantem seu proprio filtro de periodo — as duas funcoes originais continuam aqui intactas, nao removidas.
+- `streaks.ts` — Fase 8: sequencia atual, maior sequencia, dias ativos, primeiro/ultimo episodio assistido. `computeStreakStats` recebe qualquer array de episodios assistidos, por isso o Recap reusa a mesma funcao so com o array ja filtrado pelo periodo (o campo `currentStreakDays` so faz sentido para "hoje", entao o Recap le apenas `longestStreakDays`/`activeDays` do resultado).
+- `insights.ts` — Fase 7: insights automaticos, cada um uma regra pura e independente numa lista (`INSIGHT_RULES`) — adicionar um insight novo e so acrescentar uma funcao a lista. `getMostWatchedSeries` (usada aqui internamente) agora tambem e exportada — o Recap reusa a mesma regra de "serie mais assistida" para o periodo, em vez de redefini-la.
 - `service.ts` — `getUserStats(userId)`: o unico ponto de entrada, usado pela pagina, pela API e (no futuro) por qualquer ferramenta admin — so recebe um `userId`, nunca depende da sessao.
 
 ### Metricas disponiveis
@@ -539,7 +539,7 @@ Graficos (`components/ui/bar-list.tsx`, `column-chart.tsx`, `donut-chart.tsx`, `
 
 ### Exportacao (preparado, nao implementado)
 
-`GET /api/me/stats` retorna o mesmo objeto estruturado (`UserStats`) que a pagina renderiza — pensado como o ponto de integracao para uma futura exportacao (PDF, imagem, recap compartilhavel) consumir os numeros sem duplicar nenhum calculo. Nenhuma geracao visual (PDF/PNG) foi implementada nesta sprint.
+`GET /api/me/stats` retorna o mesmo objeto estruturado (`UserStats`) que a pagina renderiza — pensado como o ponto de integracao para uma futura exportacao (PDF, imagem) consumir os numeros sem duplicar nenhum calculo. O Recap (ver `## Recap` abaixo) e exatamente essa integracao para o caso de retrospectivas mensais/anuais; nenhuma geracao visual (PDF/PNG) foi implementada em nenhuma das duas sprints.
 
 ### Performance
 
@@ -551,10 +551,9 @@ Uma unica chamada a `getUserStats(userId)` por carregamento de pagina — ela me
 
 ### Limitacoes atuais
 
-- Recap mensal/anual: as funcoes existem (`getMonthlyRecapData`, `getYearlyRecapData`) mas nao ha nenhuma UI, geracao automatica (cron) ou notificacao associada
 - Sem exportacao visual (PDF/PNG) — so o endpoint estruturado
 - Sem estatisticas globais no admin nesta sprint (a camada ja suporta, falta so a tela)
-- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint (o motor de recomendacoes chegou na sprint seguinte, ver abaixo)
+- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint (o motor de recomendacoes chegou duas sprints depois, o Recap logo em seguida, ver abaixo)
 
 ## Motor de recomendacoes
 
@@ -637,6 +636,81 @@ Cartao somente leitura "Motor de recomendacoes": status da feature flag, cada pr
 - Cache em memoria, por processo — nao compartilhado entre instancias; um deploy multi-instancia precisaria do Redis mencionado acima
 - Sem A/B testing nem personalizacao em tempo real
 - Sem UI dedicada de "ver todas as recomendacoes" — só as 10 primeiras no dashboard
+
+## Recap
+
+Retrospectivas mensais e anuais (`/me/recap`) construidas inteiramente a partir do historico real do usuario — **nenhum dado e inventado**, nenhuma regra de negocio existente (progresso, reviews, listas, estatisticas base) e alterada. E uma camada de leitura sobre o que ja existe, do mesmo jeito que o modulo de Estatisticas (acima) e o Motor de recomendacoes (acima) sao.
+
+### Recap Layer (`lib/recap/`)
+
+Nenhuma pagina React calcula recap — todas chamam `lib/recap` e renderizam o resultado.
+
+- `types.ts` — contratos compartilhados (`RecapData`, `RecapPeriod`, `RecapOutcome`, `RecapAvailability`, etc).
+- `monthly.ts` / `yearly.ts` — validacao de periodo (ano/mes validos, nao futuro) e os filtros que recortam `AnalyticsDataset` (episodios assistidos, status concluidos, reviews) para um mes ou ano especifico. Simetricos de proposito — cada um so entende o proprio tipo de periodo.
+- `insights.ts` — frases narrativas do recap ("Voce assistiu X episodios em marco.", "Y foi seu genero dominante."), mesma arquitetura de regras puras e independentes do `lib/analytics/insights.ts`.
+- `sharing.ts` — prepara (nao publica) a estrutura de compartilhamento (Fase 9, ver abaixo).
+- `service.ts` — `getMonthlyRecap(userId, year, month)`, `getYearlyRecap(userId, year)` e `listAvailableRecaps(userId)`: os unicos pontos de entrada, usados pelas paginas e pela API. Cada um busca o `AnalyticsDataset` (via `fetchAnalyticsDataset`, a mesma funcao do Analytics Layer) mais uma unica query adicional de `Review` do usuario — a unica coisa que o Recap precisa e o dataset de estatisticas nao carrega — e computa o resto em memoria.
+
+### De onde vem cada numero (Fase 4)
+
+Tudo reusa calculadores que ja existem em `lib/analytics/`, so aplicados ao array de episodios/reviews **ja filtrado pelo periodo** (mes ou ano) em vez do historico inteiro:
+
+| Campo do recap | Como e calculado |
+|---|---|
+| Periodo | `year` + `month` (nulo para recap anual) |
+| Episodios assistidos | `episodios.length` do periodo |
+| Series assistidas | titulos distintos entre os episodios do periodo |
+| Series concluidas | `UserSeriesStatus` com `state: COMPLETED` e `completedAt` dentro do periodo (nao "series com episodio assistido", ver Metodologia) |
+| Horas/minutos assistidos | soma de `runtimeMinutes` dos episodios do periodo |
+| Dias ativos / maior sequencia | `computeStreakStats` (Analytics Layer) chamada so com os episodios do periodo |
+| Generos principais | `computeGenreStats` (Analytics Layer), mesma regra, mesmo array filtrado |
+| Serie mais assistida | `getMostWatchedSeries` (Analytics Layer, agora exportada) sobre os episodios do periodo |
+| Episodio mais recente | o episodio do periodo com o `watchedAt` mais alto |
+| Top reviews do periodo | `Review` do usuario com `createdAt` no periodo, ordenadas por nota e recencia (ate 3) |
+| Insights narrativos | `generateRecapInsights` (`lib/recap/insights.ts`) |
+
+### Metodologia (decisoes documentadas)
+
+- **Por que nao chamar `getMonthlyRecapData`/`getYearlyRecapData` (`lib/analytics/timeline.ts`) diretamente**: essas funcoes ja existiam, preparadas desde a sprint de Estatisticas, mas o campo `seriesCompleted` delas na verdade significa "series com pelo menos um episodio assistido no periodo" — nao "series concluidas" (`UserSeriesStatus.state === COMPLETED`). Usar esse campo diretamente sob o nome "series concluidas" seria impreciso. Em vez disso, o Recap reusa os mesmos calculadores que essas funcoes tambem usam (`computeGenreStats`) e implementa seu proprio filtro de periodo com a semantica correta — as duas funcoes originais continuam no lugar, intactas, para quem precisar da versao "series com atividade no periodo".
+- **`currentStreakDays` nao aparece no recap**: essa metrica so faz sentido em relacao a "hoje"; para um periodo passado (ex.: um recap de marco em julho) ela nao teria significado. O recap usa apenas `longestStreakDays`/`activeDays` de `computeStreakStats`.
+- **Episodio mais recente sem titulo proprio, ate esta sprint**: `WatchedEpisodeRecord` (Analytics Layer) nao carregava o titulo do episodio, so numero de temporada/episodio. Adicionado (`episodeTitle`) porque o Recap precisava dele para "episodio mais recente" — mudanca puramente aditiva (um campo a mais no tipo e no `select` do Prisma), nenhum calculo existente muda de comportamento.
+- **Reviews no recap**: usam `createdAt` da review (quando foi escrita), nao a data do episodio assistido — uma review pode ser escrita bem depois de terminar a serie.
+
+### Filtros de periodo (Fase 3)
+
+`GET /api/me/recap/[year]` e `/api/me/recap/[year]/[month]` validam, nesta ordem: feature flag ligada → ano e mes numericamente validos (mes entre 1 e 12) → periodo nao futuro (comparado ao UTC atual, mesma convencao de fuso do Analytics Layer). Qualquer falha retorna um erro estruturado, nunca uma excecao — ver API abaixo.
+
+### API
+
+- `GET /api/me/recap` — lista os periodos disponiveis (`{ years: [...], months: [...] }`), derivados dos buckets `perYear`/`perMonth` que `computeTimelineStats` (Analytics Layer) ja calcula — nenhum recap completo e gerado so para popular essa lista.
+- `GET /api/me/recap/[year]` — recap anual completo.
+- `GET /api/me/recap/[year]/[month]` — recap mensal completo.
+
+Todos autenticados (`getApiUser()`, 401 se anonimo) e sempre sobre o proprio usuario da sessao — nao existe parametro de usuario na rota, entao nao ha como pedir o recap de outra pessoa (Fase 8). Com a feature flag desligada, todos retornam 404 `{ error: "feature_disabled" }`. Com periodo invalido/futuro, 400 `{ error: "invalid_year" | "invalid_month" | "future_period" }`.
+
+### Paginas (`/me/recap`, `/me/recap/[year]`, `/me/recap/[year]/[month]`)
+
+`/me/recap` lista os recaps anuais e mensais disponiveis (ou um empty state, se o usuario nunca assistiu nada). Cada pagina de recap (`RecapCard`, `components/recap/`) mostra: hero do periodo, numeros principais, tempo assistido, generos, sequencia, series destaque (mais assistida, mais recente, concluidas no periodo), reviews do periodo, insights e a secao de compartilhamento (abaixo). Nova aba "Recap" em `/me/*`.
+
+### Compartilhamento (preparado, nao implementado — Fase 9 e 11)
+
+Cada `RecapData` carrega um `sharing: { shareSlug, isPublic }`. `shareSlug` e um hash deterministico de `userId + periodo` (`lib/recap/sharing.ts`) — o mesmo usuario e periodo sempre gera o mesmo slug, mas **nada e persistido** (sem tabela/coluna nova) e **nenhuma rota publica resolve esse slug hoje**. `isPublic` e sempre `false`, fixo no codigo — recaps sao privados por padrao e nao ha nenhum fluxo nesta sprint que os publique automaticamente (Fase 11). Uma futura tela publica so precisaria de uma rota que aceite o slug e de uma forma do usuario alternar `isPublic`; nada na camada de calculo mudaria.
+
+### Feature flag
+
+`recap` (nova, default ligada — mesma logica das outras features completas: reusa por inteiro o Analytics Layer, ja testado). Com a flag desligada, `getMonthlyRecap`/`getYearlyRecap`/`listAvailableRecaps` retornam `{ enabled: false }` sem nenhuma query; as paginas mostram um estado "Recap indisponivel" e a API responde 404 controlado. Validado manualmente (`FEATURE_RECAP=false`, reiniciando o servidor) — mesma limitacao ja documentada para as outras flags: o smoke test roda contra um processo com configuracao fixa, entao nao alterna a flag em tempo real.
+
+### Performance
+
+Cada calculo de recap faz as mesmas 2 queries do Analytics Layer (`fetchAnalyticsDataset`) mais 1 query adicional de `Review` do usuario — nenhum provider/calculador faz sua propria query, tudo em memoria a partir desses arrays. `listAvailableRecaps` reusa os buckets de `computeTimelineStats`, entao listar os periodos disponiveis nunca gera um recap completo por periodo. Deliberadamente **sem cache**, mesma razao do Analytics Layer: os numeros devem refletir a ultima marcacao de episodio imediatamente.
+
+### Limitacoes atuais
+
+- Sem exportacao visual (PNG/PDF) nem cards para redes sociais/stories — fora de escopo desta sprint
+- Compartilhamento publico preparado mas nao implementado — sem rota publica, sem toggle de visibilidade na UI
+- Sem geracao automatica (cron) nem notificacao/e-mail avisando que um novo recap esta disponivel
+- Sem ranking entre usuarios — cada recap e estritamente sobre o proprio historico
+- "Serie mais assistida"/"generos principais" usam a mesma regra simples do Analytics Layer (contagem de episodios/generos) — nenhuma ponderacao adicional por periodo
 
 ## Smoke test (validacao ponta a ponta)
 
