@@ -5,16 +5,17 @@ import { useTheme } from "@/components/theme/theme-provider";
 import { MoonIcon, SunIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
+/** Quick light/dark flip — used in the public (landing) header, where there's no avatar dropdown to host the full 3-way selector. */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // The real theme is only knowable client-side (localStorage/matchMedia).
-  // SSR always assumes "dark" (see theme-provider's readInitialTheme), so we
+  // SSR always assumes "dark" (see theme-provider's readInitialMode), so we
   // render that same assumption until mount to avoid a hydration mismatch,
   // then switch to the real value.
   useEffect(() => setMounted(true), []);
-  const isDark = mounted ? theme === "dark" : true;
+  const isDark = mounted ? resolvedTheme === "dark" : true;
 
   return (
     <button

@@ -855,6 +855,68 @@ Toda pagina protegida do app (`/me`, `/settings`, `/notifications`) e redirecion
 - Sem swipe actions, player, streaming, integracao com plataformas ou download — fora de escopo desta sprint
 - Sem notificacao especifica desta tela — reusa as notificacoes ja existentes (`SERIES_COMPLETED`, `ACHIEVEMENT_UNLOCKED`, etc.) geradas pela mesma mutation de progresso
 
+## Application Shell — Landing publica vs. Dashboard autenticado
+
+Principio central desta sprint: **visitante conhece o produto, usuario logado usa o produto** — as duas experiencias nunca compartilham navegacao. Antes, `Navbar`/`Header` decidiam item a item o que mostrar para anonimo vs. logado dentro da mesma barra; agora existem dois shells completamente separados, e a decisao de qual renderizar acontece uma unica vez, no topo da arvore.
+
+### Ponto unico de bifurcacao (`components/layout/app-shell.tsx`)
+
+```tsx
+export async function AppShell({ children }: PropsWithChildren) {
+  const user = await getCurrentUser();
+  return user ? <DashboardShell>{children}</DashboardShell> : <LandingShell>{children}</LandingShell>;
+}
+```
+
+`app/layout.tsx` continua chamando so `<AppShell>{children}</AppShell>` — nenhuma pagina precisou saber qual shell esta "dentro". A mesma logica se repete, isolada, em `app/page.tsx` (`getCurrentUser()` → `<DashboardHome />` ou `<LandingPage />`), pois `/` e a unica rota cujo **conteudo**, e nao so a moldura, muda com o login.
+
+### `LandingShell` (publico)
+
+`LandingHeader` (logo + `ThemeToggle` de 2 estados + botoes Entrar/Criar conta) + `<main>` + `Footer`, sem sidebar, sem bottom nav, sem qualquer elemento que sugira "sistema interno". `components/landing/landing-page.tsx` monta a Landing em si: Hero/CTA (com os contadores reais do catalogo, reaproveitados da home antiga), 4 cards de Beneficios, uma secao "Demonstracao" com 6 series populares reais (`searchSeries({ sort: "popular" })` + `SeriesCard`, zero mock), os 6 cards de Recursos que ja existiam, uma secao de Depoimentos explicitamente marcada como placeholder ("Depoimentos ilustrativos — a comunidade real ainda esta crescendo.", para nao insinuar avaliacoes reais que nao existem), FAQ em `<details>` nativos, e uma CTA final.
+
+### `DashboardShell` (autenticado)
+
+Sidebar fixa (desktop) + `DashboardHeader` (topo minimalista) + conteudo + `BottomNav` (mobile) — os tres nunca aparecem para visitantes, porque `DashboardShell` inteiro so e alcancado quando `getCurrentUser()` retorna um usuario.
+
+### Sidebar (`components/layout/sidebar.tsx`)
+
+Client component, fixa a esquerda em telas `lg`+ (escondida abaixo disso — o mobile usa `BottomNav`). Item ativo calculado por `usePathname()` (prefixo de rota, nao mais uma prop `active` manual por pagina como no antigo `MeTabs`). Itens: Dashboard, Assistir a seguir, Calendario, Catalogo, Feed, Recomendacoes, Estatisticas, Recap, Conquistas, Listas, Notificacoes e, condicionalmente, Admin (`canAccessAdminWorkspace(user.role)`, mesma checagem de RBAC ja usada no workspace administrativo). Deliberadamente **sem** Perfil e **sem** Configuracoes — os dois migraram para o menu do Avatar (Fase 6/10 do ticket sao explicitas sobre isso, mesmo a lista sugerida da Fase 5 citando Configuracoes). Colapsavel (botao no rodape, persistido em `localStorage["inseries-sidebar-collapsed"]`); colapsada, mostra so icones com `title` para acessibilidade.
+
+### Header e menu do Avatar
+
+`DashboardHeader` so mostra a logo em telas menores que `lg` (a Sidebar ja mostra a logo em telas maiores) e empurra notificacoes + `UserMenu` para a direita. `UserMenu` (`components/layout/user-menu.tsx`) agora exibe avatar + nome (+ cargo, quando admin/moderador) e abre um dropdown com: bloco de identidade, Meu perfil, Configuracoes, seletor de tema (`ThemeMenuItems`, 3 opcoes) e Sair — nenhuma dessas acoes tem mais espaco reservado na Sidebar.
+
+### Tema — dark real como padrao (Fase 7)
+
+`ThemeMode` agora tem 3 estados (`"light" | "dark" | "system"`), nao 2. Antes, a ausencia de preferencia salva fazia o boot script (`theme-script.tsx`) inferir de `prefers-color-scheme` — ou seja, um visitante com SO em modo claro via o app claro na primeira visita, apesar do dark ser "o padrao pretendido". Agora a ausencia de valor salvo resolve para `"dark"` incondicionalmente; `"system"` so e alcancado se o usuario escolher essa opcao explicitamente no menu do Avatar, e so nesse caso um listener de `matchMedia` acompanha mudancas do SO em tempo real. `ThemeToggle` (2 estados, usado so no `LandingHeader`) e `ThemeMenuItems` (3 estados, usado no `UserMenu`) consomem o mesmo `useTheme()`.
+
+### Dashboard Home (`components/dashboard/dashboard-home.tsx`, Fase 8)
+
+`/` autenticado renderiza 8 cards (`Promise.all`, sem cascata de round-trips): Assistir a seguir, Proximos lancamentos, Recomendacoes, Estatisticas, Conquistas, Recap, Feed, Notificacoes. Nenhum calculo novo — cada card chama exatamente o mesmo service da pagina dedicada do modulo (`getWatchNextForUser`, `getUpcomingEpisodesForUser`, `getRecommendationsForUser`, `getUserStats`, `getUserAchievementsOverview`, `listAvailableRecaps`, `getRecentActivityForUser`, `listNotifications`/`countUnreadNotifications`), so que num teaser (2-3 itens + link "Ver tudo"). A pagina antiga `/me` continua existindo, inalterada e acessivel por URL direta — ela so deixou de ser o item principal de navegacao, papel que agora e do proprio `/`.
+
+### Identidade por modulo, nao paginas genericas (Fase 9)
+
+Nenhuma logica mudou — so o rotulo (`eyebrow`) e, no caso do catalogo, o titulo, para reforcar que cada modulo e um produto proprio dentro do hub: Calendario → "Timeline", Feed → "Rede social", Estatisticas → "Analytics", Conquistas → "Colecao", Listas → "Cards", Catalogo → "Exploracao" (titulo tambem virou "Catalogo"), Assistir a seguir → "Foco", Recap → "Retrospectiva".
+
+### Mobile (Fase 11)
+
+`BottomNav` (`components/layout/bottom-nav.tsx`) agora recebe `username` como prop em vez de chamar `getCurrentUser()` — so e renderizada dentro do `DashboardShell` autenticado, entao a busca de usuario ja aconteceu uma vez, no shell. 7 itens espelhando o topo da Sidebar (Home, A seguir, Buscar, Calendario, Feed, Listas, Perfil); breakpoint alinhado com a Sidebar (visivel abaixo de `lg`, some a partir de `lg`).
+
+### Nova rota: `/recommendations`
+
+A Sidebar sugeria "Recomendacoes" como item proprio, mas so existia como secao dentro de `/me`. Pagina nova e fina, reusando `getRecommendationsForUser` sem nenhuma regra nova; adicionada a `protectedRoutes` do `middleware.ts` desde a criacao, para nao repetir o bug de redirecionamento (`loading.tsx` + Suspense degradando `requireUser()` para um refresh via meta tag) ja documentado na sprint de Assistir a seguir.
+
+### Arquivos removidos
+
+`components/layout/navbar.tsx` e `components/layout/header.tsx` foram deletados — totalmente substituidos pelo par Sidebar/DashboardHeader (autenticado) e LandingHeader (publico). Confirmado por busca que nenhum outro arquivo os importava antes da remocao.
+
+### Limitacoes atuais
+
+- Depoimentos da Landing sao placeholders explicitos ("em breve") — nao ha ainda coleta real de avaliacoes de usuarios
+- Sem multiplos workspaces, personalizacao/drag-and-drop da Sidebar, temas customizados ou layouts salvos — fora de escopo desta sprint, por decisao explicita do ticket
+- Transicoes reusam animacoes ja existentes no Tailwind config (`fade-in`, `fade-in-up`, `slide-up`, `shimmer`) — nenhuma animacao nova foi criada
+- Nenhuma regra de negocio, schema ou mutation foi alterada — a sprint e estritamente shell/navegacao/tema
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:

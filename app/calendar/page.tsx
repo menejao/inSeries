@@ -26,7 +26,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Cronograma</p>
+        <p className="eyebrow">Timeline</p>
         <h1 className="section-title">Calendario</h1>
         <p className="section-copy">Episodios lancados, proximos lancamentos e temporadas futuras das suas series, direto do banco.</p>
       </div>

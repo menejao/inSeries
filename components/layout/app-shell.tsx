@@ -1,19 +1,15 @@
 import type { PropsWithChildren } from "react";
-import { BottomNav } from "@/components/layout/bottom-nav";
-import { Header } from "@/components/layout/header";
-import { Navbar } from "@/components/layout/navbar";
+import { getCurrentUser } from "@/lib/auth/server";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { LandingShell } from "@/components/layout/landing-shell";
 
-export function AppShell({ children }: PropsWithChildren) {
-  return (
-    <>
-      <div className="shell">
-        <Header />
-        <Navbar />
-        <main id="main-content" className="mt-6 lg:mt-8">
-          {children}
-        </main>
-      </div>
-      <BottomNav />
-    </>
-  );
+/**
+ * Fase 1/2 — the single fork point between the two products: visitors get
+ * LandingShell (public header + footer, no app navigation); authenticated
+ * users get DashboardShell (sidebar + minimal header + bottom nav). Neither
+ * shell shares navigation with the other, per the ticket's principle.
+ */
+export async function AppShell({ children }: PropsWithChildren) {
+  const user = await getCurrentUser();
+  return user ? <DashboardShell>{children}</DashboardShell> : <LandingShell>{children}</LandingShell>;
 }

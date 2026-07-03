@@ -15,7 +15,7 @@ export default async function RecapIndexPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Minha area</p>
+        <p className="eyebrow">Retrospectiva</p>
         <h1 className="section-title">Recap</h1>
         <p className="section-copy">Retrospectivas mensais e anuais geradas a partir do seu historico real de series.</p>
       </div>

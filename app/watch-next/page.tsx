@@ -16,7 +16,7 @@ export default async function WatchNextPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Minha area</p>
+        <p className="eyebrow">Foco</p>
         <h1 className="section-title">Assistir a seguir</h1>
         <p className="section-copy">O proximo episodio pendente de cada serie que voce acompanha.</p>
       </div>

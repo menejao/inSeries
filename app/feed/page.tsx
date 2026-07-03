@@ -50,7 +50,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Comunidade</p>
+        <p className="eyebrow">Rede social</p>
         <h1 className="section-title">Feed</h1>
         <p className="section-copy">Descubra o que as pessoas que voce segue estao assistindo, avaliando e listando.</p>
       </div>

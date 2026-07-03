@@ -15,7 +15,7 @@ export default async function ListsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="eyebrow">Comunidade</p>
+          <p className="eyebrow">Cards</p>
           <h1 className="section-title">Listas</h1>
           <p className="section-copy">Descubra listas publicas criadas pela comunidade inSeries.</p>
         </div>

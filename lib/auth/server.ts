@@ -29,7 +29,8 @@ export const getCurrentUser = cache(async function getCurrentUser() {
       username: true,
       email: true,
       avatarUrl: true,
-      bio: true
+      bio: true,
+      role: true
     }
   });
 });

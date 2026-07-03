@@ -1,13 +1,9 @@
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth/server";
-import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { UserMenu } from "@/components/layout/user-menu";
 import { buttonVariants } from "@/components/ui/button";
 
-export async function Header() {
-  const user = await getCurrentUser();
-
+/** Fase 2/3 — the public header. No sidebar, no app navigation links: a visitor is here to learn about the product, not use it. */
+export function LandingHeader() {
   return (
     <header className="safe-pt flex items-center justify-between gap-4 py-4">
       <Link href="/" className="flex items-center gap-3">
@@ -21,21 +17,12 @@ export async function Header() {
       </Link>
       <div className="flex items-center gap-2">
         <ThemeToggle />
-        {user ? (
-          <>
-            <NotificationsNavLink />
-            <UserMenu name={user.name} username={user.username} avatarUrl={user.avatarUrl} />
-          </>
-        ) : (
-          <>
-            <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-              Entrar
-            </Link>
-            <Link href="/register" className={buttonVariants({ variant: "primary", size: "sm" })}>
-              Criar conta
-            </Link>
-          </>
-        )}
+        <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+          Entrar
+        </Link>
+        <Link href="/register" className={buttonVariants({ variant: "primary", size: "sm" })}>
+          Criar conta
+        </Link>
       </div>
     </header>
   );

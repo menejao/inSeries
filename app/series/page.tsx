@@ -32,8 +32,8 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Catalogo</p>
-        <h1 className="section-title">Todas as series</h1>
+        <p className="eyebrow">Exploracao</p>
+        <h1 className="section-title">Catalogo</h1>
         <p className="section-copy">
           {result.total} serie{result.total === 1 ? "" : "s"} encontrada{result.total === 1 ? "" : "s"}
           {params.q ? (

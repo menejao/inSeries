@@ -1462,6 +1462,72 @@ async function main() {
     adminSystemObservabilityPage.status
   );
 
+  // ---- Application Shell: Landing publica vs. Dashboard autenticado ----
+  const landingAnon = await request({ value: "" }, "/");
+  check(
+    "visitante em / ve a Landing Page (depoimentos e FAQ), nunca o Dashboard",
+    landingAnon.status === 200 &&
+      String(landingAnon.body).includes("Depoimentos ilustrativos") &&
+      String(landingAnon.body).includes("Perguntas frequentes") &&
+      !String(landingAnon.body).includes("Seu hub de series"),
+    landingAnon.status
+  );
+  check(
+    "Landing Page nunca renderiza a Sidebar autenticada",
+    !String(landingAnon.body).includes("Recolher menu"),
+    landingAnon.status
+  );
+
+  const jarShell: CookieJar = { value: "" };
+  await registerUser(jarShell, "usershell");
+
+  const dashboardAuth = await request(jarShell, "/");
+  check(
+    "usuario logado em / ve o Dashboard (hub de series), nunca a Landing Page",
+    dashboardAuth.status === 200 &&
+      String(dashboardAuth.body).includes("Seu hub de series") &&
+      !String(dashboardAuth.body).includes("Depoimentos ilustrativos") &&
+      !String(dashboardAuth.body).includes("Perguntas frequentes"),
+    dashboardAuth.status
+  );
+  check(
+    "Sidebar so aparece para usuario autenticado (visivel em /)",
+    String(dashboardAuth.body).includes("Recolher menu"),
+    dashboardAuth.status
+  );
+  check(
+    "Sidebar nao mostra Admin para usuario comum",
+    !String(dashboardAuth.body).includes(">Admin<"),
+    dashboardAuth.status
+  );
+  check(
+    "Header autenticado renderiza o gatilho do menu do Avatar (conteudo do dropdown e client-side, verificado via Playwright)",
+    /aria-label="Menu de /.test(String(dashboardAuth.body)),
+    dashboardAuth.status
+  );
+  const sidebarNavHtml = String(dashboardAuth.body).match(/aria-label="Navegacao principal"[\s\S]*?<\/nav>/)?.[0] ?? "";
+  check(
+    "Sidebar nao contem links para /settings ou /profile (Perfil/Configuracoes vivem so no dropdown do Avatar)",
+    sidebarNavHtml.length > 0 && !sidebarNavHtml.includes('href="/settings"') && !sidebarNavHtml.includes('href="/profile'),
+    sidebarNavHtml
+  );
+
+  const adminSidebarCheck = await request(jarAdmin, "/");
+  check(
+    "Sidebar mostra Admin para o usuario admin",
+    adminSidebarCheck.status === 200 && String(adminSidebarCheck.body).includes(">Admin<"),
+    adminSidebarCheck.status
+  );
+
+  const recommendationsGuest = await request({ value: "" }, "/recommendations");
+  check(
+    "/recommendations sem sessao redireciona (307/302)",
+    recommendationsGuest.status === 307 || recommendationsGuest.status === 302,
+    recommendationsGuest.status
+  );
+  const recommendationsAuth = await request(jarShell, "/recommendations");
+  check("/recommendations autenticado carrega (200)", recommendationsAuth.status === 200, recommendationsAuth.status);
+
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
 
   // ---- Encerramento ----

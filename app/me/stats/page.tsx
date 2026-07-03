@@ -49,7 +49,7 @@ export default async function StatsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Minha area</p>
+        <p className="eyebrow">Analytics</p>
         <h1 className="section-title">Estatisticas</h1>
         <p className="section-copy">Um resumo do seu historico de series, calculado a partir do seu progresso real.</p>
       </div>

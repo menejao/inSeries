@@ -223,3 +223,32 @@ export const LockIcon = createIcon(
     <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
   </>
 );
+
+export const MonitorIcon = createIcon(
+  <>
+    <rect x="3" y="4.5" width="18" height="12" rx="2" />
+    <path d="M8 20h8M12 16.5V20" />
+  </>
+);
+
+export const LayoutDashboardIcon = createIcon(
+  <>
+    <rect x="3.5" y="3.5" width="8" height="8" rx="1.5" />
+    <rect x="12.5" y="3.5" width="8" height="5" rx="1.5" />
+    <rect x="12.5" y="10.5" width="8" height="10" rx="1.5" />
+    <rect x="3.5" y="13.5" width="8" height="7" rx="1.5" />
+  </>
+);
+
+export const PanelLeftIcon = createIcon(
+  <>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+    <path d="M9.5 4.5v15" />
+  </>
+);
+
+export const ChartIcon = createIcon(
+  <>
+    <path d="M4 20V10M10 20V4M16 20v-7M20 20H4" />
+  </>
+);

@@ -1,24 +1,22 @@
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth/server";
-import { CalendarIcon, CheckCircleIcon, CompassIcon, HomeIcon, ListIcon, PlayIcon, UserIcon } from "@/components/ui/icons";
+import { CalendarIcon, CompassIcon, FilmIcon, HomeIcon, ListIcon, PlayIcon, UserIcon } from "@/components/ui/icons";
 
-export async function BottomNav() {
-  const user = await getCurrentUser();
-
+/** Fase 11 — mobile's primary nav, mirrors the Sidebar's top items. Only ever rendered inside DashboardShell (authenticated). */
+export function BottomNav({ username }: { username: string }) {
   const mobileNav = [
     { href: "/", label: "Home", icon: HomeIcon },
     { href: "/watch-next", label: "A seguir", icon: PlayIcon },
     { href: "/series", label: "Buscar", icon: CompassIcon },
-    { href: "/me", label: "Minha Area", icon: CheckCircleIcon },
     { href: "/calendar", label: "Calendario", icon: CalendarIcon },
+    { href: "/feed", label: "Feed", icon: FilmIcon },
     { href: "/lists", label: "Listas", icon: ListIcon },
-    { href: user ? `/profile/${user.username}` : "/login", label: "Perfil", icon: UserIcon }
+    { href: `/profile/${username}`, label: "Perfil", icon: UserIcon }
   ];
 
   return (
     <nav
       aria-label="Navegacao principal"
-      className="safe-pb fixed inset-x-3 bottom-3 z-40 rounded-[2rem] border border-border bg-surface-strong/95 p-1.5 shadow-raised backdrop-blur-md md:hidden"
+      className="safe-pb fixed inset-x-3 bottom-3 z-40 rounded-[2rem] border border-border bg-surface-strong/95 p-1.5 shadow-raised backdrop-blur-md lg:hidden"
     >
       <div className="grid grid-cols-7 gap-0.5 text-center">
         {mobileNav.map((item) => (

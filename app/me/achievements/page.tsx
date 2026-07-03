@@ -14,7 +14,7 @@ export default async function AchievementsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Minha area</p>
+        <p className="eyebrow">Colecao</p>
         <h1 className="section-title">Conquistas</h1>
         <p className="section-copy">Badges, nivel e progresso construidos a partir das suas acoes reais no inSeries.</p>
       </div>
