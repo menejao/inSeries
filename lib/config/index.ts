@@ -36,6 +36,7 @@ const envSchema = z.object({
   FEATURE_FEED: optionalNonEmpty(),
   FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty(),
   FEATURE_RECAP: optionalNonEmpty(),
+  FEATURE_GAMIFICATION: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_GENRE: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_SIMILAR: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_POPULAR: optionalNonEmpty(),
@@ -144,7 +145,9 @@ export const config = {
     experimentalSearch: parseBooleanFlag(rawEnv.FEATURE_EXPERIMENTAL_SEARCH, false),
     // Recap reuses the (already shipped, tested) Analytics Layer as its only
     // data source — same "ship it enabled" reasoning as recommendations above.
-    recap: parseBooleanFlag(rawEnv.FEATURE_RECAP, true)
+    recap: parseBooleanFlag(rawEnv.FEATURE_RECAP, true),
+    // Same reasoning again: shipped and tested this sprint, defaults on.
+    gamification: parseBooleanFlag(rawEnv.FEATURE_GAMIFICATION, true)
   }
 };
 

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
 import { notifyFollowersOfPublicReview } from "@/lib/notifications/events";
 import { invalidateRecommendationCache } from "@/lib/recommendations";
+import { recordGamificationEvent } from "@/lib/gamification";
 
 export async function upsertReview(
   userId: string,
@@ -35,6 +36,8 @@ export async function upsertReview(
       await recordActivity({ userId, type: "REVIEW_CREATED", seriesId, reviewId: review.id, visibility: "PUBLIC" });
       await notifyFollowersOfPublicReview(userId, review.id, seriesId);
     }
+    // Gamification rewards the act of reviewing itself, regardless of visibility.
+    await recordGamificationEvent({ type: "REVIEW_CREATED", userId, seriesId });
   } else if (existing.visibility !== visibility) {
     await syncActivityVisibility({ reviewId: review.id }, visibility);
   }

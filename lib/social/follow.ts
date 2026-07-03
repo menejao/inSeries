@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { recordActivity } from "@/lib/social/activity";
 import { notifyUserFollowed } from "@/lib/notifications/events";
+import { recordGamificationEvent } from "@/lib/gamification";
 
 export type FollowResult =
   | { ok: true; following: true }
@@ -24,6 +25,7 @@ export async function followUserByUsername(followerId: string, targetUsername: s
     await prisma.follow.create({ data: { followerId, followingId: target.id } });
     await recordActivity({ userId: followerId, type: "USER_FOLLOWED", targetUserId: target.id });
     await notifyUserFollowed(followerId, target.id);
+    await recordGamificationEvent({ type: "USER_FOLLOWED", userId: followerId, followingId: target.id });
   }
 
   return { ok: true, following: true };

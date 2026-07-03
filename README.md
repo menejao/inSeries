@@ -243,7 +243,7 @@ Fundacao de notificacoes internas persistidas no banco. Nesta sprint **nao** ha 
 
 Campos: `id`, `userId` (destinatario), `type`, `title`, `body`, `href`, `readAt`, `actorUserId` (opcional, quem gerou o evento), `seriesId`/`episodeId`/`reviewId`/`listId` (opcionais, para linkar o conteudo relacionado), `metadata`, `createdAt`. Indices em `[userId, createdAt]`, `[userId, readAt]` e `[createdAt]`.
 
-Tipos (`NotificationType`): `NEW_EPISODE_AVAILABLE`, `FOLLOWED_YOU`, `REVIEW_FROM_FOLLOWING`, `LIST_FROM_FOLLOWING`, `SERIES_COMPLETED`, `ADMIN_NOTICE`.
+Tipos (`NotificationType`): `NEW_EPISODE_AVAILABLE`, `FOLLOWED_YOU`, `REVIEW_FROM_FOLLOWING`, `LIST_FROM_FOLLOWING`, `SERIES_COMPLETED`, `ADMIN_NOTICE`, `ACHIEVEMENT_UNLOCKED`.
 
 ### Servico isolado (`lib/notifications/service.ts`)
 
@@ -256,6 +256,7 @@ A logica de cada evento (quem notificar, com qual privacidade) fica em `lib/noti
 - **`LIST_FROM_FOLLOWING`**: mesmo contrato, em `lib/social/lists.ts` (`notifyFollowersOfPublicList`), gated por `showLists`
 - **`SERIES_COMPLETED`**: `lib/progress/mutations.ts` chama `notifySeriesCompleted` para o proprio usuario, nos dois caminhos que levam a conclusao (mudar status manualmente para `COMPLETED` ou completar via ultimo episodio assistido), sempre que o estado anterior nao era `COMPLETED`
 - **`NEW_EPISODE_AVAILABLE`**: preparado em `lib/notifications/episode-availability.ts` (ver script abaixo), nao e disparado em tempo real
+- **`ACHIEVEMENT_UNLOCKED`**: `lib/gamification/service.ts` chama `createNotification` diretamente (nao via `lib/notifications/events.ts`) sempre que uma conquista e desbloqueada pela primeira vez — ver `## Gamificacao` para o desbloqueio em si
 
 Nenhum evento social notifica com base em conteudo oculto: perfil privado, `showActivity`, `showReviews`, `showLists` e visibilidade `PRIVATE`/`FOLLOWERS` sempre bloqueiam a notificacao correspondente.
 
@@ -349,8 +350,8 @@ Fundacao operacional do inSeries: configuracao centralizada, feature flags, heal
 
 ### Feature flags (`lib/config/flags.ts`)
 
-- Flags: `recommendations`, `tvtimeImport`, `notifications`, `adminWorkspace`, `calendar`, `reviews`, `lists`, `feed`, `experimentalSearch`
-- Hoje sao 100% baseadas em variaveis de ambiente (`FEATURE_*`, ex: `FEATURE_RECOMMENDATIONS=true`); `recommendations`, `tvtimeImport` e `experimentalSearch` vem desligadas por padrao (ainda nao implementadas), as demais vem ligadas (recursos ja existentes)
+- Flags: `recommendations`, `tvtimeImport`, `notifications`, `adminWorkspace`, `calendar`, `reviews`, `lists`, `feed`, `experimentalSearch`, `recap`, `gamification`
+- Hoje sao 100% baseadas em variaveis de ambiente (`FEATURE_*`, ex: `FEATURE_RECOMMENDATIONS=true`). `tvtimeImport` e `experimentalSearch` vem desligadas por padrao (ainda nao implementadas); todas as demais — incluindo `recommendations`, `recap` e `gamification`, que comecaram como placeholders desligados em sprints anteriores — vem ligadas por padrao, pois cada uma foi implementada e testada de ponta a ponta na sua propria sprint (ver `## Motor de recomendacoes`, `## Recap` e `## Gamificacao`)
 - `isFeatureEnabled(flag)` e `getAllFeatureFlags()` podem ser chamados em qualquer camada (server component, API route, script)
 - Arquitetura preparada para trocar a fonte por `SystemSetting`/banco no futuro: `FeatureFlagSource` e uma interface; a implementacao atual (`ConfigFeatureFlagSource`) e so uma das possiveis
 
@@ -553,7 +554,7 @@ Uma unica chamada a `getUserStats(userId)` por carregamento de pagina — ela me
 
 - Sem exportacao visual (PDF/PNG) — so o endpoint estruturado
 - Sem estatisticas globais no admin nesta sprint (a camada ja suporta, falta so a tela)
-- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint (o motor de recomendacoes chegou duas sprints depois, o Recap logo em seguida, ver abaixo)
+- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint (o motor de recomendacoes chegou duas sprints depois, o Recap logo em seguida, e a gamificacao na sprint seguinte a essa, ver abaixo)
 
 ## Motor de recomendacoes
 
@@ -711,6 +712,90 @@ Cada calculo de recap faz as mesmas 2 queries do Analytics Layer (`fetchAnalytic
 - Sem geracao automatica (cron) nem notificacao/e-mail avisando que um novo recap esta disponivel
 - Sem ranking entre usuarios — cada recap e estritamente sobre o proprio historico
 - "Serie mais assistida"/"generos principais" usam a mesma regra simples do Analytics Layer (contagem de episodios/generos) — nenhuma ponderacao adicional por periodo
+
+## Gamificacao
+
+Conquistas, badges e nivel (`/me/achievements`) construidos exclusivamente a partir de acoes reais do usuario — episodio assistido, serie concluida, review escrita, lista criada, follow. **Nunca altera** progresso, estatisticas, reviews ou listas; e uma camada que **le** eventos reais e **grava** apenas o proprio estado de conquistas (`Achievement`/`UserAchievement`), sem tocar em nenhuma tabela das outras funcionalidades.
+
+### Gamification Layer (`lib/gamification/`)
+
+Nenhuma pagina ou rota calcula conquista diretamente — todas chamam esta camada.
+
+- `types.ts` — contratos compartilhados (`GamificationEvent`, `AchievementEvalContext`, `AchievementDefinition`, `AchievementsOverview`, etc).
+- `achievements.ts` — `ACHIEVEMENT_DEFINITIONS`: as 15 conquistas iniciais (Fase 5), cada uma com slug, nome, descricao, icone, categoria, raridade, pontos e a regra `isUnlocked(context)`. E a unica fonte de verdade — `service.ts` faz upsert deste array na tabela `Achievement` (por `slug`), entao ajustar/adicionar uma conquista nunca precisa de migration, so mudar este arquivo.
+- `milestones.ts` — construtores de regra reutilizaveis (`atLeast`, `genreAtLeast`) — a maioria das conquistas e literalmente "um numero cruzou um limite".
+- `badges.ts` — metadados de raridade/categoria (rotulos, ordem) — deliberadamente sem nenhuma referencia a componente React, para a camada continuar sendo so dados.
+- `levels.ts` — formula de nivel centralizada (Fase 7, ver abaixo).
+- `engine.ts` — `evaluateEvent(event)`: filtra a lista de conquistas pelas que reagem a esse tipo de evento, monta so os agregados necessarios para essa categoria (nunca o quadro inteiro) e desbloqueia as que baterem a regra.
+- `events.ts` — `recordGamificationEvent(event)`: unica funcao que os pontos de mutacao (progresso, reviews, listas, follow) chamam. Nunca lanca excecao — um erro na gamificacao jamais pode quebrar a acao real do usuario.
+- `service.ts` — `getUserAchievementsOverview(userId)` (pagina/dashboard), `unlockAchievement(userId, slug)` (idempotente), `getGamificationAdminSnapshot()` (admin).
+
+### Modelos (Fase 3)
+
+`Achievement` (catalogo, somente leitura em runtime) e `UserAchievement` (`userId` + `achievementId` + `unlockedAt`, `@@unique([userId, achievementId])` — a mesma conquista nunca pode ser desbloqueada duas vezes para o mesmo usuario, e e essa unicidade, nao um `if` em algum lugar, que garante "conquista nao duplica"). `AchievementCategory` (`WATCHING`, `SOCIAL`, `COLLECTION`, `STREAK`, `REVIEW`, `SPECIAL`) e `AchievementRarity` (`COMMON`, `RARE`, `EPIC`, `LEGENDARY`) sao enums do banco. `Notification` ganhou uma coluna `achievementId` opcional, mesmo padrao das colunas `seriesId`/`reviewId`/`listId` que ja existiam.
+
+### Conquistas iniciais (Fase 5)
+
+| Conquista | Categoria | Raridade | Pontos | Regra |
+|---|---|---|---|---|
+| Primeiro Episodio | Assistindo | Comum | 10 | 1º episodio assistido |
+| 10 Episodios | Assistindo | Comum | 20 | 10 episodios assistidos |
+| 100 Episodios | Assistindo | Rara | 50 | 100 episodios assistidos |
+| 100 Horas Assistidas | Assistindo | Rara | 50 | 100h assistidas (Analytics Layer) |
+| Primeira Serie Concluida | Assistindo | Comum | 20 | 1ª serie com status `COMPLETED` |
+| Concluir 10 Series | Colecao | Epica | 60 | 10 series concluidas |
+| Concluir 50 Series | Colecao | Lendaria | 150 | 50 series concluidas |
+| Primeira Review | Reviews | Comum | 10 | 1ª review escrita |
+| Primeira Lista | Colecao | Comum | 10 | 1ª lista criada |
+| Primeiro Follow | Social | Comum | 10 | 1º usuario seguido |
+| 7 Dias de Sequencia | Sequencia | Rara | 30 | maior sequencia >= 7 dias |
+| 30 Dias de Sequencia | Sequencia | Epica | 100 | maior sequencia >= 30 dias |
+| Drama Lover | Especiais | Rara | 25 | 10 episodios do genero "Drama" |
+| Comedy Lover | Especiais | Rara | 25 | 10 episodios do genero "Comedy" |
+| Sci-Fi Lover | Especiais | Rara | 25 | 10 episodios do genero "Sci-Fi" |
+
+Os nomes de genero ("Comedy", nao "Comedia") seguem o mapeamento canonico do sync real do TMDb (`lib/catalog/normalize.ts`), nao a fixture em portugues usada so por `scripts/seed-dev.ts`.
+
+### Engine e eventos (Fase 4 e 13)
+
+`recordGamificationEvent` e chamado a partir de `lib/progress/mutations.ts` (episodio assistido, serie concluida — inclusive quando a conclusao acontece automaticamente ao assistir o ultimo episodio), `lib/social/reviews.ts` (review criada, publica ou privada), `lib/social/lists.ts` (lista criada, publica ou privada) e `lib/social/follow.ts` (novo follow). Cada evento carrega so os ids necessarios — o `engine.ts` decide o que calcular.
+
+**Nunca recalcula todas as conquistas**: `evaluateEvent` primeiro filtra `ACHIEVEMENT_DEFINITIONS` pelas que declaram aquele tipo de evento em `triggers`, depois busca (com uma unica query) quais dessas o usuario ja desbloqueou, e so entao monta o contexto de avaliacao — que tambem e minimo: um evento de review so conta reviews (`prisma.review.count`), um evento de lista so conta listas, etc. So `EPISODE_WATCHED` busca o dataset completo do Analytics Layer (`fetchAnalyticsDataset` + `computeWatchTimeStats`/`computeGenreStats`/`computeStreakStats`), porque e o unico evento do qual varias categorias diferentes de conquista dependem (contagem, horas, genero, sequencia) — uma unica busca, reaproveitada por todas elas, em vez de uma query por conquista.
+
+### Badges e raridade (Fase 6)
+
+Cada conquista tem icone, nome, descricao, categoria, pontos e raridade — sem efeitos especiais (sem animacao, sem som). A raridade e so uma cor de badge e um rotulo (`components/achievements/rarity-badge.tsx`); nao afeta pontuacao alem do valor de `points` já definido por conquista.
+
+### Nivel (Fase 7)
+
+Curva triangular centralizada em `lib/gamification/levels.ts`: nivel `n` comeca em `50 * n*(n-1)/2` pontos (nivel 1 = 0, nivel 2 = 50, nivel 3 = 150, nivel 4 = 300...). E puramente um indicador sobre a soma de pontos das conquistas ja desbloqueadas — nao desbloqueia nada, nao altera nenhuma funcionalidade, so muda o numero mostrado.
+
+### Pagina (`/me/achievements`) e Dashboard (Fase 8 e 9)
+
+`/me/achievements`: nivel + XP, contagem de conquistas desbloqueadas/total, e uma secao por categoria com as conquistas desbloqueadas e bloqueadas (bloqueadas aparecem esmaecidas com um icone de cadeado, no lugar do icone real). Nova aba "Conquistas" em `/me/*`. O dashboard (`/me`) ganhou uma secao "Conquistas" com nivel/XP, ultima conquista desbloqueada e proxima conquista sugerida (a de menor pontuacao ainda bloqueada), com link para a pagina completa.
+
+### Notificacoes (Fase 10)
+
+Toda conquista desbloqueada gera uma `Notification` do tipo `ACHIEVEMENT_UNLOCKED`. "Uma notificacao por conquista" e garantido estruturalmente: `unlockAchievement` so cria a notificacao dentro do mesmo fluxo que cria a linha `UserAchievement`, e essa linha tem `@@unique([userId, achievementId])` — uma segunda tentativa de desbloquear a mesma conquista (ex.: desmarcar e marcar o mesmo episodio de novo) encontra a linha existente e nao chega a criar nada. Validado manualmente e no smoke test: desmarcar/marcar o mesmo episodio repetidamente mantem exatamente 1 notificacao de conquista.
+
+### Feature flag
+
+`gamification` (nova, default ligada — mesma logica das outras features completas desta safra: reusa o Analytics Layer, ja testado). Com a flag desligada, `recordGamificationEvent` retorna imediatamente (nenhum evento e avaliado, nenhuma query roda) e `getUserAchievementsOverview` retorna `{ enabled: false }`; a pagina mostra "Conquistas indisponiveis" e a secao correspondente some do dashboard. Validado manualmente (`FEATURE_GAMIFICATION=false`, reiniciando o servidor): nenhuma conquista e nenhuma notificacao sao criadas ao assistir um episodio com a flag desligada — mesma limitacao documentada para as outras flags quanto a alternar em tempo real durante o smoke test.
+
+### Admin (`/admin/system`)
+
+Cartao somente leitura "Gamificacao": estado da feature flag (ativa/desligada), total de conquistas no catalogo e total de conquistas desbloqueadas somando todos os usuarios.
+
+### Performance (Fase 13)
+
+Ver "Engine e eventos" acima — o principio central e "avaliar so o que o evento pode ter mudado", nunca a lista inteira de 15 conquistas a cada acao. O catalogo (`Achievement`) e semeado por upsert idempotente na primeira leitura do processo (guardado por uma flag em `globalThis`, mesmo padrao de `lib/rate-limit`/`lib/metrics`), entao nenhum ambiente novo precisa de um passo manual de seed para a gamificacao funcionar.
+
+### Limitacoes atuais
+
+- Sem ranking global, competicoes, temporadas, moedas, loja, missoes diarias ou desafios semanais — fora de escopo desta sprint
+- Sem recompensas financeiras nem integracao com terceiros
+- Sem conquistas ocultas definidas ainda — o campo `hidden` e a logica que o respeita (`locked` nunca inclui conquistas ocultas) existem, prontos para uma conquista secreta futura
+- Pontuacao e nivel sao só indicadores — não desbloqueiam nenhuma funcionalidade nem alteram limites em outras areas do app
 
 ## Smoke test (validacao ponta a ponta)
 

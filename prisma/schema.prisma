@@ -76,6 +76,23 @@ enum NotificationType {
   LIST_FROM_FOLLOWING
   SERIES_COMPLETED
   ADMIN_NOTICE
+  ACHIEVEMENT_UNLOCKED
+}
+
+enum AchievementCategory {
+  WATCHING
+  SOCIAL
+  COLLECTION
+  STREAK
+  REVIEW
+  SPECIAL
+}
+
+enum AchievementRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
 }
 
 model User {
@@ -106,6 +123,7 @@ model User {
   notifications      Notification[]        @relation("NotificationUser")
   actorNotifications Notification[]        @relation("NotificationActor")
   adminAuditLogs     AdminAuditLog[]
+  achievements       UserAchievement[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -292,26 +310,28 @@ model ListItem {
 }
 
 model Notification {
-  id          String           @id @default(cuid())
-  userId      String
-  type        NotificationType
-  title       String
-  body        String
-  href        String?
-  readAt      DateTime?
-  actorUserId String?
-  seriesId    String?
-  episodeId   String?
-  reviewId    String?
-  listId      String?
-  metadata    Json?
-  user        User             @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
-  actorUser   User?            @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  series      Series?          @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  episode     Episode?         @relation(fields: [episodeId], references: [id], onDelete: SetNull)
-  review      Review?          @relation(fields: [reviewId], references: [id], onDelete: SetNull)
-  list        List?            @relation(fields: [listId], references: [id], onDelete: SetNull)
-  createdAt   DateTime         @default(now())
+  id            String           @id @default(cuid())
+  userId        String
+  type          NotificationType
+  title         String
+  body          String
+  href          String?
+  readAt        DateTime?
+  actorUserId   String?
+  seriesId      String?
+  episodeId     String?
+  reviewId      String?
+  listId        String?
+  achievementId String?
+  metadata      Json?
+  user          User             @relation("NotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+  actorUser     User?            @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  series        Series?          @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  episode       Episode?         @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  review        Review?          @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  list          List?            @relation(fields: [listId], references: [id], onDelete: SetNull)
+  achievement   Achievement?     @relation(fields: [achievementId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
@@ -402,4 +422,35 @@ model SystemSetting {
   public      Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// The catalog of unlockable achievements — seeded once (scripts/seed-achievements.ts), read-only at runtime.
+/// The gamification engine (lib/gamification) never invents rows here; it only reads this catalog and writes UserAchievement.
+model Achievement {
+  id            String              @id @default(cuid())
+  slug          String              @unique
+  name          String
+  description   String
+  icon          String
+  category      AchievementCategory
+  rarity        AchievementRarity   @default(COMMON)
+  points        Int
+  hidden        Boolean             @default(false)
+  unlocks       UserAchievement[]
+  notifications Notification[]
+  createdAt     DateTime            @default(now())
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime    @default(now())
+  metadata      Json?
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@index([userId])
 }

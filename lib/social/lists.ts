@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
 import { notifyFollowersOfPublicList } from "@/lib/notifications/events";
+import { recordGamificationEvent } from "@/lib/gamification";
 
 export async function createList(
   userId: string,
@@ -20,6 +21,8 @@ export async function createList(
     await recordActivity({ userId, type: "LIST_CREATED", listId: list.id, visibility: "PUBLIC" });
     await notifyFollowersOfPublicList(userId, list.id);
   }
+  // Gamification rewards creating a list itself, regardless of visibility.
+  await recordGamificationEvent({ type: "LIST_CREATED", userId, listId: list.id });
 
   return list;
 }

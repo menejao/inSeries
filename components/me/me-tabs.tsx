@@ -7,7 +7,8 @@ export const ME_TABS = [
   { href: "/me/watchlist", label: "Watchlist" },
   { href: "/me/lists", label: "Listas" },
   { href: "/me/stats", label: "Estatisticas" },
-  { href: "/me/recap", label: "Recap" }
+  { href: "/me/recap", label: "Recap" },
+  { href: "/me/achievements", label: "Conquistas" }
 ];
 
 export function MeTabs({ active }: { active: string }) {

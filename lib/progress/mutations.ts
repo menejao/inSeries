@@ -3,6 +3,7 @@ import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { recordActivity } from "@/lib/social/activity";
 import { notifySeriesCompleted } from "@/lib/notifications/events";
 import { invalidateRecommendationCache } from "@/lib/recommendations";
+import { recordGamificationEvent } from "@/lib/gamification";
 
 export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
   const previous = await prisma.userSeriesStatus.findUnique({
@@ -44,6 +45,7 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
         metadata: { from: previous?.state ?? null }
       });
       await notifySeriesCompleted(userId, seriesId);
+      await recordGamificationEvent({ type: "SERIES_COMPLETED", userId, seriesId });
     } else if (state !== "COMPLETED") {
       await recordActivity({
         userId,
@@ -105,6 +107,7 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
       seriesId: episode.season.seriesId,
       episodeId
     });
+    await recordGamificationEvent({ type: "EPISODE_WATCHED", userId });
   }
 
   const previousStatus = await prisma.userSeriesStatus.findUnique({
@@ -146,6 +149,7 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
       metadata: { from: previousStatus?.state ?? null }
     });
     await notifySeriesCompleted(userId, episode.season.seriesId);
+    await recordGamificationEvent({ type: "SERIES_COMPLETED", userId, seriesId: episode.season.seriesId });
   }
 
   invalidateRecommendationCache(userId);

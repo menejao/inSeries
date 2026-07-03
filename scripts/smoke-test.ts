@@ -486,6 +486,115 @@ async function main() {
   const meWithRecapCta = await request(jarA, "/me");
   check("dashboard /me mostra CTA Seu Recap", meWithRecapCta.status === 200 && String(meWithRecapCta.body).includes("Seu Recap"), meWithRecapCta.status);
 
+  // ---- Gamificacao: engine, conquistas iniciais, notificacao, nivel, dashboard, privacidade ----
+  const achievementsGuestPage = await request({ value: "" }, "/me/achievements");
+  check(
+    "acesso anonimo a /me/achievements redireciona (privacidade)",
+    achievementsGuestPage.status === 307 || achievementsGuestPage.status === 302,
+    achievementsGuestPage.status
+  );
+
+  const jarGameA: CookieJar = { value: "" };
+  const userGameA = await registerUser(jarGameA, "usergamea");
+
+  const achievementsBeforeAnyAction = await request(jarGameA, "/me/achievements");
+  check(
+    "pagina de conquistas carrega (feature flag ligada por padrao)",
+    achievementsBeforeAnyAction.status === 200 && !String(achievementsBeforeAnyAction.body).includes("Conquistas indisponiveis"),
+    achievementsBeforeAnyAction.status
+  );
+
+  const watchForAchievement = await request(jarGameA, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: true })
+  });
+  check("usuario dedicado assiste ao primeiro episodio", watchForAchievement.status === 200, watchForAchievement.body);
+
+  const notificationsAfterFirstEpisode = await request(jarGameA, "/api/notifications");
+  const achievementNotifCountAfterFirst = (notificationsAfterFirstEpisode.body?.data?.items ?? []).filter(
+    (item: Json) => item.type === "ACHIEVEMENT_UNLOCKED"
+  ).length;
+  check(
+    "primeiro episodio assistido desbloqueia conquista e gera notificacao ACHIEVEMENT_UNLOCKED",
+    achievementNotifCountAfterFirst === 1,
+    notificationsAfterFirstEpisode.body
+  );
+
+  await request(jarGameA, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: false })
+  });
+  await request(jarGameA, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: true })
+  });
+  const notificationsAfterRewatch = await request(jarGameA, "/api/notifications");
+  const achievementNotifCountAfterRewatch = (notificationsAfterRewatch.body?.data?.items ?? []).filter(
+    (item: Json) => item.type === "ACHIEVEMENT_UNLOCKED"
+  ).length;
+  check(
+    "conquista nao duplica ao desmarcar/marcar o mesmo episodio novamente",
+    achievementNotifCountAfterRewatch === 1,
+    notificationsAfterRewatch.body
+  );
+
+  const reviewForAchievement = await request(jarGameA, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 5, body: "Muito boa serie para testar conquistas." })
+  });
+  check("usuario dedicado escreve a primeira review", reviewForAchievement.status === 200, reviewForAchievement.body);
+
+  const listForAchievement = await request(jarGameA, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: "Lista para testar conquistas" })
+  });
+  check("usuario dedicado cria a primeira lista", listForAchievement.status === 201 || listForAchievement.status === 200, listForAchievement.body);
+
+  const completeForAchievement = await request(jarGameA, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "COMPLETED" })
+  });
+  check("usuario dedicado conclui a primeira serie", completeForAchievement.status === 200, completeForAchievement.body);
+
+  const jarGameB: CookieJar = { value: "" };
+  await registerUser(jarGameB, "usergameb");
+  const followForAchievement = await request(jarGameB, `/api/users/${userGameA.username}/follow`, {
+    method: "POST"
+  });
+  check("usuario dedicado segue outro usuario pela primeira vez", followForAchievement.status === 200, followForAchievement.body);
+
+  const achievementsPageAfterAll = await request(jarGameA, "/me/achievements");
+  check(
+    "pagina de conquistas mostra as conquistas desbloqueadas (episodio, review, lista, serie concluida)",
+    achievementsPageAfterAll.status === 200 &&
+      String(achievementsPageAfterAll.body).includes("Primeiro Episodio") &&
+      String(achievementsPageAfterAll.body).includes("Primeira Review") &&
+      String(achievementsPageAfterAll.body).includes("Primeira Lista") &&
+      String(achievementsPageAfterAll.body).includes("Primeira Serie Concluida"),
+    achievementsPageAfterAll.status
+  );
+  check(
+    "pagina de conquistas mostra progresso de nivel (4 conquistas desbloqueadas de 15)",
+    String(achievementsPageAfterAll.body).includes("4/15"),
+    achievementsPageAfterAll.status
+  );
+
+  const followerAchievementsPage = await request(jarGameB, "/me/achievements");
+  check(
+    "conquista Primeiro Follow desbloqueada para quem seguiu",
+    followerAchievementsPage.status === 200 && String(followerAchievementsPage.body).includes("Primeiro Follow"),
+    followerAchievementsPage.status
+  );
+
+  const meWithAchievementsCta = await request(jarGameA, "/me");
+  check(
+    "dashboard /me mostra secao Conquistas com ultima/proxima conquista e nivel",
+    meWithAchievementsCta.status === 200 &&
+      String(meWithAchievementsCta.body).includes("Ultima conquista") &&
+      String(meWithAchievementsCta.body).includes("Proxima conquista"),
+    meWithAchievementsCta.status
+  );
+
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");
   const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);
@@ -1184,6 +1293,14 @@ async function main() {
       String(adminSystemObservabilityPage.body).includes("Feature flags") &&
       String(adminSystemObservabilityPage.body).includes("Metricas basicas") &&
       String(adminSystemObservabilityPage.body).includes("Configuracao publica"),
+    adminSystemObservabilityPage.status
+  );
+  check(
+    "/admin/system mostra estado da gamificacao (total de conquistas, engine ativa, conquistas desbloqueadas)",
+    adminSystemObservabilityPage.status === 200 &&
+      String(adminSystemObservabilityPage.body).includes("Gamificacao") &&
+      String(adminSystemObservabilityPage.body).includes("Total de conquistas") &&
+      String(adminSystemObservabilityPage.body).includes("Conquistas desbloqueadas (todos os usuarios)"),
     adminSystemObservabilityPage.status
   );
 

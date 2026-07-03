@@ -12,6 +12,7 @@ import { getHealthSnapshot, getReadySnapshot } from "@/lib/health/service";
 import { getMetricsSnapshot } from "@/lib/metrics/service";
 import { listSystemSettings } from "@/lib/system-settings/service";
 import { RECOMMENDATION_PROVIDERS } from "@/lib/recommendations";
+import { getGamificationAdminSnapshot } from "@/lib/gamification";
 import packageJson from "@/package.json";
 import prismaClientPackageJson from "@prisma/client/package.json";
 
@@ -39,11 +40,12 @@ function countMigrations() {
 export default async function AdminSystemPage() {
   await requireAdminUser("admin.system");
 
-  const [dbOnline, health, ready, systemSettings] = await Promise.all([
+  const [dbOnline, health, ready, systemSettings, gamification] = await Promise.all([
     canUseDatabase(),
     Promise.resolve(getHealthSnapshot()),
     getReadySnapshot(),
-    listSystemSettings()
+    listSystemSettings(),
+    getGamificationAdminSnapshot()
   ]);
 
   const migrationCount = countMigrations();
@@ -154,6 +156,23 @@ export default async function AdminSystemPage() {
           <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
             <dt className="text-xs uppercase tracking-[0.2em] text-subtle">TTL do cache</dt>
             <dd className="mt-1 text-sm font-medium text-ink">{publicConfig.recommendations.cacheTtlSeconds}s</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-ink">Gamificacao</h2>
+          <Badge variant={gamification.engineEnabled ? "success" : "default"}>{gamification.engineEnabled ? "ativa" : "desligada"}</Badge>
+        </div>
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Total de conquistas</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{gamification.totalAchievements}</dd>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Conquistas desbloqueadas (todos os usuarios)</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{gamification.totalUnlocks}</dd>
           </div>
         </dl>
       </Card>

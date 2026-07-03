@@ -204,3 +204,22 @@ export const SparklesIcon = createIcon(
     <path d="M18.5 14.5 19.2 17l2.5.7-2.5.7-.7 2.5-.7-2.5-2.5-.7 2.5-.7.7-2.5Z" />
   </>
 );
+
+export const TrophyIcon = createIcon(
+  <>
+    <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+    <path d="M7 5H4v1.5A3.5 3.5 0 0 0 7.5 10M17 5h3v1.5A3.5 3.5 0 0 1 16.5 10" />
+    <path d="M12 14v3M9 20.5h6M9.5 20.5 10 17h4l.5 3.5" />
+  </>
+);
+
+export const FlameIcon = createIcon(
+  <path d="M12 3.5c1 2 .5 3.3-.3 4.5-1 1.4-2.2 2.4-2.2 4.3a3 3 0 0 0 6 0c0-.9-.3-1.6-.7-2.2.9.5 1.7 1.7 1.7 3.4a4.5 4.5 0 1 1-9 0c0-3.6 2.6-5 3.4-7 .4-1 .7-1.9 1.1-3Z" />
+);
+
+export const LockIcon = createIcon(
+  <>
+    <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+  </>
+);

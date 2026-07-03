@@ -13,6 +13,7 @@ export type CreateNotificationInput = {
   episodeId?: string | null;
   reviewId?: string | null;
   listId?: string | null;
+  achievementId?: string | null;
   metadata?: Prisma.InputJsonValue;
 };
 
@@ -29,6 +30,7 @@ export async function createNotification(input: CreateNotificationInput) {
       episodeId: input.episodeId ?? null,
       reviewId: input.reviewId ?? null,
       listId: input.listId ?? null,
+      achievementId: input.achievementId ?? null,
       metadata: input.metadata
     }
   });

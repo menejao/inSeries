@@ -3,10 +3,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MeTabs } from "@/components/me/me-tabs";
-import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon, SparklesIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon, SparklesIcon, TrophyIcon } from "@/components/ui/icons";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { RecommendationCard } from "@/components/recommendations/recommendation-card";
+import { LevelProgressCard } from "@/components/achievements/level-progress-card";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
@@ -14,6 +15,7 @@ import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { getRecommendationsForUser } from "@/lib/recommendations";
 import { listAvailableRecaps } from "@/lib/recap";
+import { getUserAchievementsOverview } from "@/lib/gamification";
 
 export default async function MePage() {
   const user = await requireUser();
@@ -22,6 +24,7 @@ export default async function MePage() {
   const currentYear = new Date().getUTCFullYear();
   const currentYearRecap = recapAvailability.enabled ? recapAvailability.availability.years.find((y) => y.year === currentYear) : undefined;
   const latestMonthRecap = recapAvailability.enabled ? recapAvailability.availability.months[0] : undefined;
+  const achievementsResult = await getUserAchievementsOverview(user.id);
   const statuses = await prisma.userSeriesStatus.findMany({
     where: { userId: user.id },
     include: { series: true },
@@ -126,6 +129,36 @@ export default async function MePage() {
           <Link href="/me/recap" className="link-accent text-sm">
             Ver todos os recaps
           </Link>
+        </section>
+      ) : null}
+      {achievementsResult.enabled ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+              <TrophyIcon className="h-5 w-5 text-subtle" />
+              Conquistas
+            </h2>
+            <Link href="/me/achievements" className="link-accent text-sm">
+              Ver todas
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LevelProgressCard level={achievementsResult.overview.level} points={achievementsResult.overview.points} />
+            {achievementsResult.overview.lastUnlocked ? (
+              <Card padding="sm">
+                <p className="eyebrow">Ultima conquista</p>
+                <p className="mt-1 font-semibold text-ink">{achievementsResult.overview.lastUnlocked.name}</p>
+                <p className="text-sm text-muted">{achievementsResult.overview.lastUnlocked.description}</p>
+              </Card>
+            ) : null}
+            {achievementsResult.overview.nextSuggested ? (
+              <Card padding="sm">
+                <p className="eyebrow">Proxima conquista</p>
+                <p className="mt-1 font-semibold text-ink">{achievementsResult.overview.nextSuggested.name}</p>
+                <p className="text-sm text-muted">{achievementsResult.overview.nextSuggested.description}</p>
+              </Card>
+            ) : null}
+          </div>
         </section>
       ) : null}
       <section className="space-y-3">
