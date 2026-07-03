@@ -1,5 +1,6 @@
 import type { NotificationType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { incrementNotificationsCreated } from "@/lib/metrics/service";
 
 export type CreateNotificationInput = {
   userId: string;
@@ -16,7 +17,7 @@ export type CreateNotificationInput = {
 };
 
 export async function createNotification(input: CreateNotificationInput) {
-  return prisma.notification.create({
+  const notification = await prisma.notification.create({
     data: {
       userId: input.userId,
       type: input.type,
@@ -31,6 +32,8 @@ export async function createNotification(input: CreateNotificationInput) {
       metadata: input.metadata
     }
   });
+  incrementNotificationsCreated();
+  return notification;
 }
 
 /** Used by call sites that must not create the same notification twice for a given user/event. */
@@ -118,6 +121,7 @@ export async function createAdminNotice(input: {
       metadata: input.metadata
     }))
   });
+  incrementNotificationsCreated(users.length);
 
   return null;
 }

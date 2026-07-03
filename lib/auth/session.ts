@@ -1,5 +1,7 @@
-﻿const SESSION_COOKIE = "inseries_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+﻿import { config } from "@/lib/config";
+
+const SESSION_COOKIE = config.auth.sessionCookieName;
+const SESSION_TTL_SECONDS = config.auth.sessionTtlSeconds;
 
 type SessionPayload = {
   sub: string;
@@ -11,7 +13,7 @@ type SessionPayload = {
 };
 
 function getAuthSecret() {
-  return process.env.AUTH_SECRET ?? "dev-inseries-auth-secret-change-me";
+  return config.auth.secret;
 }
 
 function encodeBase64Url(value: string) {
@@ -102,7 +104,7 @@ export function getSessionCookieOptions() {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: config.app.isProduction,
     path: "/",
     maxAge: SESSION_TTL_SECONDS
   };

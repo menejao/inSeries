@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { deleteList, updateList } from "@/lib/social/lists";
 import { updateListSchema } from "@/lib/social/validation";
+import { withApiObservability } from "@/lib/http/api-handler";
 
 function errorStatus(error: "not_found" | "forbidden") {
   return error === "not_found" ? 404 : 403;
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function patchHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -29,7 +30,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({ data: result.list });
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function deleteHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -43,3 +44,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   return NextResponse.json({ data: { ok: true } });
 }
+
+export const PATCH = withApiObservability("lists.update", patchHandler);
+export const DELETE = withApiObservability("lists.delete", deleteHandler);

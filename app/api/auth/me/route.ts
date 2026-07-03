@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function GET() {
+async function meHandler() {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -10,3 +11,5 @@ export async function GET() {
 
   return NextResponse.json({ data: user });
 }
+
+export const GET = withApiObservability("auth.me", meHandler);

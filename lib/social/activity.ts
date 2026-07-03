@@ -1,5 +1,6 @@
 import type { ActivityType, Prisma, Visibility } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { incrementActivitiesCreated } from "@/lib/metrics/service";
 
 type CreateActivityInput = {
   userId: string;
@@ -14,7 +15,7 @@ type CreateActivityInput = {
 };
 
 export async function recordActivity(input: CreateActivityInput) {
-  return prisma.activity.create({
+  const activity = await prisma.activity.create({
     data: {
       userId: input.userId,
       type: input.type,
@@ -27,6 +28,8 @@ export async function recordActivity(input: CreateActivityInput) {
       visibility: input.visibility ?? "PUBLIC"
     }
   });
+  incrementActivitiesCreated();
+  return activity;
 }
 
 export async function syncActivityVisibility(

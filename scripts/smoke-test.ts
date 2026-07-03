@@ -18,12 +18,13 @@ async function request(
   jar: CookieJar,
   path: string,
   init: RequestInit = {}
-): Promise<{ status: number; body: Json }> {
+): Promise<{ status: number; body: Json; headers: Headers }> {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
     redirect: "manual",
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.headers as Record<string, string> | undefined),
       ...(jar.value ? { Cookie: jar.value } : {})
     }
   });
@@ -38,7 +39,7 @@ async function request(
     body = text;
   }
 
-  return { status: response.status, body };
+  return { status: response.status, body, headers: response.headers };
 }
 
 let failures = 0;
@@ -865,6 +866,81 @@ async function main() {
       String(adminLogsPage.body).includes("RESTORE_LIST") &&
       String(adminLogsPage.body).includes("START_SYNC"),
     adminLogsPage.status
+  );
+
+  // ---- Observabilidade: config central, feature flags, health/ready, request id, metricas, erros ----
+  const healthCheck = await request({ value: "" }, "/api/health");
+  check(
+    "/api/health responde com status/versao/ambiente/timestamp",
+    healthCheck.status === 200 &&
+      healthCheck.body?.status === "ok" &&
+      Boolean(healthCheck.body?.version) &&
+      Boolean(healthCheck.body?.environment) &&
+      Boolean(healthCheck.body?.timestamp),
+    healthCheck.body
+  );
+  check(
+    "/api/health propaga x-request-id na resposta",
+    Boolean(healthCheck.headers.get("x-request-id")),
+    healthCheck.headers.get("x-request-id")
+  );
+
+  const readyCheck = await request({ value: "" }, "/api/ready");
+  check(
+    "/api/ready responde ok quando banco e configuracao estao saudaveis",
+    readyCheck.status === 200 &&
+      readyCheck.body?.status === "ready" &&
+      readyCheck.body?.checks?.database === true &&
+      readyCheck.body?.checks?.configuration === true,
+    readyCheck.body
+  );
+
+  const fixedRequestId = `smoke-test-${Date.now()}`;
+  const echoedRequestId = await request({ value: "" }, "/api/health", { headers: { "x-request-id": fixedRequestId } });
+  check(
+    "request id recebido por header e reutilizado (nao gera um novo)",
+    echoedRequestId.headers.get("x-request-id") === fixedRequestId,
+    echoedRequestId.headers.get("x-request-id")
+  );
+
+  const malformedJsonAttempt = await request({ value: "" }, "/api/auth/login", {
+    method: "POST",
+    body: "{ isto nao e um json valido"
+  });
+  const malformedJsonText = JSON.stringify(malformedJsonAttempt.body);
+  check(
+    "erro inesperado (JSON invalido) retorna resposta consistente sem stack trace",
+    malformedJsonAttempt.status === 500 &&
+      malformedJsonAttempt.body?.error === "INTERNAL_ERROR" &&
+      !malformedJsonText.includes("SyntaxError") &&
+      !malformedJsonText.includes(".ts:") &&
+      !malformedJsonText.includes("at Object"),
+    malformedJsonAttempt.body
+  );
+
+  const userTriesMetrics = await request(jarA, "/api/admin/metrics");
+  check("usuario comum nao acessa metricas administrativas (403)", userTriesMetrics.status === 403, userTriesMetrics.body);
+
+  const metricsBefore = await request(jarAdmin, "/api/admin/metrics");
+  const totalRequestsBefore: number = metricsBefore.body?.data?.totalRequests ?? 0;
+  await request({ value: "" }, "/api/health");
+  await request({ value: "" }, "/api/health");
+  const metricsAfter = await request(jarAdmin, "/api/admin/metrics");
+  const totalRequestsAfter: number = metricsAfter.body?.data?.totalRequests ?? 0;
+  check(
+    "metricas basicas registram requests (contador cresce)",
+    metricsBefore.status === 200 && metricsAfter.status === 200 && totalRequestsAfter > totalRequestsBefore,
+    { totalRequestsBefore, totalRequestsAfter }
+  );
+
+  const adminSystemObservabilityPage = await request(jarAdmin, "/admin/system");
+  check(
+    "/admin/system mostra feature flags, health/ready, metricas e configuracao publica",
+    adminSystemObservabilityPage.status === 200 &&
+      String(adminSystemObservabilityPage.body).includes("Feature flags") &&
+      String(adminSystemObservabilityPage.body).includes("Metricas basicas") &&
+      String(adminSystemObservabilityPage.body).includes("Configuracao publica"),
+    adminSystemObservabilityPage.status
   );
 
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });

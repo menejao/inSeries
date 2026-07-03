@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { searchProvider } from "@/lib/discovery/provider";
 import { searchPublicLists, searchPublicReviews, searchUsers } from "@/lib/discovery/search";
+import { withApiObservability } from "@/lib/http/api-handler";
+import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 
 const VALID_TYPES = ["series", "users", "lists", "reviews", "all"] as const;
 type SearchType = (typeof VALID_TYPES)[number];
 
-export async function GET(request: Request) {
+async function searchHandler(request: Request) {
+  const rateLimit = checkRateLimit("search", getClientIdentifier(request));
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim() || undefined;
   const typeParam = searchParams.get("type") ?? "series";
@@ -38,3 +45,5 @@ export async function GET(request: Request) {
 
   return NextResponse.json({ data, type, q: q ?? null });
 }
+
+export const GET = withApiObservability("search", searchHandler);

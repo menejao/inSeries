@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAdminApiUser } from "@/lib/admin/rbac";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { syncExistingSeriesDetails, syncPopularSeries } from "@/lib/catalog/sync";
+import { withApiObservability } from "@/lib/http/api-handler";
+import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 
 const SYNC_HANDLERS = {
   popular: () => syncPopularSeries({ pages: 1 }),
@@ -14,10 +16,15 @@ function isValidType(value: string): value is SyncTypeParam {
   return value in SYNC_HANDLERS;
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ type: string }> }) {
+async function triggerHandler(request: Request, { params }: { params: Promise<{ type: string }> }) {
   const admin = await getAdminApiUser("admin.sync");
   if (!admin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const rateLimit = checkRateLimit("sync", getClientIdentifier(request));
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
   const { type } = await params;
@@ -38,3 +45,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ typ
 
   return NextResponse.json({ ok: true, summary });
 }
+
+export const POST = withApiObservability("admin.sync.trigger", triggerHandler);

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { markNotificationRead } from "@/lib/notifications/service";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function readHandler(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -17,3 +18,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApiObservability("notifications.read", readHandler);

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { addListItem } from "@/lib/social/lists";
 import { addListItemSchema } from "@/lib/social/validation";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function addItemHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -26,3 +27,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   return NextResponse.json({ data: result.item }, { status: 201 });
 }
+
+export const POST = withApiObservability("lists.items.add", addItemHandler);

@@ -1,14 +1,15 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getApiUser } from "@/lib/auth/server";
 import { toggleEpisodeProgress } from "@/lib/progress/mutations";
+import { withApiObservability } from "@/lib/http/api-handler";
 
 const progressSchema = z.object({
   episodeId: z.string().min(1),
   watched: z.boolean()
 });
 
-export async function POST(request: Request) {
+async function progressHandler(request: Request) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -28,3 +29,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ data: progress });
 }
+
+export const POST = withApiObservability("episodes.progress", progressHandler);

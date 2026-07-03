@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { importSeriesFromTmdb } from "@/lib/catalog/repository";
 import { TmdbConfigurationError } from "@/lib/tmdb/service";
+import { withApiObservability } from "@/lib/http/api-handler";
 
 const payloadSchema = z.object({
   tmdbId: z.string().min(1)
 });
 
-export async function POST(request: Request) {
+async function importHandler(request: Request) {
   const body = await request.json();
   const parsed = payloadSchema.safeParse(body);
 
@@ -26,3 +27,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "catalog_import_failed" }, { status: 500 });
   }
 }
+
+export const POST = withApiObservability("catalog.import", importHandler);

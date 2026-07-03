@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { countUnreadNotifications, listNotifications } from "@/lib/notifications/service";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function GET() {
+async function listHandler() {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -12,3 +13,5 @@ export async function GET() {
 
   return NextResponse.json({ data: { items, unreadCount } });
 }
+
+export const GET = withApiObservability("notifications.list", listHandler);

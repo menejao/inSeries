@@ -1,4 +1,4 @@
-import { getTmdbBaseUrl, getTmdbCredentials, getTmdbLanguage } from "@/lib/env";
+import { getTmdbBaseUrl, getTmdbCredentials, getTmdbLanguage } from "@/lib/config";
 import type {
   TmdbEpisodeDetails,
   TmdbListSeriesItem,

@@ -1,6 +1,8 @@
 import type { CatalogSyncStatus, CatalogSyncType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { getTmdbCredentials } from "@/lib/env";
+import { getTmdbCredentials } from "@/lib/config";
+import { incrementSyncStarted } from "@/lib/metrics/service";
+import { logger } from "@/lib/logger";
 import { normalizeTmdbSeries } from "@/lib/catalog/normalize";
 import { upsertNormalizedSeriesWithCounts, type CatalogUpsertCounts } from "@/lib/catalog/repository";
 import {
@@ -57,7 +59,9 @@ function describeError(error: unknown): string {
 }
 
 async function createRun(type: CatalogSyncType) {
-  return prisma.catalogSyncRun.create({ data: { source: "TMDB", type, status: "RUNNING" } });
+  const run = await prisma.catalogSyncRun.create({ data: { source: "TMDB", type, status: "RUNNING" } });
+  incrementSyncStarted();
+  return run;
 }
 
 /**
@@ -108,13 +112,17 @@ async function finishRun(
     }
   });
 
-  console.log(
-    `[catalog-sync] type=${type} status=${status} duration=${finishedAt.getTime() - startedAt.getTime()}ms ` +
-      `series(+${counts.importedSeriesCount}/~${counts.updatedSeriesCount}) ` +
-      `seasons(+${counts.importedSeasonCount}/~${counts.updatedSeasonCount}) ` +
-      `episodes(+${counts.importedEpisodeCount}/~${counts.updatedEpisodeCount}) ` +
-      `errors=${errors.length}`
-  );
+  logger.info("catalog_sync_finished", {
+    route: "catalog.sync",
+    metadata: {
+      runId,
+      type,
+      status,
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      counts,
+      errorCount: errors.length
+    }
+  });
 
   return {
     ...counts,
@@ -135,7 +143,7 @@ async function abortRunUnconfigured(runId: string, type: CatalogSyncType, starte
     where: { id: runId },
     data: { status: "FAILED", finishedAt: new Date(), errorMessage: message }
   });
-  console.error(`[catalog-sync] type=${type} status=FAILED reason=tmdb_not_configured`);
+  logger.warn("catalog_sync_unconfigured", { route: "catalog.sync", metadata: { runId, type } });
 
   return {
     ...emptyCounts(),

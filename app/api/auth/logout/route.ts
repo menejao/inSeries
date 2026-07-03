@@ -1,7 +1,8 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/session";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function POST() {
+async function logoutHandler() {
   const response = NextResponse.json({ ok: true, next: "/login" });
   response.cookies.set(SESSION_COOKIE, "", {
     ...getSessionCookieOptions(),
@@ -9,3 +10,5 @@ export async function POST() {
   });
   return response;
 }
+
+export const POST = withApiObservability("auth.logout", logoutHandler);

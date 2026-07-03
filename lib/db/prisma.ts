@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { config } from "@/lib/config";
 
 declare global {
   var __inSeriesPrisma: PrismaClient | undefined;
@@ -7,9 +8,9 @@ declare global {
 export const prisma =
   globalThis.__inSeriesPrisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"]
+    log: config.app.isProduction ? ["error"] : ["warn", "error"]
   });
 
-if (process.env.NODE_ENV !== "production") {
+if (!config.app.isProduction) {
   globalThis.__inSeriesPrisma = prisma;
 }

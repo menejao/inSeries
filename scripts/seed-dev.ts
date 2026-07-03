@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
+import { seedInitialSystemSettings } from "@/lib/system-settings/service";
 
 type EpisodeSeed = {
   number: number;
@@ -245,6 +246,9 @@ async function main() {
     const series = await seedSeries(seed);
     console.log(`Serie seedada: ${series.title} (${series.id})`);
   }
+
+  await seedInitialSystemSettings();
+  console.log("Configuracoes iniciais do sistema (SystemSetting) seedadas.");
 
   console.log(
     "Seed dev concluido: 5 series cobrindo os 5 status do catalogo (RETURNING, ENDED, CANCELED, IN_PRODUCTION, PILOT), anos de 2016 a " +

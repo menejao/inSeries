@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { createList } from "@/lib/social/lists";
 import { createListSchema } from "@/lib/social/validation";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function POST(request: Request) {
+async function createListHandler(request: Request) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -19,3 +20,5 @@ export async function POST(request: Request) {
   const list = await createList(user.id, payload.data);
   return NextResponse.json({ data: list }, { status: 201 });
 }
+
+export const POST = withApiObservability("lists.create", createListHandler);

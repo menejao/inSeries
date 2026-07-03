@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { deleteReview, upsertReview } from "@/lib/social/reviews";
 import { reviewSchema } from "@/lib/social/validation";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function postHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -25,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ data: result.review });
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function deleteHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -35,3 +36,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   await deleteReview(user.id, id);
   return NextResponse.json({ data: { ok: true } });
 }
+
+export const POST = withApiObservability("series.reviews.upsert", postHandler);
+export const DELETE = withApiObservability("series.reviews.delete", deleteHandler);

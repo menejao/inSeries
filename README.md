@@ -335,6 +335,78 @@ npm run seed:admin
 
 Cria/atualiza um usuario fixo `admin@inseries.dev` / senha `admin12345` com `role: ADMIN`, usado tambem pelo smoke test.
 
+## Observabilidade e configuracao
+
+Fundacao operacional do inSeries: configuracao centralizada, feature flags, health checks, logs estruturados, request id, metricas basicas, tratamento de erros e rate limit preparado. Nao adiciona funcionalidade nova para o usuario final — prepara a plataforma para operacao continua e futuras integracoes (Prometheus/OpenTelemetry, Sentry, etc.), sem implementa-las ainda.
+
+### Configuracao centralizada (`lib/config`)
+
+- `lib/config/index.ts` e o unico ponto de leitura de `process.env` da aplicacao (as excecoes documentadas em `lib/auth/session.ts`/`lib/db/prisma.ts` sao sobre o proprio `config`, nunca sobre `process.env` bruto)
+- Agrupa: `app` (nome, versao — lida de `package.json`, ambiente), `urls`, `auth` (segredo, TTL/nome do cookie de sessao), `database`, `tmdb`, `pagination`, `uploads` (preparado, sem feature de upload ainda), `notifications`, `pwa`, `rateLimit`, `logging` e `featureFlags`
+- Substituiu o antigo `lib/env.ts`; as funcoes `getTmdbCredentials`/`getTmdbBaseUrl`/`getTmdbLanguage` continuam existindo (agora em `lib/config`) para nao quebrar `lib/tmdb/service.ts` e `lib/catalog/sync.ts`
+- `getPublicConfig()` retorna um subconjunto seguro (nunca inclui `auth.secret`, `database.url` ou chaves do TMDb) usado pelo `/admin/system`
+- Valores de ambiente vazios (`TMDB_API_KEY=""`) sao tratados como "nao definido", nunca como erro de validacao — um unico env var vazio nao derruba a configuracao inteira
+
+### Feature flags (`lib/config/flags.ts`)
+
+- Flags: `recommendations`, `tvtimeImport`, `notifications`, `adminWorkspace`, `calendar`, `reviews`, `lists`, `feed`, `experimentalSearch`
+- Hoje sao 100% baseadas em variaveis de ambiente (`FEATURE_*`, ex: `FEATURE_RECOMMENDATIONS=true`); `recommendations`, `tvtimeImport` e `experimentalSearch` vem desligadas por padrao (ainda nao implementadas), as demais vem ligadas (recursos ja existentes)
+- `isFeatureEnabled(flag)` e `getAllFeatureFlags()` podem ser chamados em qualquer camada (server component, API route, script)
+- Arquitetura preparada para trocar a fonte por `SystemSetting`/banco no futuro: `FeatureFlagSource` e uma interface; a implementacao atual (`ConfigFeatureFlagSource`) e so uma das possiveis
+
+### Health e readiness
+
+- `GET /api/health`: liveness — sempre rapido, nunca toca o banco. Retorna `status`, `version`, `environment`, `timestamp`
+- `GET /api/ready`: readiness — valida configuracao minima (`DATABASE_URL` definido) e conectividade real com o banco (`SELECT 1`). Retorna `200` com `status: "ready"` quando tudo esta ok, ou `503` com `status: "not_ready"` e o detalhe de qual `check` falhou
+- Ambos compartilham a logica de `lib/health/service.ts`, reaproveitada tambem pelo `/admin/system`
+
+### Logs estruturados (`lib/logger`)
+
+- `logger.debug/info/warn/error(message, context)` grava uma linha JSON por evento: `timestamp`, `level`, `message`, `requestId`, `userId` (quando disponivel), `route`, `metadata`
+- Nunca registra senha, token, cookie ou API key: qualquer chave de `metadata` que combine com esse padrao e substituida por `"[redacted]"` recursivamente antes de logar
+- Nivel minimo configuravel via `LOG_LEVEL` (padrao `debug` fora de producao, `info` em producao)
+
+### Request ID
+
+- Todo request que passa pelo `middleware.ts` (matcher cobre a aplicacao inteira, exceto assets estaticos) recebe um `x-request-id`: reaproveita o header `x-request-id` se o cliente/proxy ja mandou um, ou gera um `crypto.randomUUID()`
+- Propagado para: o header da resposta (visivel em qualquer chamada HTTP), os logs estruturados de cada rota (via `withApiObservability`) e a resposta de erro centralizada
+
+### Metricas basicas (`lib/metrics/service.ts`)
+
+- Contadores em memoria (processo unico, reiniciam a cada deploy/restart — nada e persistido): total de requests, tempo medio de resposta, erros 4xx/5xx, logins, cadastros, syncs iniciados, notificacoes criadas, atividades criadas
+- Alimentados automaticamente por `withApiObservability` (todas as rotas `/api/*`) e por pontos de negocio especificos (`recordActivity`, `createNotification`, `createRun` do catalogo)
+- Expostos em `GET /api/admin/metrics` (JSON, protegido por `admin.system`) e na pagina `/admin/system` — o endpoint JSON e o ponto de extensao pensado para uma futura integracao com Prometheus/OpenTelemetry
+
+### Tratamento centralizado de erros (`lib/errors`)
+
+- Classes: `ValidationError`, `AuthenticationError`, `AuthorizationError`, `NotFoundError`, `DatabaseError`, `ExternalServiceError` (todas extendem `AppError`, com `code`+`status` HTTP)
+- `toErrorResponse(error)` mapeia qualquer excecao (incluindo erros do Prisma e do cliente TMDb) para uma resposta JSON consistente (`{ error, message }`) — nunca inclui stack trace
+- Usado como rede de seguranca dentro de `withApiObservability`: se uma rota lancar uma excecao nao tratada, a resposta ao cliente continua consistente em vez de vazar detalhes internos ou derrubar o processo. As respostas de validacao/negocio que cada rota ja retornava explicitamente (`{ error: "invalid_payload" }`, etc.) continuam do jeito que estavam
+
+### Rate limit preparado (`lib/rate-limit`)
+
+- Limitador em memoria (janela fixa) para os buckets `login`, `register`, `search`, `sync` e `admin`
+- **Desligado por padrao** (`RATE_LIMIT_ENABLED=true` liga); enquanto desligado, `checkRateLimit` sempre permite — inclusive o smoke test dispara dezenas de logins/cadastros sem risco de ser bloqueado
+- Ja integrado nas rotas de login, registro, busca, disparo de sync e moderacao administrativa — falta apenas ligar a flag e (se for para producao multi-instancia) trocar o estado em memoria por um store compartilhado (Redis)
+
+### System Settings (`SystemSetting`)
+
+- Entidade Prisma preparada para configuracao editável pelo admin no futuro: `key` (unico), `value` (JSON), `description`, `public`, `updatedAt`
+- Somente leitura/seed nesta sprint — sem UI de edicao ainda. `lib/system-settings/service.ts` expõe `listSystemSettings`, `listPublicSystemSettings`, `getSystemSetting`, `seedInitialSystemSettings`
+- `npm run seed:dev` semeia 3 valores de exemplo (`app.maintenance_mode`, `app.announcement`, `catalog.max_popular_sync_pages`), visiveis em `/admin/system`
+
+### `/admin/system` (Fase 11)
+
+Alem das informacoes ja existentes (versao, ambiente, Prisma, banco, migrations, Node), a pagina agora mostra: feature flags (ligada/desligada), status de health e ready (com o detalhe de cada check), metricas basicas e configuracao publica (URL da app, paginacao padrao, TMDb configurado, rate limit ativo) e a tabela de `SystemSetting`. Somente leitura — sem edicao nesta sprint.
+
+### Limitacoes atuais e proximos passos
+
+- Sem Prometheus, Grafana, OpenTelemetry, Sentry, Datadog ou CloudWatch — os pontos de extensao (`lib/metrics/service.ts`, `GET /api/admin/metrics`) foram desenhados para plugar essas integracoes depois
+- Metricas e rate limit sao em memoria, por processo — não sobrevivem a restart nem sao compartilhados entre instancias; produção multi-instância precisaria de um store compartilhado (Redis)
+- `SystemSetting` ainda nao tem UI de edicao pelo admin
+- Rate limit existe mas fica desligado por padrao — ativa-lo em produção é so definir `RATE_LIMIT_ENABLED=true`
+- Sem deploy automatico, sem digest/alertas baseados nas metricas
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:
@@ -362,7 +434,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 15. feed de atividades: geracao de atividade ao seguir usuario, marcar episodio, criar review e criar lista publica; confirmacao de que desmarcar episodio nao gera atividade duplicada; feed pessoal mostrando atividades de quem se segue; feed global mostrando atividades publicas; perfil privado deixando de aparecer no feed global e no feed pessoal de terceiros; `/me` continuando a mostrar a propria atividade mesmo com o perfil privado;
 16. logout e confirmacao de que a sessao foi invalidada;
 17. notificacoes: seguir gera `FOLLOWED_YOU`; review publica de quem se segue gera `REVIEW_FROM_FOLLOWING` e review privada nao gera notificacao adicional; lista publica de quem se segue gera `LIST_FROM_FOLLOWING` e lista privada nao gera notificacao adicional; concluir uma serie gera `SERIES_COMPLETED` para o proprio usuario; contador de nao lidas, marcar uma como lida e marcar todas como lidas; usuario nao consegue ler/alterar notificacao de outro (403); `/notifications` exige sessao (redireciona convidado); script `notifications:episodes` roda duas vezes seguidas sem duplicar notificacoes;
-18. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`.
+18. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`;
+19. observabilidade: `/api/health` responde com status/versao/ambiente/timestamp e propaga `x-request-id`; `/api/ready` responde `ready` com banco e configuracao saudaveis (a falha do banco gerando `ready` com `503` foi validada manualmente parando o Postgres, ja que o smoke test nao derruba servicos do sistema); um `x-request-id` recebido por header e reaproveitado em vez de substituido; um payload JSON invalido gera uma resposta consistente (`INTERNAL_ERROR`, sem stack trace); `/api/admin/metrics` bloqueia usuario comum (403) e o contador de requests cresce a cada chamada; `/admin/system` mostra feature flags, health/ready e metricas.
 
 ## Comandos
 

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { createNotification } from "@/lib/notifications/service";
+import { incrementNotificationsCreated } from "@/lib/metrics/service";
 
 /** Fires once, right after a new Follow row is created (never on a repeat/duplicate follow). */
 export async function notifyUserFollowed(followerId: string, followingId: string) {
@@ -49,6 +50,7 @@ export async function notifyFollowersOfPublicReview(authorId: string, reviewId: 
       reviewId
     }))
   });
+  incrementNotificationsCreated(followers.length);
 }
 
 /** Same privacy contract as notifyFollowersOfPublicReview, gated by showLists instead of showReviews. */
@@ -76,6 +78,7 @@ export async function notifyFollowersOfPublicList(authorId: string, listId: stri
       listId
     }))
   });
+  incrementNotificationsCreated(followers.length);
 }
 
 /** Notifies the user themself; no privacy gate needed since it concerns only their own account. */

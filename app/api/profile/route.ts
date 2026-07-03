@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { profileUpdateSchema } from "@/lib/social/validation";
+import { withApiObservability } from "@/lib/http/api-handler";
 
-export async function PATCH(request: Request) {
+async function profileHandler(request: Request) {
   const user = await getApiUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -50,3 +51,5 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ data: updated });
 }
+
+export const PATCH = withApiObservability("profile.update", profileHandler);

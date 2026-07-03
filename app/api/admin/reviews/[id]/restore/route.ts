@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { getAdminApiUser } from "@/lib/admin/rbac";
 import { restoreReview } from "@/lib/admin/moderation";
+import { withApiObservability } from "@/lib/http/api-handler";
+import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function restoreHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await getAdminApiUser("admin.reviews");
   if (!admin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const rateLimit = checkRateLimit("admin", getClientIdentifier(request));
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
   const { id } = await params;
@@ -17,3 +24,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApiObservability("admin.reviews.restore", restoreHandler);

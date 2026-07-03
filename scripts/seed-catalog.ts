@@ -1,4 +1,4 @@
-import { getTmdbCredentials } from "@/lib/env";
+import { getTmdbCredentials } from "@/lib/config";
 import { canUseDatabase } from "@/lib/db/health";
 import { importPopularSeriesToCatalog } from "@/lib/catalog/repository";
 
