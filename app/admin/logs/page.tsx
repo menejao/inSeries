@@ -1,9 +1,13 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { getRecentAuditLogs } from "@/lib/admin/audit";
 import { formatDate } from "@/lib/utils";
+
+const resultVariant = { SUCCESS: "success", FAILURE: "danger", REJECTED: "warning" } as const;
 
 export default async function AdminLogsPage() {
   await requireAdminUser("admin.read");
@@ -11,41 +15,40 @@ export default async function AdminLogsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Logs de auditoria</h1>
-      </div>
+      <AdminPageHeader title="Logs de auditoria" description="Historico de acoes administrativas." />
 
       {logs.length === 0 ? (
         <EmptyState title="Nenhum registro ainda" copy="Acoes administrativas aparecerao aqui." />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2">Admin</th>
-                <th className="px-3 py-2">Acao</th>
-                <th className="px-3 py-2">Entidade</th>
-                <th className="px-3 py-2">Id</th>
-                <th className="px-3 py-2">Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr key={log.id} className="border-t border-white/5">
-                  <td className="px-3 py-2 text-slate-300">{formatDate(log.createdAt)}</td>
-                  <td className="px-3 py-2 text-slate-300">@{log.adminUser.username}</td>
-                  <td className="px-3 py-2 font-medium text-ink">{log.action}</td>
-                  <td className="px-3 py-2 text-slate-300">{log.entity}</td>
-                  <td className="px-3 py-2 text-slate-300">{log.entityId ?? "-"}</td>
-                  <td className="px-3 py-2">
-                    <Badge>{log.result}</Badge>
-                  </td>
+        <Card padding="none">
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <tr>
+                  <Th>Data</Th>
+                  <Th>Admin</Th>
+                  <Th>Acao</Th>
+                  <Th>Entidade</Th>
+                  <Th>Id</Th>
+                  <Th>Resultado</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </TableHead>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow key={log.id}>
+                    <Td className="text-muted">{formatDate(log.createdAt)}</Td>
+                    <Td className="text-muted">@{log.adminUser.username}</Td>
+                    <Td className="font-medium">{log.action}</Td>
+                    <Td className="text-muted">{log.entity}</Td>
+                    <Td className="text-muted">{log.entityId ?? "-"}</Td>
+                    <Td>
+                      <Badge variant={resultVariant[log.result as keyof typeof resultVariant] ?? "default"}>{log.result}</Badge>
+                    </Td>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Card>
       )}
     </div>

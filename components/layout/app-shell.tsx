@@ -9,7 +9,9 @@ export function AppShell({ children }: PropsWithChildren) {
       <div className="shell">
         <Header />
         <Navbar />
-        <main className="mt-8">{children}</main>
+        <main id="main-content" className="mt-6 lg:mt-8">
+          {children}
+        </main>
       </div>
       <BottomNav />
     </>

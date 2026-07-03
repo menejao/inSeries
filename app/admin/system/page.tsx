@@ -2,6 +2,8 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { canUseDatabase } from "@/lib/db/health";
 import { config, getPublicConfig } from "@/lib/config";
@@ -71,27 +73,24 @@ export default async function AdminSystemPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Sistema</h1>
-      </div>
+      <AdminPageHeader title="Sistema" description="Configuracao, saude e metricas da aplicacao." />
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-slate-300">Status do banco:</span>
-          <Badge>{dbOnline ? "Online" : "Indisponivel"}</Badge>
-          <span className="text-sm text-slate-300">Health:</span>
-          <Badge>{health.status}</Badge>
-          <span className="text-sm text-slate-300">Ready:</span>
-          <Badge>{ready.status}</Badge>
+          <span className="text-sm text-muted">Status do banco:</span>
+          <Badge variant={dbOnline ? "success" : "danger"}>{dbOnline ? "Online" : "Indisponivel"}</Badge>
+          <span className="text-sm text-muted">Health:</span>
+          <Badge variant={health.status === "ok" ? "success" : "danger"}>{health.status}</Badge>
+          <span className="text-sm text-muted">Ready:</span>
+          <Badge variant={ready.status === "ready" ? "success" : "danger"}>{ready.status}</Badge>
         </div>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-subtle">
           Ready checks: configuracao={String(ready.checks.configuration)}, banco={String(ready.checks.database)}
         </p>
         <dl className="grid gap-3 sm:grid-cols-2">
           {infoRows.map((row) => (
-            <div key={row.label} className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-              <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">{row.label}</dt>
+            <div key={row.label} className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-subtle">{row.label}</dt>
               <dd className="mt-1 text-sm font-medium text-ink">{row.value}</dd>
             </div>
           ))}
@@ -102,7 +101,7 @@ export default async function AdminSystemPage() {
         <h2 className="text-lg font-semibold text-ink">Feature flags</h2>
         <div className="flex flex-wrap gap-2">
           {Object.entries(featureFlags).map(([flag, enabled]) => (
-            <Badge key={flag} className={enabled ? undefined : "opacity-50"}>
+            <Badge key={flag} variant={enabled ? "success" : "default"}>
               {flag}: {enabled ? "on" : "off"}
             </Badge>
           ))}
@@ -111,11 +110,11 @@ export default async function AdminSystemPage() {
 
       <Card className="space-y-3">
         <h2 className="text-lg font-semibold text-ink">Metricas basicas</h2>
-        <p className="text-xs text-slate-400">Em memoria desde {new Date(metrics.startedAt).toLocaleString("pt-BR")}. Reinicia a cada deploy/restart.</p>
+        <p className="text-xs text-subtle">Em memoria desde {new Date(metrics.startedAt).toLocaleString("pt-BR")}. Reinicia a cada deploy/restart.</p>
         <dl className="grid gap-3 sm:grid-cols-3">
           {metricRows.map((row) => (
-            <div key={row.label} className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-              <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">{row.label}</dt>
+            <div key={row.label} className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-subtle">{row.label}</dt>
               <dd className="mt-1 text-sm font-medium text-ink">{row.value}</dd>
             </div>
           ))}
@@ -125,52 +124,54 @@ export default async function AdminSystemPage() {
       <Card className="space-y-3">
         <h2 className="text-lg font-semibold text-ink">Configuracao publica</h2>
         <dl className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">URL da aplicacao</dt>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">URL da aplicacao</dt>
             <dd className="mt-1 text-sm font-medium text-ink">{publicConfig.urls.appUrl}</dd>
           </div>
-          <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">Paginacao padrao</dt>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Paginacao padrao</dt>
             <dd className="mt-1 text-sm font-medium text-ink">
               {publicConfig.pagination.defaultPageSize} (max {publicConfig.pagination.maxPageSize})
             </dd>
           </div>
-          <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">TMDb configurado</dt>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">TMDb configurado</dt>
             <dd className="mt-1 text-sm font-medium text-ink">{publicConfig.tmdbConfigured ? "Sim" : "Nao"}</dd>
           </div>
-          <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-3">
-            <dt className="text-xs uppercase tracking-[0.2em] text-slate-400">Rate limit ativo</dt>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Rate limit ativo</dt>
             <dd className="mt-1 text-sm font-medium text-ink">{publicConfig.rateLimit.enabled ? "Sim" : "Nao (preparado)"}</dd>
           </div>
         </dl>
       </Card>
 
-      <Card>
-        <h2 className="text-lg font-semibold text-ink">System settings</h2>
+      <Card padding={systemSettings.length ? "none" : "md"}>
+        <h2 className="p-5 pb-0 text-lg font-semibold text-ink">System settings</h2>
         {systemSettings.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-300">Nenhuma configuracao registrada.</p>
+          <p className="p-5 pt-2 text-sm text-muted">Nenhuma configuracao registrada.</p>
         ) : (
-          <table className="mt-3 w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Chave</th>
-                <th className="px-3 py-2">Valor</th>
-                <th className="px-3 py-2">Descricao</th>
-                <th className="px-3 py-2">Publica</th>
-              </tr>
-            </thead>
-            <tbody>
-              {systemSettings.map((setting) => (
-                <tr key={setting.id} className="border-t border-white/5">
-                  <td className="px-3 py-2 font-medium text-ink">{setting.key}</td>
-                  <td className="px-3 py-2 text-slate-300">{JSON.stringify(setting.value)}</td>
-                  <td className="px-3 py-2 text-slate-300">{setting.description ?? "-"}</td>
-                  <td className="px-3 py-2 text-slate-300">{setting.public ? "Sim" : "Nao"}</td>
+          <TableContainer className="mt-3">
+            <Table>
+              <TableHead>
+                <tr>
+                  <Th>Chave</Th>
+                  <Th>Valor</Th>
+                  <Th>Descricao</Th>
+                  <Th>Publica</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </TableHead>
+              <TableBody>
+                {systemSettings.map((setting) => (
+                  <TableRow key={setting.id}>
+                    <Td className="font-medium">{setting.key}</Td>
+                    <Td className="text-muted">{JSON.stringify(setting.value)}</Td>
+                    <Td className="text-muted">{setting.description ?? "-"}</Td>
+                    <Td className="text-muted">{setting.public ? "Sim" : "Nao"}</Td>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
       </Card>
     </div>

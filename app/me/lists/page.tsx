@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListCreateForm } from "@/components/social/list-create-form";
+import { MeTabs } from "@/components/me/me-tabs";
+import { ListIcon } from "@/components/ui/icons";
 import { requireUser } from "@/lib/auth/server";
 import { listUserLists } from "@/lib/social/lists";
 import { formatDate } from "@/lib/utils";
@@ -14,35 +16,34 @@ export default async function MyListsPage() {
   return (
     <div className="space-y-6">
       <div>
+        <p className="eyebrow">Minha area</p>
         <h1 className="section-title">Minhas listas</h1>
         <p className="section-copy">Crie, edite e organize suas listas de series.</p>
       </div>
+      <MeTabs active="/me/lists" />
 
       <ListCreateForm />
 
-      <div className="space-y-3">
-        {lists.length ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {lists.map((list) => (
-              <Card key={list.id}>
+      {lists.length ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {lists.map((list) => (
+            <Link key={list.id} href={`/lists/${list.id}`}>
+              <Card interactive className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Link href={`/lists/${list.id}`} className="text-lg font-semibold text-ink">
-                    {list.title}
-                  </Link>
-                  <Badge>{list.visibility === "PUBLIC" ? "Publica" : "Privada"}</Badge>
+                  <p className="text-lg font-semibold text-ink">{list.title}</p>
+                  <Badge variant={list.visibility === "PUBLIC" ? "secondary" : "default"}>
+                    {list.visibility === "PUBLIC" ? "Publica" : "Privada"}
+                  </Badge>
                 </div>
-                <p className="mt-1 text-sm text-slate-300">{list._count.items} series</p>
-                <p className="mt-1 text-xs text-slate-400">Atualizada em {formatDate(list.updatedAt)}</p>
-                <Link href={`/lists/${list.id}`} className="mt-4 inline-block text-sm font-semibold text-amber-200">
-                  Editar / gerenciar
-                </Link>
+                <p className="text-sm text-muted">{list._count.items} serie(s)</p>
+                <p className="text-xs text-subtle">Atualizada em {formatDate(list.updatedAt)}</p>
               </Card>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="Nenhuma lista criada" copy="Use o formulario acima para criar sua primeira lista." />
-        )}
-      </div>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={<ListIcon className="h-6 w-6" />} title="Nenhuma lista criada" copy="Use o formulario acima para criar sua primeira lista." />
+      )}
     </div>
   );
 }

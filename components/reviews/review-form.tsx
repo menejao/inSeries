@@ -1,11 +1,35 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StarIcon } from "@/components/ui/icons";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
+
+function StarRating({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Nota" className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          role="radio"
+          aria-checked={value === star}
+          aria-label={`${star} ${star === 1 ? "estrela" : "estrelas"}`}
+          onClick={() => onChange(star)}
+          className="rounded-full p-0.5 transition active:scale-90"
+        >
+          <StarIcon className={cn("h-7 w-7 transition", star <= value ? "fill-current text-warning-text" : "text-border-strong")} />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function ReviewForm({
   seriesId,
@@ -17,19 +41,20 @@ export function ReviewForm({
   initialReview: { rating: number; body: string; visibility: "PUBLIC" | "PRIVATE" | "FOLLOWERS" } | null;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
+  const bodyId = useId();
   const [rating, setRating] = useState(initialReview?.rating ?? 5);
   const [body, setBody] = useState(initialReview?.body ?? "");
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">(
     initialReview?.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC"
   );
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   if (!authenticated) {
     return (
       <Card>
-        <p className="text-sm text-slate-300">Entre para escrever uma review.</p>
+        <p className="text-sm text-muted">Entre para escrever uma review.</p>
       </Card>
     );
   }
@@ -41,8 +66,6 @@ export function ReviewForm({
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
-          setError(null);
-          setSuccess(null);
 
           startTransition(async () => {
             const response = await fetch(`/api/series/${seriesId}/reviews`, {
@@ -54,67 +77,72 @@ export function ReviewForm({
             const result = (await response.json().catch(() => ({}))) as { error?: string };
 
             if (!response.ok) {
-              setError(result.error ?? "request_failed");
+              toast({ title: "Erro ao salvar review", description: result.error, variant: "error" });
               return;
             }
 
-            setSuccess("Review salva.");
+            toast({ title: "Review salva", variant: "success" });
             router.refresh();
           });
         }}
       >
-        <label className="block space-y-1 text-sm text-slate-300">
-          Nota
-          <Select value={rating} onChange={(event) => setRating(Number(event.target.value))}>
-            {[1, 2, 3, 4, 5].map((value) => (
-              <option key={value} value={value}>
-                {value} {value === 1 ? "estrela" : "estrelas"}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Textarea
-          placeholder="O que achou da serie?"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          minLength={1}
-          maxLength={2000}
-          required
-        />
-        <Select value={visibility} onChange={(event) => setVisibility(event.target.value as "PUBLIC" | "PRIVATE")}>
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-ink">Nota</p>
+          <StarRating value={rating} onChange={setRating} />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor={bodyId} className="text-sm font-medium text-ink">
+            Sua avaliacao
+          </label>
+          <Textarea
+            id={bodyId}
+            placeholder="O que achou da serie?"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            minLength={1}
+            maxLength={2000}
+            required
+          />
+        </div>
+        <Select value={visibility} onChange={(event) => setVisibility(event.target.value as "PUBLIC" | "PRIVATE")} aria-label="Visibilidade da review">
           <option value="PUBLIC">Publica</option>
           <option value="PRIVATE">Somente eu</option>
         </Select>
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Salvando..." : initialReview ? "Atualizar review" : "Publicar review"}
+          <Button type="submit" disabled={isPending} loading={isPending}>
+            {initialReview ? "Atualizar review" : "Publicar review"}
           </Button>
           {initialReview ? (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isPending}
-              onClick={() => {
-                setError(null);
-                startTransition(async () => {
-                  const response = await fetch(`/api/series/${seriesId}/reviews`, { method: "DELETE" });
-                  if (!response.ok) {
-                    setError("request_failed");
-                    return;
-                  }
-                  setBody("");
-                  setRating(5);
-                  router.refresh();
-                });
-              }}
-            >
+            <Button type="button" variant="secondary" disabled={isPending} onClick={() => setConfirmingDelete(true)}>
               Apagar review
             </Button>
           ) : null}
         </div>
-        {error ? <p className="text-sm text-rose-300">Erro: {error}</p> : null}
-        {success ? <p className="text-sm text-emerald-300">{success}</p> : null}
       </form>
+      <ConfirmDialog
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() => {
+          startTransition(async () => {
+            const response = await fetch(`/api/series/${seriesId}/reviews`, { method: "DELETE" });
+            if (!response.ok) {
+              toast({ title: "Erro ao apagar review", variant: "error" });
+              setConfirmingDelete(false);
+              return;
+            }
+            setBody("");
+            setRating(5);
+            setConfirmingDelete(false);
+            toast({ title: "Review apagada", variant: "success" });
+            router.refresh();
+          });
+        }}
+        title="Apagar review?"
+        description="Essa acao nao pode ser desfeita."
+        confirmLabel="Apagar"
+        confirmVariant="danger"
+        loading={isPending}
+      />
     </Card>
   );
 }

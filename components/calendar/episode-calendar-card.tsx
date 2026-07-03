@@ -25,12 +25,12 @@ export function EpisodeCalendarCard({
     <Card className="flex flex-col gap-4 overflow-hidden p-0 sm:flex-row sm:items-stretch">
       <div className="flex h-28 shrink-0 sm:h-auto sm:w-44">
         <div
-          className="h-full w-1/2 bg-cover bg-center"
-          style={{ backgroundImage: `url(${episode.series.posterUrl || episode.series.backdropUrl || ""})` }}
+          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
+          style={{ backgroundImage: episode.series.posterUrl || episode.series.backdropUrl ? `url(${episode.series.posterUrl || episode.series.backdropUrl})` : undefined }}
         />
         <div
-          className="h-full w-1/2 bg-cover bg-center"
-          style={{ backgroundImage: `url(${episode.stillUrl || episode.series.backdropUrl || ""})` }}
+          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
+          style={{ backgroundImage: episode.stillUrl || episode.series.backdropUrl ? `url(${episode.stillUrl || episode.series.backdropUrl})` : undefined }}
         />
       </div>
       <div className="flex flex-1 flex-col gap-2 p-5 sm:p-4">
@@ -38,15 +38,15 @@ export function EpisodeCalendarCard({
           <Link href={`/series/${episode.series.slug}`} className="font-semibold text-ink">
             {episode.series.title}
           </Link>
-          <Badge>{stateLabels[episode.userState] ?? episode.userState}</Badge>
+          <Badge variant="secondary">{stateLabels[episode.userState] ?? episode.userState}</Badge>
         </div>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-muted">
           {formatEpisodeCode(episode.seasonNumber, episode.number)} · {episode.title}
         </p>
-        <p className="text-xs text-slate-400">{formatShortDate(episode.airedAt)}</p>
+        <p className="text-xs text-subtle">{formatShortDate(episode.airedAt)}</p>
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} />
-          <Link href={`/series/${episode.series.slug}`} className="text-sm font-semibold text-amber-200">
+          <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} size="sm" />
+          <Link href={`/series/${episode.series.slug}`} className="link-accent text-sm">
             Abrir serie
           </Link>
         </div>

@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { ModerationButton } from "@/components/admin/moderation-button";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { prisma } from "@/lib/db/prisma";
@@ -20,59 +22,58 @@ export default async function AdminListsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Listas</h1>
-      </div>
+      <AdminPageHeader title="Listas" description="Modere listas publicas criadas pela comunidade." />
 
       {lists.length === 0 ? (
         <EmptyState title="Nenhuma lista encontrada" copy="Ainda nao ha listas cadastradas." />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Autor</th>
-                <th className="px-3 py-2">Titulo</th>
-                <th className="px-3 py-2">Series</th>
-                <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2">Visibilidade</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {lists.map((list) => (
-                <tr key={list.id} className="border-t border-white/5">
-                  <td className="px-3 py-2 text-slate-300">@{list.user.username}</td>
-                  <td className="px-3 py-2 font-medium text-ink">{list.title}</td>
-                  <td className="px-3 py-2 text-slate-300">{list._count.items}</td>
-                  <td className="px-3 py-2 text-slate-300">{formatDate(list.updatedAt)}</td>
-                  <td className="px-3 py-2">
-                    <Badge>{list.visibility}</Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {list.hiddenByAdminAt ? <Badge>Oculta pelo admin</Badge> : <span className="text-slate-400">Visivel</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {list.hiddenByAdminAt ? (
-                      <ModerationButton
-                        action="restore"
-                        endpoint={`/api/admin/lists/${list.id}/restore`}
-                        confirmMessage="Restaurar esta lista?"
-                      />
-                    ) : (
-                      <ModerationButton
-                        action="hide"
-                        endpoint={`/api/admin/lists/${list.id}/hide`}
-                        confirmMessage="Ocultar esta lista? Ela deixara de aparecer publicamente."
-                      />
-                    )}
-                  </td>
+        <Card padding="none">
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <tr>
+                  <Th>Autor</Th>
+                  <Th>Titulo</Th>
+                  <Th>Series</Th>
+                  <Th>Data</Th>
+                  <Th>Visibilidade</Th>
+                  <Th>Status</Th>
+                  <Th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </TableHead>
+              <TableBody>
+                {lists.map((list) => (
+                  <TableRow key={list.id}>
+                    <Td className="text-muted">@{list.user.username}</Td>
+                    <Td className="font-medium">{list.title}</Td>
+                    <Td className="text-muted">{list._count.items}</Td>
+                    <Td className="text-muted">{formatDate(list.updatedAt)}</Td>
+                    <Td>
+                      <Badge variant={list.visibility === "PUBLIC" ? "secondary" : "default"}>{list.visibility}</Badge>
+                    </Td>
+                    <Td>
+                      {list.hiddenByAdminAt ? <Badge variant="danger">Oculta pelo admin</Badge> : <span className="text-subtle">Visivel</span>}
+                    </Td>
+                    <Td>
+                      {list.hiddenByAdminAt ? (
+                        <ModerationButton
+                          action="restore"
+                          endpoint={`/api/admin/lists/${list.id}/restore`}
+                          confirmMessage="Restaurar esta lista?"
+                        />
+                      ) : (
+                        <ModerationButton
+                          action="hide"
+                          endpoint={`/api/admin/lists/${list.id}/hide`}
+                          confirmMessage="Ocultar esta lista? Ela deixara de aparecer publicamente."
+                        />
+                      )}
+                    </Td>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Card>
       )}
     </div>

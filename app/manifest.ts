@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Acompanhe suas series, episodio por episodio.",
     start_url: "/",
     display: "standalone",
-    background_color: "#101828",
-    theme_color: "#101828",
+    background_color: "#090d16",
+    theme_color: "#090d16",
     orientation: "portrait",
     icons: [
       {

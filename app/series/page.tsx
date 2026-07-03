@@ -1,7 +1,8 @@
 import { Filters } from "@/components/series/filters";
-import { Pagination } from "@/components/series/pagination";
+import { Pagination } from "@/components/ui/pagination";
 import { SeriesCard } from "@/components/series/series-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CompassIcon } from "@/components/ui/icons";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 
 const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating"];
@@ -31,23 +32,35 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="section-title">Catalogo de series</h1>
+        <p className="eyebrow">Catalogo</p>
+        <h1 className="section-title">Todas as series</h1>
         <p className="section-copy">
-          {result.total} serie(s) encontrada(s){params.q ? ` para "${params.q}"` : ""}.
+          {result.total} serie{result.total === 1 ? "" : "s"} encontrada{result.total === 1 ? "" : "s"}
+          {params.q ? (
+            <>
+              {" "}
+              para <span className="font-semibold text-ink">&ldquo;{params.q}&rdquo;</span>
+            </>
+          ) : null}
+          .
         </p>
       </div>
       <Filters query={params.q} genre={params.genre} status={params.status} year={params.year} sort={sort} metadata={metadata} />
       {result.items.length ? (
         <>
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {result.items.map((item) => (
               <SeriesCard key={item.id} series={item} />
             ))}
           </div>
-          <Pagination page={result.page} totalPages={result.totalPages} params={params} />
+          <Pagination page={result.page} totalPages={result.totalPages} params={params} basePath="/series" />
         </>
       ) : (
-        <EmptyState title="Nenhuma serie encontrada" copy="Ajuste os filtros ou tente outro termo de busca." />
+        <EmptyState
+          icon={<CompassIcon className="h-6 w-6" />}
+          title="Nenhuma serie encontrada"
+          copy="Ajuste os filtros ou tente outro termo de busca."
+        />
       )}
     </div>
   );

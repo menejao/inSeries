@@ -2,25 +2,120 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design tokens. Dark is the default (`:root`) since inSeries is a
+ * cinema-at-night product; light overrides live under
+ * `:root[data-theme="light"]`. Every color is an "R G B" triplet (no
+ * commas, no rgb()) so Tailwind's `rgb(var(--x) / <alpha-value>)` pattern
+ * in tailwind.config.ts can apply opacity modifiers in both themes.
+ */
 :root {
   color-scheme: dark;
+
+  --c-canvas: 9 13 22;
+  --c-surface: 17 24 38;
+  --c-surface-strong: 24 33 51;
+  --c-border: 39 51 74;
+  --c-border-strong: 58 74 103;
+
+  --c-ink: 244 240 233;
+  --c-muted: 173 183 204;
+  --c-subtle: 116 129 155;
+
+  --c-primary: 255 107 53;
+  --c-primary-hover: 255 133 92;
+  --c-primary-foreground: 25 13 5;
+  --c-primary-text: 255 156 115;
+
+  --c-secondary: 56 189 248;
+  --c-secondary-hover: 125 211 252;
+  --c-secondary-foreground: 8 22 34;
+  --c-secondary-text: 125 211 252;
+
+  --c-success: 34 197 94;
+  --c-success-foreground: 6 20 12;
+  --c-success-text: 74 222 128;
+
+  --c-warning: 245 158 11;
+  --c-warning-foreground: 30 20 2;
+  --c-warning-text: 250 204 21;
+
+  --c-danger: 239 68 68;
+  --c-danger-foreground: 254 242 242;
+  --c-danger-text: 252 130 130;
+
+  --c-ring: 255 133 92;
+  --c-overlay: 4 7 13;
+  --c-shadow: 0 0 0;
+  --shadow-strength: 0.55;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --c-canvas: 246 247 251;
+  --c-surface: 255 255 255;
+  --c-surface-strong: 255 255 255;
+  --c-border: 226 230 238;
+  --c-border-strong: 203 210 223;
+
+  --c-ink: 17 24 39;
+  --c-muted: 71 85 105;
+  --c-subtle: 100 116 139;
+
+  --c-primary: 234 88 12;
+  --c-primary-hover: 194 65 12;
+  --c-primary-foreground: 255 255 255;
+  --c-primary-text: 194 65 12;
+
+  --c-secondary: 2 132 199;
+  --c-secondary-hover: 3 105 161;
+  --c-secondary-foreground: 255 255 255;
+  /* Deliberately darker than --c-secondary (sky-700 not sky-600): needs >= 4.5:1
+     against a white/near-white surface for AA when used as `.link-accent` text. */
+  --c-secondary-text: 3 105 161;
+
+  --c-success: 22 163 74;
+  --c-success-foreground: 255 255 255;
+  --c-success-text: 21 128 61;
+
+  --c-warning: 217 119 6;
+  --c-warning-foreground: 255 255 255;
+  --c-warning-text: 161 98 7;
+
+  --c-danger: 220 38 38;
+  --c-danger-foreground: 255 255 255;
+  --c-danger-text: 185 28 28;
+
+  --c-ring: 234 88 12;
+  --c-overlay: 15 23 42;
+  --c-shadow: 15 23 42;
+  --shadow-strength: 0.1;
+}
+
+* {
+  border-color: rgb(var(--c-border));
 }
 
 html {
   min-height: 100%;
-  background:
-    radial-gradient(circle at top, rgba(255, 107, 53, 0.28), transparent 30%),
-    linear-gradient(180deg, #12344d 0%, #101828 55%, #09121d 100%);
-  background-color: #101828;
+  background-color: rgb(var(--c-canvas));
+  background-image:
+    radial-gradient(circle at top, rgb(var(--c-primary) / 0.16), transparent 32%),
+    linear-gradient(180deg, rgb(var(--c-canvas)) 0%, rgb(var(--c-canvas)) 100%);
+  scrollbar-gutter: stable;
+}
+
+:root[data-theme="light"] html {
+  background-image: radial-gradient(circle at top, rgb(var(--c-primary) / 0.08), transparent 32%);
 }
 
 body {
   min-height: 100vh;
-  color: #f4efe6;
-}
-
-* {
-  border-color: #243b53;
+  color: rgb(var(--c-ink));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -35,12 +130,49 @@ textarea {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Only ever show a focus ring for keyboard/AT focus, never for mouse clicks. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--c-ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background: rgb(var(--c-primary) / 0.35);
+}
+
 .safe-pb {
-  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.safe-pt {
+  padding-top: env(safe-area-inset-top);
 }
 
 .shell {
-  @apply mx-auto min-h-screen max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8;
+  @apply mx-auto min-h-screen w-full max-w-7xl px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-16;
 }
 
 .section-title {
@@ -48,5 +180,43 @@ textarea {
 }
 
 .section-copy {
-  @apply text-sm leading-6 text-slate-300 sm:text-base;
+  @apply text-sm leading-6 text-muted sm:text-base;
+}
+
+.eyebrow {
+  @apply text-xs font-semibold uppercase tracking-[0.18em] text-subtle;
+}
+
+.skip-link {
+  @apply sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-[100] focus-visible:rounded-full focus-visible:bg-primary focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-semibold focus-visible:text-primary-foreground;
+}
+
+.link-accent {
+  @apply font-semibold text-secondary-text underline-offset-4 transition hover:underline;
+}
+
+.skeleton-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    rgb(var(--c-border) / 0.5) 30%,
+    rgb(var(--c-border-strong) / 0.8) 50%,
+    rgb(var(--c-border) / 0.5) 70%
+  );
+  background-size: 200% 100%;
+}
+
+/* Thin, theme-aware scrollbars for horizontally-scrolling pill rows/tables. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-border-strong)) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--c-border-strong));
+  border-radius: 999px;
 }

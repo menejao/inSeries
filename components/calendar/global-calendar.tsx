@@ -3,7 +3,8 @@ import { CalendarFilters } from "@/components/calendar/calendar-filters";
 import { CalendarSection } from "@/components/calendar/calendar-section";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatEpisodeCode } from "@/lib/utils";
+import { Tabs } from "@/components/ui/tabs";
+import { formatEpisodeCode } from "@/lib/utils";
 import { formatShortDate } from "@/lib/calendar/dates";
 import { getGlobalCalendarEpisodes, type GlobalCalendarRange } from "@/lib/calendar/queries";
 
@@ -64,20 +65,11 @@ export async function GlobalCalendar({
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {ranges.map((item) => (
-          <Link
-            key={item.value}
-            href={buildRangeHref(item.value, rawParams)}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm transition",
-              range === item.value ? "bg-ember text-night" : "bg-slate-900/60 text-slate-300"
-            )}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </div>
+      <Tabs
+        label="Periodo"
+        items={ranges.map((item) => ({ href: buildRangeHref(item.value, rawParams), label: item.label }))}
+        active={buildRangeHref(range, rawParams)}
+      />
 
       <CalendarFilters
         range={range}
@@ -101,13 +93,13 @@ export async function GlobalCalendar({
                 <Link href={`/series/${episode.series.slug}`} className="font-semibold text-ink">
                   {episode.series.title}
                 </Link>
-                <Badge>{episode.series.language ?? "n/d"}</Badge>
+                <Badge variant="secondary">{episode.series.language ?? "n/d"}</Badge>
               </div>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-muted">
                 {formatEpisodeCode(episode.seasonNumber, episode.number)} · {episode.title}
               </p>
             </div>
-            <p className="text-xs text-slate-400">{formatShortDate(episode.airedAt)}</p>
+            <p className="text-xs text-subtle">{formatShortDate(episode.airedAt)}</p>
           </Card>
         )}
       />

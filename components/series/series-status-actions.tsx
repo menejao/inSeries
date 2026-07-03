@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 const labels: Array<{ value: "WANT_TO_WATCH" | "WATCHING" | "PAUSED" | "DROPPED" | "COMPLETED"; label: string }> = [
   { value: "WANT_TO_WATCH", label: "Quero assistir" },
@@ -22,45 +23,45 @@ export function SeriesStatusActions({
   authenticated: boolean;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [state, setState] = useState(initialState ?? "");
-  const [message, setMessage] = useState<string | null>(null);
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   if (!authenticated) {
-    return <p className="text-sm text-slate-300">Entre para salvar status e progresso.</p>;
+    return <p className="text-sm text-muted">Entre para salvar status e progresso.</p>;
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-3">
-        {labels.map((item) => (
-          <Button
-            key={item.value}
-            variant={state === item.value ? "primary" : "secondary"}
-            disabled={isPending}
-            onClick={() => {
-              setMessage(null);
-              startTransition(async () => {
-                const response = await fetch(`/api/series/${seriesId}/status`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ seriesId, state: item.value })
-                });
-                if (!response.ok) {
-                  setMessage("Erro ao salvar status.");
-                  return;
-                }
-                setState(item.value);
-                setMessage("Status salvo.");
-                router.refresh();
+    <div className="flex flex-wrap gap-2">
+      {labels.map((item) => (
+        <Button
+          key={item.value}
+          size="sm"
+          variant={state === item.value ? "primary" : "secondary"}
+          disabled={isPending}
+          loading={isPending && pendingValue === item.value}
+          onClick={() => {
+            setPendingValue(item.value);
+            startTransition(async () => {
+              const response = await fetch(`/api/series/${seriesId}/status`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ seriesId, state: item.value })
               });
-            }}
-          >
-            {isPending && state !== item.value ? "Salvando..." : item.label}
-          </Button>
-        ))}
-      </div>
-      {message ? <p className="text-sm text-slate-300">{message}</p> : null}
+              if (!response.ok) {
+                toast({ title: "Erro ao salvar status", variant: "error" });
+                return;
+              }
+              setState(item.value);
+              toast({ title: "Status atualizado", description: item.label, variant: "success" });
+              router.refresh();
+            });
+          }}
+        >
+          {item.label}
+        </Button>
+      ))}
     </div>
   );
 }

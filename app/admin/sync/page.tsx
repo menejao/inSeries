@@ -1,10 +1,14 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { SyncTriggerButton } from "@/components/admin/sync-trigger-button";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { getRecentSyncRuns } from "@/lib/catalog/sync";
 import { formatDate } from "@/lib/utils";
+
+const statusVariant = { SUCCESS: "success", FAILED: "danger", RUNNING: "secondary" } as const;
 
 export default async function AdminSyncPage() {
   await requireAdminUser("admin.sync");
@@ -12,10 +16,7 @@ export default async function AdminSyncPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Sincronizacoes</h1>
-      </div>
+      <AdminPageHeader title="Sincronizacoes" description="Dispare e acompanhe sincronizacoes com o TMDb." />
 
       <Card className="flex flex-wrap gap-4">
         <SyncTriggerButton
@@ -33,40 +34,40 @@ export default async function AdminSyncPage() {
       {runs.length === 0 ? (
         <EmptyState title="Nenhuma sincronizacao ainda" copy="Dispare uma sincronizacao para ver o historico aqui." />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2">Tipo</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Duracao</th>
-                <th className="px-3 py-2">Importados</th>
-                <th className="px-3 py-2">Atualizados</th>
-                <th className="px-3 py-2">Erro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => {
-                const durationMs = run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null;
-                return (
-                  <tr key={run.id} className="border-t border-white/5">
-                    <td className="px-3 py-2 text-slate-300">{formatDate(run.startedAt)}</td>
-                    <td className="px-3 py-2 text-slate-300">{run.type}</td>
-                    <td className="px-3 py-2">
-                      <Badge>{run.status}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">
-                      {durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "em andamento"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">{run.importedSeriesCount}</td>
-                    <td className="px-3 py-2 text-slate-300">{run.updatedSeriesCount}</td>
-                    <td className="px-3 py-2 text-slate-300">{run.errorMessage ?? "-"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <Card padding="none">
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <tr>
+                  <Th>Data</Th>
+                  <Th>Tipo</Th>
+                  <Th>Status</Th>
+                  <Th>Duracao</Th>
+                  <Th>Importados</Th>
+                  <Th>Atualizados</Th>
+                  <Th>Erro</Th>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {runs.map((run) => {
+                  const durationMs = run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null;
+                  return (
+                    <TableRow key={run.id}>
+                      <Td className="text-muted">{formatDate(run.startedAt)}</Td>
+                      <Td className="text-muted">{run.type}</Td>
+                      <Td>
+                        <Badge variant={statusVariant[run.status as keyof typeof statusVariant] ?? "default"}>{run.status}</Badge>
+                      </Td>
+                      <Td className="text-muted">{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "em andamento"}</Td>
+                      <Td className="text-muted">{run.importedSeriesCount}</Td>
+                      <Td className="text-muted">{run.updatedSeriesCount}</Td>
+                      <Td className="text-muted">{run.errorMessage ?? "-"}</Td>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Card>
       )}
     </div>

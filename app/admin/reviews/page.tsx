@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { ModerationButton } from "@/components/admin/moderation-button";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { prisma } from "@/lib/db/prisma";
@@ -20,59 +22,58 @@ export default async function AdminReviewsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Reviews</h1>
-      </div>
+      <AdminPageHeader title="Reviews" description="Modere reviews publicadas na plataforma." />
 
       {reviews.length === 0 ? (
         <EmptyState title="Nenhuma review encontrada" copy="Ainda nao ha reviews cadastradas." />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Autor</th>
-                <th className="px-3 py-2">Serie</th>
-                <th className="px-3 py-2">Nota</th>
-                <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2">Visibilidade</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {reviews.map((review) => (
-                <tr key={review.id} className="border-t border-white/5">
-                  <td className="px-3 py-2 text-slate-300">@{review.user.username}</td>
-                  <td className="px-3 py-2 text-slate-300">{review.series.title}</td>
-                  <td className="px-3 py-2 text-slate-300">{review.rating}/10</td>
-                  <td className="px-3 py-2 text-slate-300">{formatDate(review.updatedAt)}</td>
-                  <td className="px-3 py-2">
-                    <Badge>{review.visibility}</Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {review.hiddenByAdminAt ? <Badge>Oculta pelo admin</Badge> : <span className="text-slate-400">Visivel</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {review.hiddenByAdminAt ? (
-                      <ModerationButton
-                        action="restore"
-                        endpoint={`/api/admin/reviews/${review.id}/restore`}
-                        confirmMessage="Restaurar esta review?"
-                      />
-                    ) : (
-                      <ModerationButton
-                        action="hide"
-                        endpoint={`/api/admin/reviews/${review.id}/hide`}
-                        confirmMessage="Ocultar esta review? Ela deixara de aparecer publicamente."
-                      />
-                    )}
-                  </td>
+        <Card padding="none">
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <tr>
+                  <Th>Autor</Th>
+                  <Th>Serie</Th>
+                  <Th>Nota</Th>
+                  <Th>Data</Th>
+                  <Th>Visibilidade</Th>
+                  <Th>Status</Th>
+                  <Th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </TableHead>
+              <TableBody>
+                {reviews.map((review) => (
+                  <TableRow key={review.id}>
+                    <Td className="text-muted">@{review.user.username}</Td>
+                    <Td className="text-muted">{review.series.title}</Td>
+                    <Td className="text-muted">{review.rating}/10</Td>
+                    <Td className="text-muted">{formatDate(review.updatedAt)}</Td>
+                    <Td>
+                      <Badge variant={review.visibility === "PUBLIC" ? "secondary" : "default"}>{review.visibility}</Badge>
+                    </Td>
+                    <Td>
+                      {review.hiddenByAdminAt ? <Badge variant="danger">Oculta pelo admin</Badge> : <span className="text-subtle">Visivel</span>}
+                    </Td>
+                    <Td>
+                      {review.hiddenByAdminAt ? (
+                        <ModerationButton
+                          action="restore"
+                          endpoint={`/api/admin/reviews/${review.id}/restore`}
+                          confirmMessage="Restaurar esta review?"
+                        />
+                      ) : (
+                        <ModerationButton
+                          action="hide"
+                          endpoint={`/api/admin/reviews/${review.id}/hide`}
+                          confirmMessage="Ocultar esta review? Ela deixara de aparecer publicamente."
+                        />
+                      )}
+                    </Td>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Card>
       )}
     </div>

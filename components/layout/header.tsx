@@ -1,31 +1,42 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { getCurrentUser } from "@/lib/auth/server";
 import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { UserMenu } from "@/components/layout/user-menu";
+import { buttonVariants } from "@/components/ui/button";
 
-export function Header() {
+export async function Header() {
+  const user = await getCurrentUser();
+
   return (
-    <header className="mb-8">
-      <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ember text-xl font-black text-night">
-            in
-          </div>
-          <div>
-            <p className="text-lg font-semibold text-ink">inSeries</p>
-            <p className="text-xs text-slate-300">Acompanhe suas series, episodio por episodio.</p>
-          </div>
-        </Link>
-        <div className="hidden items-center gap-3 md:flex">
-          <Button variant="ghost">Instalar PWA</Button>
-          <Button>Entrar</Button>
-        </div>
+    <header className="safe-pt flex items-center justify-between gap-4 py-4">
+      <Link href="/" className="flex items-center gap-3">
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-lg font-black text-primary-foreground">
+          in
+        </span>
+        <span className="hidden sm:block">
+          <span className="block text-lg font-semibold leading-tight text-ink">inSeries</span>
+          <span className="block text-xs text-muted">Suas series, episodio por episodio</span>
+        </span>
+      </Link>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        {user ? (
+          <>
+            <NotificationsNavLink />
+            <UserMenu name={user.name} username={user.username} avatarUrl={user.avatarUrl} />
+          </>
+        ) : (
+          <>
+            <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+              Entrar
+            </Link>
+            <Link href="/register" className={buttonVariants({ variant: "primary", size: "sm" })}>
+              Criar conta
+            </Link>
+          </>
+        )}
       </div>
-      <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 md:hidden">
-        <Link href="/feed" className="rounded-full bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200">
-          Feed
-        </Link>
-        <NotificationsNavLink className="rounded-full bg-slate-900/60 px-4 py-2 text-xs font-semibold text-slate-200" />
-      </nav>
     </header>
   );
 }

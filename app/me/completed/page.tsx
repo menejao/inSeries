@@ -1,18 +1,10 @@
-﻿import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SeriesCard } from "@/components/series/series-card";
-import { Tabs } from "@/components/ui/tabs";
+import { MeTabs } from "@/components/me/me-tabs";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import type { Series } from "@/lib/types";
-
-const tabs = [
-  { href: "/me", label: "Resumo" },
-  { href: "/me/watching", label: "Assistindo" },
-  { href: "/me/completed", label: "Concluidas" },
-  { href: "/me/watchlist", label: "Watchlist" },
-  { href: "/me/lists", label: "Listas" }
-];
 
 export default async function CompletedPage() {
   const user = await requireUser();
@@ -26,11 +18,20 @@ export default async function CompletedPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="section-title">Concluidas</h1>
-      <Tabs items={tabs} active="/me/completed" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        {series.length ? series.map((item) => <SeriesCard key={item.id} series={item} />) : <EmptyState title="Nada concluido" copy="Quando fechar uma serie, ela aparece aqui." />}
+      <div>
+        <p className="eyebrow">Minha area</p>
+        <h1 className="section-title">Concluidas</h1>
       </div>
+      <MeTabs active="/me/completed" />
+      {series.length ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {series.map((item) => (
+            <SeriesCard key={item.id} series={item} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="Nada concluido" copy="Quando fechar uma serie, ela aparece aqui." />
+      )}
     </div>
   );
 }

@@ -1,0 +1,33 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTheme } from "@/components/theme/theme-provider";
+import { MoonIcon, SunIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
+
+export function ThemeToggle({ className }: { className?: string }) {
+  const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // The real theme is only knowable client-side (localStorage/matchMedia).
+  // SSR always assumes "dark" (see theme-provider's readInitialTheme), so we
+  // render that same assumption until mount to avoid a hydration mismatch,
+  // then switch to the real value.
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted ? theme === "dark" : true;
+
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+      title={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+      className={cn(
+        "inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-muted transition hover:border-border-strong hover:text-ink active:scale-95",
+        className
+      )}
+    >
+      {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+    </button>
+  );
+}

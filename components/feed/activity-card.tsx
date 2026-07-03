@@ -2,8 +2,10 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { CheckCircleIcon, FilmIcon, HeartIcon, ListIcon, StarIcon, TvIcon } from "@/components/ui/icons";
 import { formatEpisodeCode, formatRelativeDate, getInitials } from "@/lib/utils";
 import type { ActivityFeedItem } from "@/lib/social/activity";
+import { cn } from "@/lib/utils";
 
 const statusLabels: Record<string, string> = {
   WANT_TO_WATCH: "Quero assistir",
@@ -13,14 +15,23 @@ const statusLabels: Record<string, string> = {
   COMPLETED: "Concluida"
 };
 
+const typeIcons: Record<ActivityFeedItem["type"], typeof FilmIcon> = {
+  EPISODE_WATCHED: CheckCircleIcon,
+  SERIES_STATUS_CHANGED: TvIcon,
+  SERIES_COMPLETED: StarIcon,
+  REVIEW_CREATED: StarIcon,
+  LIST_CREATED: ListIcon,
+  USER_FOLLOWED: HeartIcon
+};
+
 function getActionContent(activity: ActivityFeedItem) {
   switch (activity.type) {
     case "EPISODE_WATCHED": {
-      if (!activity.series || !activity.episode) return { text: "assistiu um episodio", link: null };
+      if (!activity.series || !activity.episode) return { text: "assistiu um episodio" };
       return {
         text: (
           <>
-            assistiu <Badge>{formatEpisodeCode(activity.episode.season.number, activity.episode.number)}</Badge> de{" "}
+            assistiu <Badge variant="secondary">{formatEpisodeCode(activity.episode.season.number, activity.episode.number)}</Badge> de{" "}
             <Link href={`/series/${activity.series.slug}`} className="font-semibold text-ink">
               {activity.series.title}
             </Link>
@@ -38,7 +49,7 @@ function getActionContent(activity: ActivityFeedItem) {
             <Link href={`/series/${activity.series?.slug ?? ""}`} className="font-semibold text-ink">
               {activity.series?.title}
             </Link>{" "}
-            para <Badge>{label}</Badge>
+            para <Badge variant="secondary">{label}</Badge>
           </>
         )
       };
@@ -63,7 +74,10 @@ function getActionContent(activity: ActivityFeedItem) {
             <Link href={`/series/${activity.series?.slug ?? ""}`} className="font-semibold text-ink">
               {activity.series?.title}
             </Link>{" "}
-            com <Badge>{activity.review?.rating}/5</Badge>
+            com{" "}
+            <Badge variant="warning">
+              <StarIcon className="h-3 w-3 fill-current" /> {activity.review?.rating}/5
+            </Badge>
           </>
         )
       };
@@ -99,23 +113,33 @@ function getActionContent(activity: ActivityFeedItem) {
 
 export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
   const action = getActionContent(activity);
+  const Icon = typeIcons[activity.type] ?? FilmIcon;
 
   return (
-    <Card className="flex gap-4">
-      <Link href={`/profile/${activity.user.username}`} className="shrink-0">
-        <Avatar label={getInitials(activity.user.name)} src={activity.user.avatarUrl} className="h-11 w-11 text-sm" />
-      </Link>
+    <Card className="flex gap-3">
+      <div className="relative shrink-0">
+        <Link href={`/profile/${activity.user.username}`}>
+          <Avatar label={getInitials(activity.user.name)} name={activity.user.name} src={activity.user.avatarUrl} size="sm" />
+        </Link>
+        <span
+          className={cn(
+            "absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface bg-surface-strong text-primary-text"
+          )}
+        >
+          <Icon className="h-3 w-3" />
+        </span>
+      </div>
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm text-slate-200">
+        <p className="text-sm leading-6 text-ink/90">
           <Link href={`/profile/${activity.user.username}`} className="font-semibold text-ink">
             {activity.user.name}
           </Link>{" "}
           {action.text}
         </p>
         {activity.type === "REVIEW_CREATED" && activity.review ? (
-          <p className="line-clamp-2 text-sm text-slate-300">{activity.review.body}</p>
+          <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
         ) : null}
-        <p className="text-xs text-slate-400">{formatRelativeDate(activity.createdAt)}</p>
+        <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
       </div>
     </Card>
   );

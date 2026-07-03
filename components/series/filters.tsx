@@ -1,14 +1,9 @@
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { SearchBar } from "@/components/ui/search-bar";
+import { Button } from "@/components/ui/button";
+import { getStatusLabel } from "@/lib/catalog/status-labels";
 import type { CatalogFilterMetadata } from "@/lib/discovery/search";
-
-const statusLabels: Record<string, string> = {
-  RETURNING: "Em exibicao",
-  ENDED: "Finalizada",
-  CANCELED: "Cancelada",
-  IN_PRODUCTION: "Em producao",
-  PILOT: "Piloto"
-};
 
 const sortLabels: Record<string, string> = {
   popular: "Popularidade",
@@ -33,9 +28,16 @@ export function Filters({
   metadata: CatalogFilterMetadata;
 }) {
   return (
-    <form className="grid gap-3 rounded-4xl border border-white/10 bg-slate-950/50 p-4 sm:grid-cols-2 xl:grid-cols-6" method="get">
-      <Input name="q" defaultValue={query ?? ""} placeholder="Buscar por titulo ou sinopse..." className="xl:col-span-2" />
-      <Select name="genre" defaultValue={genre ?? ""}>
+    <Card as="form" method="get" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" padding="sm">
+      <SearchBar
+        name="q"
+        id="catalog-search"
+        label="Buscar por titulo ou sinopse"
+        defaultValue={query ?? ""}
+        placeholder="Buscar por titulo ou sinopse..."
+        className="xl:col-span-2"
+      />
+      <Select name="genre" defaultValue={genre ?? ""} aria-label="Filtrar por genero">
         <option value="">Genero</option>
         {metadata.genres.map((item) => (
           <option key={item} value={item}>
@@ -43,15 +45,15 @@ export function Filters({
           </option>
         ))}
       </Select>
-      <Select name="status" defaultValue={status ?? ""}>
+      <Select name="status" defaultValue={status ?? ""} aria-label="Filtrar por status">
         <option value="">Status</option>
         {metadata.statuses.map((item) => (
           <option key={item} value={item}>
-            {statusLabels[item] ?? item}
+            {getStatusLabel(item)}
           </option>
         ))}
       </Select>
-      <Select name="year" defaultValue={year ?? ""}>
+      <Select name="year" defaultValue={year ?? ""} aria-label="Filtrar por ano">
         <option value="">Ano</option>
         {metadata.years.map((item) => (
           <option key={item} value={item}>
@@ -59,16 +61,16 @@ export function Filters({
           </option>
         ))}
       </Select>
-      <Select name="sort" defaultValue={sort ?? "popular"}>
+      <Select name="sort" defaultValue={sort ?? "popular"} aria-label="Ordenar por">
         {Object.entries(sortLabels).map(([value, label]) => (
           <option key={value} value={value}>
             {label}
           </option>
         ))}
       </Select>
-      <button className="min-h-11 rounded-2xl bg-ember px-4 text-sm font-semibold text-night xl:col-span-6" type="submit">
-        Buscar
-      </button>
-    </form>
+      <Button type="submit" className="xl:col-span-6">
+        Aplicar filtros
+      </Button>
+    </Card>
   );
 }

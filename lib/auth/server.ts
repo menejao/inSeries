@@ -1,4 +1,5 @@
-﻿import { cookies } from "next/headers";
+﻿import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
@@ -10,7 +11,12 @@ export async function getCurrentSession() {
   return verifySessionToken(token);
 }
 
-export async function getCurrentUser() {
+/**
+ * Wrapped in React's per-request `cache()` purely to dedupe the session+DB
+ * lookup — several server components in the shell (header, nav, bottom nav,
+ * notifications link) call this independently on every render.
+ */
+export const getCurrentUser = cache(async function getCurrentUser() {
   const session = await getCurrentSession();
   if (!session) return null;
   if (!(await canUseDatabase())) return null;
@@ -26,7 +32,7 @@ export async function getCurrentUser() {
       bio: true
     }
   });
-}
+});
 
 export async function requireUser() {
   const user = await getCurrentUser();

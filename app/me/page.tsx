@@ -1,7 +1,9 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
-import { Tabs } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { MeTabs } from "@/components/me/me-tabs";
+import { CalendarIcon, CheckCircleIcon, FilmIcon } from "@/components/ui/icons";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { requireUser } from "@/lib/auth/server";
@@ -9,14 +11,6 @@ import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
-
-const tabs = [
-  { href: "/me", label: "Resumo" },
-  { href: "/me/watching", label: "Assistindo" },
-  { href: "/me/completed", label: "Concluidas" },
-  { href: "/me/watchlist", label: "Watchlist" },
-  { href: "/me/lists", label: "Listas" }
-];
 
 export default async function MePage() {
   const user = await requireUser();
@@ -57,31 +51,38 @@ export default async function MePage() {
     ["Pausadas", statuses.filter((item) => item.state === "PAUSED").length],
     ["Abandonadas", statuses.filter((item) => item.state === "DROPPED").length],
     ["Quero assistir", statuses.filter((item) => item.state === "WANT_TO_WATCH").length]
-  ];
+  ] as const;
 
   return (
     <div className="space-y-6">
       <div>
+        <p className="eyebrow">Ola, {user.name.split(" ")[0]}</p>
         <h1 className="section-title">Minha area</h1>
-        <p className="section-copy">{user.name}, aqui estao seus status reais, episodios assistidos e progresso salvo.</p>
+        <p className="section-copy">Seus status reais, episodios assistidos e progresso salvo.</p>
       </div>
-      <Tabs items={tabs} active="/me" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <MeTabs active="/me" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {summary.map(([label, value]) => (
-          <Card key={String(label)}>
-            <p className="text-sm text-slate-300">{label}</p>
+          <Card key={label}>
+            <p className="text-sm text-muted">{label}</p>
             <p className="mt-2 text-3xl font-black text-ink">{value}</p>
           </Card>
         ))}
       </div>
-      <Card>
-        <p className="text-sm text-slate-300">Progresso medio</p>
-        <p className="mt-2 text-3xl font-black text-ink">{averageProgress}%</p>
+      <Card className="space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted">Progresso medio das suas series</span>
+          <span className="text-2xl font-black text-ink">{averageProgress}%</span>
+        </div>
+        <Progress value={averageProgress} label="Progresso medio" />
       </Card>
-      <div className="space-y-3">
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-ink">Proximos episodios</h2>
-          <Link href="/calendar" className="text-sm font-semibold text-amber-200">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+            <CalendarIcon className="h-5 w-5 text-subtle" />
+            Proximos episodios
+          </h2>
+          <Link href="/calendar" className="link-accent text-sm">
             Ver calendario
           </Link>
         </div>
@@ -94,11 +95,14 @@ export default async function MePage() {
         ) : (
           <EmptyState title="Nenhum lancamento previsto" copy="Quando houver novos episodios das suas series, eles aparecem aqui." />
         )}
-      </div>
-      <div className="space-y-3">
+      </section>
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-ink">Atividade recente</h2>
-          <Link href="/feed" className="text-sm font-semibold text-amber-200">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+            <FilmIcon className="h-5 w-5 text-subtle" />
+            Atividade recente
+          </h2>
+          <Link href="/feed" className="link-accent text-sm">
             Ver feed
           </Link>
         </div>
@@ -111,25 +115,27 @@ export default async function MePage() {
         ) : (
           <EmptyState title="Nenhuma atividade ainda" copy="Suas acoes recentes (episodios assistidos, reviews, listas) aparecem aqui." />
         )}
-      </div>
-      <div className="space-y-3">
-        <h2 className="text-xl font-semibold text-ink">Ultimos episodios assistidos</h2>
+      </section>
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+          <CheckCircleIcon className="h-5 w-5 text-subtle" />
+          Ultimos episodios assistidos
+        </h2>
         {recentEpisodes.length ? (
-          recentEpisodes.map((item) => (
-            <Card key={item.id}>
-              <p className="font-semibold text-ink">{item.episode.season.series.title}</p>
-              <p className="text-sm text-slate-300">
-                T{item.episode.season.number}E{item.episode.number} · {item.episode.title}
-              </p>
-            </Card>
-          ))
+          <div className="grid gap-3 sm:grid-cols-2">
+            {recentEpisodes.map((item) => (
+              <Card key={item.id} padding="sm">
+                <p className="font-semibold text-ink">{item.episode.season.series.title}</p>
+                <p className="text-sm text-muted">
+                  T{item.episode.season.number}E{item.episode.number} · {item.episode.title}
+                </p>
+              </Card>
+            ))}
+          </div>
         ) : (
           <EmptyState title="Nada assistido ainda" copy="Marque episodios para ver atividade e progresso aqui." />
         )}
-      </div>
-      <Link href="/me/watching" className="text-sm font-semibold text-amber-200">
-        Ver assistindo
-      </Link>
+      </section>
     </div>
   );
 }

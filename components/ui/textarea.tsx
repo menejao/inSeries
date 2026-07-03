@@ -1,14 +1,25 @@
 import { cn } from "@/lib/utils";
-import type { TextareaHTMLAttributes } from "react";
+import { forwardRef, type TextareaHTMLAttributes } from "react";
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  invalid?: boolean;
+};
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { className, invalid, ...props },
+  ref
+) {
   return (
     <textarea
+      ref={ref}
+      aria-invalid={invalid || undefined}
       className={cn(
-        "w-full min-h-28 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-ink outline-none placeholder:text-slate-400 focus:border-ember/60",
+        "min-h-28 w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-ink transition placeholder:text-subtle",
+        "focus-visible:border-primary",
+        invalid && "border-danger/60 focus-visible:border-danger",
         className
       )}
       {...props}
     />
   );
-}
+});

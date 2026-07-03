@@ -19,8 +19,8 @@ export function MarkAllReadButton() {
   }
 
   return (
-    <Button variant="secondary" onClick={handleClick} disabled={loading}>
-      {loading ? "Marcando..." : "Marcar todas como lidas"}
+    <Button variant="secondary" size="sm" onClick={handleClick} disabled={loading} loading={loading}>
+      Marcar todas como lidas
     </Button>
   );
 }

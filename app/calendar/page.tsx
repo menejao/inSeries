@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
 import { GlobalCalendar } from "@/components/calendar/global-calendar";
 import { PersonalCalendar } from "@/components/calendar/personal-calendar";
 import { getCurrentUser } from "@/lib/auth/server";
-import { cn } from "@/lib/utils";
 import type { GlobalCalendarRange } from "@/lib/calendar/queries";
 
 type CalendarSearchParams = {
@@ -16,11 +17,6 @@ type CalendarSearchParams = {
   onlyUnaired?: string;
 };
 
-const viewTabs = [
-  { key: "personal", label: "Meu calendario" },
-  { key: "global", label: "Todos os lancamentos" }
-] as const;
-
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<CalendarSearchParams> }) {
   const params = await searchParams;
   const user = await getCurrentUser();
@@ -30,24 +26,19 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-6">
       <div>
+        <p className="eyebrow">Cronograma</p>
         <h1 className="section-title">Calendario</h1>
         <p className="section-copy">Episodios lancados, proximos lancamentos e temporadas futuras das suas series, direto do banco.</p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {viewTabs.map((tab) => (
-          <Link
-            key={tab.key}
-            href={`/calendar?view=${tab.key}`}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm transition",
-              view === tab.key ? "bg-ember text-night" : "bg-slate-900/60 text-slate-300"
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      <Tabs
+        label="Visualizacao do calendario"
+        items={[
+          { href: "/calendar?view=personal", label: "Meu calendario" },
+          { href: "/calendar?view=global", label: "Todos os lancamentos" }
+        ]}
+        active={`/calendar?view=${view}`}
+      />
 
       {view === "personal" ? (
         user ? (
@@ -55,14 +46,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         ) : (
           <Card className="space-y-3 text-center">
             <p className="text-lg font-semibold text-ink">Entre para ver seu calendario</p>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-muted">
               Faca login para acompanhar episodios lancados, proximos lancamentos e temporadas futuras das series que voce segue.
             </p>
-            <Link
-              href="/login"
-              className="inline-flex min-h-11 items-center justify-center rounded-full bg-ember px-4 text-sm font-semibold text-night transition hover:bg-orange-400"
-            >
-              Entrar
+            <Link href="/login" className="inline-flex justify-center">
+              <Button>Entrar</Button>
             </Link>
           </Card>
         )

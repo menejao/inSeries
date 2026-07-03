@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { IconButton } from "@/components/ui/button";
+import { CheckIcon } from "@/components/ui/icons";
 import { formatRelativeDate, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { NotificationWithRelations } from "@/lib/notifications/service";
 
 export function NotificationItem({ notification }: { notification: NotificationWithRelations }) {
@@ -28,21 +29,23 @@ export function NotificationItem({ notification }: { notification: NotificationW
   const content = (
     <div className="min-w-0 flex-1 space-y-1">
       <div className="flex items-center gap-2">
+        {!isRead ? <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" /> : null}
         <p className="text-sm font-semibold text-ink">{notification.title}</p>
-        {!isRead ? <Badge>Nova</Badge> : null}
       </div>
-      <p className="text-sm text-slate-300">{notification.body}</p>
-      <p className="text-xs text-slate-400">{formatRelativeDate(notification.createdAt)}</p>
+      <p className="text-sm text-muted">{notification.body}</p>
+      <p className="text-xs text-subtle">{formatRelativeDate(notification.createdAt)}</p>
     </div>
   );
 
   return (
-    <Card className={`flex items-start gap-4 ${isRead ? "opacity-70" : ""}`}>
+    <Card className={cn("flex items-start gap-4", isRead && "opacity-70")}>
       {notification.actorUser ? (
         <Avatar
           label={getInitials(notification.actorUser.name)}
+          name={notification.actorUser.name}
           src={notification.actorUser.avatarUrl}
-          className="h-11 w-11 shrink-0 text-sm"
+          size="sm"
+          className="shrink-0"
         />
       ) : null}
       {notification.href ? (
@@ -53,9 +56,9 @@ export function NotificationItem({ notification }: { notification: NotificationW
         content
       )}
       {!isRead ? (
-        <Button variant="secondary" onClick={markRead} disabled={loading} className="shrink-0">
-          {loading ? "..." : "Marcar como lida"}
-        </Button>
+        <IconButton label="Marcar como lida" variant="secondary" onClick={markRead} disabled={loading} className="shrink-0">
+          <CheckIcon className="h-4 w-4" />
+        </IconButton>
       ) : null}
     </Card>
   );

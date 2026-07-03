@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ListDeleteButton } from "@/components/social/list-delete-button";
 import { ListEditForm } from "@/components/social/list-edit-form";
 import { ListItemManager } from "@/components/social/list-item-manager";
+import { ListIcon } from "@/components/ui/icons";
 import { getCurrentUser } from "@/lib/auth/server";
 import { listCatalogSeries } from "@/lib/catalog/repository";
 import { getListWithItems } from "@/lib/social/lists";
@@ -33,15 +34,17 @@ export default async function ListDetailsPage({ params }: { params: Promise<{ id
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Lista</p>
+            <p className="eyebrow">Lista</p>
             <h1 className="section-title">{list.title}</h1>
           </div>
-          <Badge>{list.visibility === "PUBLIC" ? "Publica" : "Privada"}</Badge>
+          <Badge variant={list.visibility === "PUBLIC" ? "secondary" : "default"}>
+            {list.visibility === "PUBLIC" ? "Publica" : "Privada"}
+          </Badge>
         </div>
         {list.description ? <p className="section-copy">{list.description}</p> : null}
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-subtle">
           por{" "}
-          <Link href={`/profile/${list.user.username}`} className="font-semibold text-amber-200">
+          <Link href={`/profile/${list.user.username}`} className="link-accent">
             @{list.user.username}
           </Link>{" "}
           · {formatDate(list.createdAt)}
@@ -64,7 +67,7 @@ export default async function ListDetailsPage({ params }: { params: Promise<{ id
           <Card className="flex flex-col justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-ink">Excluir lista</h2>
-              <p className="mt-2 text-sm text-slate-300">Essa acao remove a lista e todos os itens permanentemente.</p>
+              <p className="mt-2 text-sm text-muted">Essa acao remove a lista e todos os itens permanentemente.</p>
             </div>
             <ListDeleteButton listId={list.id} redirectTo="/me/lists" />
           </Card>
@@ -80,18 +83,18 @@ export default async function ListDetailsPage({ params }: { params: Promise<{ id
             seriesOptions={catalogSeries.map((series) => ({ id: series.id, title: series.title }))}
           />
         ) : list.items.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             {list.items.map((item) => (
-              <Card key={item.id}>
-                <Link href={`/series/${item.series.slug}`} className="font-semibold text-ink">
-                  {item.series.title}
-                </Link>
-                {item.note ? <p className="mt-1 text-sm text-slate-300">{item.note}</p> : null}
-              </Card>
+              <Link key={item.id} href={`/series/${item.series.slug}`}>
+                <Card interactive padding="sm">
+                  <p className="font-semibold text-ink">{item.series.title}</p>
+                  {item.note ? <p className="mt-1 text-sm text-muted">{item.note}</p> : null}
+                </Card>
+              </Link>
             ))}
           </div>
         ) : (
-          <EmptyState title="Lista vazia" copy="Nenhuma serie foi adicionada a esta lista ainda." />
+          <EmptyState icon={<ListIcon className="h-6 w-6" />} title="Lista vazia" copy="Nenhuma serie foi adicionada a esta lista ainda." />
         )}
       </section>
     </div>

@@ -1,4 +1,4 @@
-﻿import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatEpisodeCode } from "@/lib/utils";
 import type { Episode } from "@/lib/types";
@@ -14,18 +14,21 @@ export function EpisodeRow({
   authenticated?: boolean;
 }) {
   return (
-    <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Badge>{formatEpisodeCode(seasonNumber, episode.number)}</Badge>
+    <Card
+      padding="sm"
+      className={episode.watched ? "border-success/25 bg-success/[0.04] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"}
+    >
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{formatEpisodeCode(seasonNumber, episode.number)}</Badge>
           <p className="font-semibold text-ink">{episode.title}</p>
         </div>
-        <p className="text-sm text-slate-300">{episode.overview}</p>
-        <p className="text-xs text-slate-400">
+        <p className="line-clamp-2 text-sm text-muted">{episode.overview || "Sinopse indisponivel."}</p>
+        <p className="text-xs text-subtle">
           {episode.runtimeMinutes || "n/d"} min · {episode.airedOn || "n/d"}
         </p>
       </div>
-      <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} />
+      <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} size="sm" />
     </Card>
   );
 }

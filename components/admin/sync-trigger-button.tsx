@@ -3,44 +3,53 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function SyncTriggerButton({ type, label, confirmMessage }: { type: "popular" | "existing"; label: string; confirmMessage: string }) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
-  async function handleClick() {
-    if (!window.confirm(confirmMessage)) return;
-
+  async function handleConfirm() {
     setLoading(true);
-    setMessage(null);
 
     try {
       const response = await fetch(`/api/admin/sync/${type}`, { method: "POST" });
       const data = await response.json();
 
       if (!response.ok) {
-        setMessage(data.error ?? "Falha ao iniciar sincronizacao.");
+        toast({ title: "Falha ao iniciar sincronizacao", description: data.error, variant: "error" });
       } else if (data.summary?.errorMessage) {
-        setMessage(data.summary.errorMessage);
+        toast({ title: "Sincronizacao concluida com aviso", description: data.summary.errorMessage, variant: "info" });
       } else {
-        setMessage(`Sincronizacao concluida: ${data.summary.status}.`);
+        toast({ title: "Sincronizacao concluida", description: data.summary?.status, variant: "success" });
       }
 
       router.refresh();
     } catch {
-      setMessage("Falha de rede ao iniciar sincronizacao.");
+      toast({ title: "Falha de rede ao iniciar sincronizacao", variant: "error" });
     } finally {
       setLoading(false);
+      setOpen(false);
     }
   }
 
   return (
-    <div className="space-y-2">
-      <Button variant="secondary" onClick={handleClick} disabled={loading}>
-        {loading ? "Sincronizando..." : label}
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        {label}
       </Button>
-      {message ? <p className="text-xs text-slate-300">{message}</p> : null}
-    </div>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleConfirm}
+        title="Iniciar sincronizacao?"
+        description={confirmMessage}
+        confirmLabel="Sincronizar"
+        loading={loading}
+      />
+    </>
   );
 }

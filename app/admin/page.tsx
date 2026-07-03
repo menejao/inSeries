@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { prisma } from "@/lib/db/prisma";
 import { formatDate } from "@/lib/utils";
@@ -44,11 +45,13 @@ async function getDashboardStats() {
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <Card>
-      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</p>
+      <p className="eyebrow">{label}</p>
       <p className="mt-2 text-3xl font-semibold text-ink">{value}</p>
     </Card>
   );
 }
+
+const statusVariant = { SUCCESS: "success", FAILED: "danger", RUNNING: "secondary" } as const;
 
 export default async function AdminDashboardPage() {
   await requireAdminUser("admin.read");
@@ -60,10 +63,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Admin</p>
-        <h1 className="section-title">Dashboard</h1>
-      </div>
+      <AdminPageHeader title="Dashboard" description="Visao geral da plataforma." />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Usuarios" value={stats.userCount} />
@@ -79,8 +79,10 @@ export default async function AdminDashboardPage() {
       <Card>
         <h2 className="text-lg font-semibold text-ink">Ultima sincronizacao</h2>
         {stats.lastSyncRun ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-300">
-            <Badge>{stats.lastSyncRun.status}</Badge>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
+            <Badge variant={statusVariant[stats.lastSyncRun.status as keyof typeof statusVariant] ?? "default"}>
+              {stats.lastSyncRun.status}
+            </Badge>
             <span>{stats.lastSyncRun.type}</span>
             <span>{formatDate(stats.lastSyncRun.startedAt)}</span>
             <span>{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "em andamento"}</span>

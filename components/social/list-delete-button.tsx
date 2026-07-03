@@ -3,51 +3,45 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function ListDeleteButton({ listId, redirectTo }: { listId: string; redirectTo?: string }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  if (!confirming) {
-    return (
-      <Button variant="secondary" onClick={() => setConfirming(true)}>
+  return (
+    <>
+      <Button variant="danger" onClick={() => setOpen(true)}>
         Excluir lista
       </Button>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-300">Confirmar exclusao da lista?</p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          disabled={isPending}
-          onClick={() => {
-            setError(null);
-            startTransition(async () => {
-              const response = await fetch(`/api/lists/${listId}`, { method: "DELETE" });
-              if (!response.ok) {
-                const result = (await response.json().catch(() => ({}))) as { error?: string };
-                setError(result.error ?? "request_failed");
-                return;
-              }
-              if (redirectTo) {
-                router.push(redirectTo);
-              }
-              router.refresh();
-            });
-          }}
-        >
-          {isPending ? "Excluindo..." : "Sim, excluir"}
-        </Button>
-        <Button variant="ghost" onClick={() => setConfirming(false)}>
-          Cancelar
-        </Button>
-      </div>
-      {error ? <p className="text-xs text-rose-300">Erro: {error}</p> : null}
-    </div>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Excluir lista?"
+        description="Essa acao nao pode ser desfeita."
+        confirmLabel="Excluir"
+        confirmVariant="danger"
+        loading={isPending}
+        onConfirm={() => {
+          startTransition(async () => {
+            const response = await fetch(`/api/lists/${listId}`, { method: "DELETE" });
+            if (!response.ok) {
+              const result = (await response.json().catch(() => ({}))) as { error?: string };
+              toast({ title: "Erro ao excluir lista", description: result.error, variant: "error" });
+              setOpen(false);
+              return;
+            }
+            toast({ title: "Lista excluida", variant: "success" });
+            if (redirectTo) {
+              router.push(redirectTo);
+            }
+            router.refresh();
+          });
+        }}
+      />
+    </>
   );
 }

@@ -407,6 +407,91 @@ Alem das informacoes ja existentes (versao, ambiente, Prisma, banco, migrations,
 - Rate limit existe mas fica desligado por padrao — ativa-lo em produção é so definir `RATE_LIMIT_ENABLED=true`
 - Sem deploy automatico, sem digest/alertas baseados nas metricas
 
+## Design System
+
+Redesign completo de UX/UI do inSeries: identidade visual propria, tema claro/escuro, um Design System consolidado e uma pausa em todas as telas para eliminar inconsistencia visual. **Esta sprint nao mudou nenhuma regra de negocio, API, banco ou fluxo de autenticacao/RBAC** — todo trabalho foi de apresentacao, reaproveitando a infraestrutura ja construida (as mesmas queries, os mesmos endpoints, os mesmos formularios).
+
+### Principios
+
+- **Foco em series, elegancia, velocidade** — inspirado na experiencia (nunca no layout) de Letterboxd, TV Time, Apple TV, Plex, Arc Browser e Linear
+- **Nenhuma tela usa estilo fora do Design System** — cores, espacamento, raio e sombra sempre vem dos tokens abaixo, nunca de valores soltos tipo `bg-slate-950/60` ou `text-amber-200`
+- **Consistente nos dois temas** — todo componente foi desenhado para funcionar em claro e escuro sem exceçoes
+
+### Tokens (`tailwind.config.ts` + `app/globals.css`)
+
+- Cor: cada token e uma variavel CSS "R G B" (`--c-*`) redefinida em `:root` (escuro, padrao) e `:root[data-theme="light"]`, consumida via `rgb(var(--c-x) / <alpha-value>)` — isso permite usar opacidade (`bg-surface/60`) igual em ambos os temas
+  - Neutros: `canvas` (fundo da pagina), `surface` / `surface-strong` (cards, popovers), `border` / `border-strong`, `ink` (texto primario), `muted` (texto secundario), `subtle` (texto terciario/placeholder)
+  - Marca: `primary` (ember, laranja) com `-hover`/`-foreground`/`-text`; `secondary` (azul) com o mesmo padrao — `-text` e sempre a variante ajustada para contraste AA quando usada como texto/link sobre a superficie (ex: no claro, `secondary-text` e mais escuro que `secondary` para passar de 4.5:1)
+  - Semanticas: `success`, `warning`, `danger`, cada uma com `-foreground`/`-text` no mesmo padrao
+  - Utilitarios: `ring` (foco), `overlay` (scrim de dialogs/sheets)
+- Tipografia: pilha de fontes do sistema (`-apple-system, Segoe UI, Inter, Roboto...`) — sem fetch de fonte externa, zero custo de rede
+- Espacamento e escala de fonte: escala padrao do Tailwind, aplicada de forma consistente (sem valores arbitrarios soltos pela UI)
+- Raio: `rounded-4xl`/`rounded-5xl` para cards/paineis, `rounded-full` para pills/botoes/badges
+- Sombra: `shadow-xs` (elevacao minima), `shadow-card` (cards), `shadow-raised` (dialogs/dropdowns/toasts), `shadow-glow` (destaque do botao primario) — todas usam `--c-shadow`/`--shadow-strength`, mais fortes no escuro e mais suaves no claro
+- Movimento: `fade-in`, `fade-in-up`, `scale-in`, `slide-up`, `shimmer` — usados com moderacao (entrada de cards/dialogs, shimmer de skeleton) e desativados automaticamente quando o usuario tem `prefers-reduced-motion: reduce`
+
+### Dark mode (Fase 13)
+
+- Escuro e o tema padrao; a preferencia é lida em `components/theme/theme-script.tsx`, um `<script>` inline no `<head>` que roda **antes do primeiro paint** — le `localStorage`, cai para `prefers-color-scheme` do sistema na primeira visita, e aplica `data-theme` no `<html>` sem flash do tema errado
+- `components/theme/theme-provider.tsx` expoe `useTheme()` (`theme`, `setTheme`, `toggleTheme`) e persiste a escolha em `localStorage`, sincronizando entre abas
+- `components/theme/theme-toggle.tsx` e o botao de alternancia (usado no header e em `/settings`) — usa o padrao "mounted guard" para nunca causar hydration mismatch (o servidor sempre assume escuro; o cliente corrige apos montar)
+- Todo componente do Design System foi construido para funcionar nos dois temas sem excecao — nenhuma cor "hardcoded" fora do sistema de tokens
+
+### Componentes (`components/ui/*`)
+
+Consolidados em um unico lugar — nenhuma tela renderiza mais markup "cru" duplicado (tabelas, botoes-links, checkboxes, tabs de pilula) por fora daqui:
+
+| Componente | Arquivo | Notas |
+|---|---|---|
+| `Button` / `IconButton` / `buttonVariants` | `button.tsx` | variantes `primary/secondary/outline/ghost/danger`, tamanhos `sm/md/lg`, estado `loading`; `buttonVariants()` gera a mesma classe para usar em `<Link>` |
+| `Card` | `card.tsx` | `padding`, `interactive` (hover-lift), `as="form"` para usar como formulario |
+| `Input` / `Textarea` / `Select` / `SearchBar` | `input.tsx`, `textarea.tsx`, `select.tsx`, `search-bar.tsx` | estado `invalid`, `SearchBar` sempre com label acessivel |
+| `Checkbox` / `Radio` / `Switch` | `checkbox.tsx`, `radio.tsx`, `switch.tsx` | controles custom sobre `<input>` nativo (mantém teclado/leitor de tela) |
+| `Badge` | `badge.tsx` | variantes `default/primary/secondary/success/warning/danger/outline` |
+| `Avatar` | `avatar.tsx` | tamanhos `sm/md/lg/xl`, `alt` real (`name`) separado das iniciais de fallback (`label`) |
+| `Tabs` | `tabs.tsx` | nav em pilula dirigida por rota/query string (usada em `/me/*`, feed, calendario) — `aria-current`, nao um `tablist` de JS |
+| `Dialog` / `ConfirmDialog` | `dialog.tsx`, `confirm-dialog.tsx` | portal, backdrop, foco preso (focus trap), fecha em Esc/clique fora/restaura foco ao fechar. Substituiu os dois `window.confirm()` que existiam (moderacao e sync) |
+| `Sheet` | `sheet.tsx` | bottom sheet mobile-first, mesma base do `Dialog` |
+| `Dropdown` / `DropdownItem` | `dropdown.tsx` | menu (usado no avatar do header: perfil/configuracoes/sair) |
+| `Tooltip` | `tooltip.tsx` | CSS puro, aparece em hover **e** foco de teclado |
+| `Skeleton` / `SkeletonText` / `SkeletonAvatar` / `SkeletonCard` / `SkeletonGrid` / `SkeletonTable` | `skeleton.tsx` | usados nos `loading.tsx` de cada rota |
+| `EmptyState` | `empty-state.tsx` | icone + titulo + copy + acao opcional |
+| `Pagination` | `pagination.tsx` | generico (`basePath`), substituiu uma versao hardcoded so para `/series` |
+| `Toast` / `useToast` / `ToastProvider` | `toast.tsx` | provider global (montado em `app/layout.tsx`); substituiu ~8 implementacoes de `useState` + `<p>` de erro/sucesso espalhadas pelos formularios |
+| `Alert` | `alert.tsx` | banner inline (`info/success/warning/danger`) — usado em erros de formulario (login/cadastro) |
+| `Spinner` | `spinner.tsx` | usado dentro de `Button` (`loading`) |
+| `Table` / `TableContainer` / `TableHead` / `TableBody` / `TableRow` / `Th` / `Td` | `table.tsx` | substituiu 8+ `<table>` "cruas" e quase identicas no workspace admin |
+
+Icones: `components/ui/icons.tsx` — um conjunto pequeno, desenhado a mao (estilo Lucide/Feather, `stroke="currentColor"`), sem dependencia externa (o app nao tinha nenhum icone antes desta sprint).
+
+### Acessibilidade (Fase 12)
+
+- Contraste: paleta calibrada para AA (texto normal >= 4.5:1) nos dois temas — inclusive corrigido durante a auditoria (`secondary-text` no claro usava um azul 600 que ficava ~4.3:1 contra branco; passou para o 700, ~5.8:1)
+- Foco visivel: `:focus-visible` global com anel de 2px na cor `--c-ring`, nunca aparece em clique de mouse, sempre aparece em navegacao por teclado
+- `<a href="#main-content">` como skip link (primeiro elemento focavel da pagina)
+- Marcos (`landmarks`): `header`, `nav` (com `aria-label` proprio para desktop/mobile/admin), `main`, `footer`
+- Todo controle icone-only exige `label` (via `IconButton`) — nunca existe um botao sem nome acessivel
+- Dialogs/Sheets: `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby`, foco preso dentro do painel, foco devolvido ao elemento que abriu ao fechar
+- Formularios: todo campo tem `<label htmlFor>` associado (antes, varios formularios usavam so `placeholder`)
+
+### Mobile (Fase 15)
+
+- Bottom navigation fixa (6 itens, icone + label) em telas `< md`, com `safe-area-inset-bottom` via `.safe-pb` para não colidir com a barra de gestos do iOS/Android
+- Areas de toque de pelo menos 44px (`min-h-11`) em todo controle interativo
+- `viewport-fit=cover` + `theme-color` por `prefers-color-scheme` no `<meta>` para a barra de status combinar com o tema
+
+### Performance percebida (Fase 14)
+
+- `loading.tsx` (skeletons) em todas as rotas com busca de dados relevante (`/`, `/series`, `/series/[id]`, `/feed`, `/calendar`, `/me`, `/profile/[username]`, `/lists`, `/notifications`, `/admin`) — o Next.js os usa automaticamente via Suspense enquanto o Server Component busca dados
+- `not-found.tsx` e `error.tsx` proprios na raiz (nenhum dos dois existia antes)
+- `getCurrentUser()` (`lib/auth/server.ts`) agora usa `cache()` do React — o header, a navbar, o bottom nav e o link de notificacoes chamavam essa funcao de forma independente na mesma renderizacao; agora a sessao/usuario e resolvida uma unica vez por request
+
+### Limitacoes atuais
+
+- Sem testes automatizados de acessibilidade (axe/lighthouse-ci) — validacao foi manual (contraste calculado, navegacao por teclado testada com Playwright)
+- `Dropdown`/`Tooltip` sao implementacoes proprias simples (sem posicionamento inteligente tipo Floating UI) — suficientes para os usos atuais (menu do header), mas nao geral-purpose para casos com pouco espaco na tela
+- Sem storybook ou galeria isolada de componentes — a documentacao dos componentes vive neste README e no proprio codigo
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:

@@ -1,14 +1,22 @@
 import { cn } from "@/lib/utils";
-import type { InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+type InputProps = InputHTMLAttributes<HTMLInputElement> & {
+  invalid?: boolean;
+};
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ className, invalid, ...props }, ref) {
   return (
     <input
+      ref={ref}
+      aria-invalid={invalid || undefined}
       className={cn(
-        "min-h-11 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 text-sm text-ink outline-none placeholder:text-slate-400 focus:border-ember/60",
+        "min-h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-ink transition placeholder:text-subtle",
+        "focus-visible:border-primary",
+        invalid && "border-danger/60 focus-visible:border-danger",
         className
       )}
       {...props}
     />
   );
-}
+});

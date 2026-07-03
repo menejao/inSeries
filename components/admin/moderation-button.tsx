@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function ModerationButton({
   action,
@@ -14,23 +16,41 @@ export function ModerationButton({
   confirmMessage: string;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function handleClick() {
-    if (!window.confirm(confirmMessage)) return;
-
+  async function handleConfirm() {
     setLoading(true);
     try {
-      await fetch(endpoint, { method: "POST" });
+      const response = await fetch(endpoint, { method: "POST" });
+      if (!response.ok) {
+        toast({ title: "Erro ao processar acao", variant: "error" });
+        return;
+      }
+      toast({ title: action === "hide" ? "Item ocultado" : "Item restaurado", variant: "success" });
       router.refresh();
     } finally {
       setLoading(false);
+      setOpen(false);
     }
   }
 
   return (
-    <Button variant={action === "hide" ? "secondary" : "primary"} onClick={handleClick} disabled={loading}>
-      {loading ? "Aguarde..." : action === "hide" ? "Ocultar" : "Restaurar"}
-    </Button>
+    <>
+      <Button size="sm" variant={action === "hide" ? "secondary" : "primary"} onClick={() => setOpen(true)}>
+        {action === "hide" ? "Ocultar" : "Restaurar"}
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onConfirm={handleConfirm}
+        title={action === "hide" ? "Ocultar item?" : "Restaurar item?"}
+        description={confirmMessage}
+        confirmLabel={action === "hide" ? "Ocultar" : "Restaurar"}
+        confirmVariant={action === "hide" ? "danger" : "primary"}
+        loading={loading}
+      />
+    </>
   );
 }
