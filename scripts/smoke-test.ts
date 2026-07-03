@@ -242,6 +242,64 @@ async function main() {
     remarkWatched.body
   );
 
+  // ---- Estatisticas: analytics layer, dashboard, privacidade ----
+  const statsGuestPage = await request({ value: "" }, "/me/stats");
+  check("acesso anonimo a /me/stats redireciona (privacidade)", statsGuestPage.status === 307 || statsGuestPage.status === 302, statsGuestPage.status);
+
+  const statsGuestApi = await request({ value: "" }, "/api/me/stats");
+  check("acesso anonimo a /api/me/stats retorna 401", statsGuestApi.status === 401, statsGuestApi.body);
+
+  const statsA = await request(jarA, "/api/me/stats");
+  const statsData = statsA.body?.data;
+  check(
+    "estatisticas de A refletem o episodio assistido (1 episodio, runtime coerente)",
+    statsA.status === 200 &&
+      statsData?.overview?.episodesWatched === 1 &&
+      statsData?.watchTime?.minutesWatched === 42 &&
+      statsData?.watchTime?.hoursWatched > 0,
+    statsData
+  );
+  check(
+    "estatisticas de A calculam generos a partir da serie assistida",
+    Array.isArray(statsData?.genres?.ranking) && statsData.genres.ranking.length > 0 && Boolean(statsData.genres.topGenre),
+    statsData?.genres
+  );
+  check(
+    "estatisticas de A calculam sequencia atual (assistiu hoje)",
+    statsData?.streaks?.activeDays === 1 && statsData?.streaks?.currentStreakDays === 1,
+    statsData?.streaks
+  );
+  check("estatisticas de A geram ao menos um insight", Array.isArray(statsData?.insights) && statsData.insights.length > 0, statsData?.insights);
+
+  const statsDashboard = await request(jarA, "/me/stats");
+  check(
+    "dashboard /me/stats carrega e mostra secoes principais",
+    statsDashboard.status === 200 &&
+      String(statsDashboard.body).includes("Resumo geral") &&
+      String(statsDashboard.body).includes("Tempo assistido") &&
+      String(statsDashboard.body).includes("Sequencias"),
+    statsDashboard.status
+  );
+
+  const jarStatsEmpty: CookieJar = { value: "" };
+  await registerUser(jarStatsEmpty, "userstats");
+
+  const statsEmptyUser = await request(jarStatsEmpty, "/api/me/stats");
+  check(
+    "usuario sem episodios assistidos possui estatisticas zeradas (empty state)",
+    statsEmptyUser.status === 200 &&
+      statsEmptyUser.body?.data?.overview?.episodesWatched === 0 &&
+      Array.isArray(statsEmptyUser.body?.data?.insights) &&
+      statsEmptyUser.body.data.insights.length === 0,
+    statsEmptyUser.body
+  );
+  const statsEmptyDashboard = await request(jarStatsEmpty, "/me/stats");
+  check(
+    "dashboard /me/stats mostra empty state para usuario sem historico",
+    statsEmptyDashboard.status === 200 && String(statsEmptyDashboard.body).includes("Ainda sem estatisticas"),
+    statsEmptyDashboard.status
+  );
+
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");
   const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);

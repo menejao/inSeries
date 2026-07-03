@@ -492,6 +492,70 @@ Icones: `components/ui/icons.tsx` — um conjunto pequeno, desenhado a mao (esti
 - `Dropdown`/`Tooltip` sao implementacoes proprias simples (sem posicionamento inteligente tipo Floating UI) — suficientes para os usos atuais (menu do header), mas nao geral-purpose para casos com pouco espaco na tela
 - Sem storybook ou galeria isolada de componentes — a documentacao dos componentes vive neste README e no proprio codigo
 
+## Estatisticas e Insights
+
+Modulo de estatisticas pessoais (`/me/stats`): transforma o historico de progresso do usuario (episodios assistidos, status de series) em metricas, graficos e insights automaticos. **Somente leitura** — nao cria, altera nem apaga nenhum dado; nao introduz gamificacao (sem badges, niveis ou ranking entre usuarios).
+
+### Analytics Layer (`lib/analytics/`)
+
+Toda a logica de calculo vive aqui, isolada das paginas React — nenhuma pagina calcula estatistica diretamente, elas so chamam `getUserStats(userId)` e renderizam o resultado.
+
+- `dataset.ts` — **o unico lugar que consulta o banco.** Duas queries (`UserEpisodeProgress` onde `watched: true`, com o episodio/temporada/serie aninhados; e `UserSeriesStatus` do usuario, com a serie e a contagem de episodios por temporada), mais a data de cadastro do usuario, todas em paralelo (`Promise.all`). O resultado (`AnalyticsDataset`) e passado para todo o resto — nenhum outro modulo desta pasta faz uma unica query.
+- `overview.ts` — Fase 3: contagens por status (concluidas/assistindo/pausadas/abandonadas/planejadas), temporadas concluidas, episodios assistidos/restantes, % medio de conclusao, media de episodios por serie, dias desde o cadastro.
+- `watch-time.ts` — Fase 4: minutos/horas/dias assistidos, media por episodio e por serie.
+- `genres.ts` — Fase 6: ranking de generos e percentual.
+- `timeline.ts` — Fase 5: series temporais (por dia/semana/mes/ano) e `getMonthlyRecapData`/`getYearlyRecapData`, preparadas para um futuro Recap mas **nao expostas em nenhuma UI ainda** (sem geracao automatica).
+- `streaks.ts` — Fase 8: sequencia atual, maior sequencia, dias ativos, primeiro/ultimo episodio assistido.
+- `insights.ts` — Fase 7: insights automaticos, cada um uma regra pura e independente numa lista (`INSIGHT_RULES`) — adicionar um insight novo e so acrescentar uma funcao a lista.
+- `service.ts` — `getUserStats(userId)`: o unico ponto de entrada, usado pela pagina, pela API e (no futuro) por qualquer ferramenta admin — so recebe um `userId`, nunca depende da sessao.
+
+### Metricas disponiveis
+
+| Categoria | Metricas |
+|---|---|
+| Resumo geral | series concluidas/assistindo/pausadas/abandonadas/planejadas, temporadas concluidas, episodios assistidos/restantes, % medio de conclusao, media de episodios/serie, dias desde o cadastro |
+| Tempo assistido | minutos/horas/dias assistidos, media de minutos por episodio e por serie |
+| Generos | ranking com contagem e percentual, genero favorito |
+| Atividade temporal | episodios assistidos por dia/semana/mes/ano |
+| Sequencias | sequencia atual, maior sequencia, dias ativos, primeiro/ultimo episodio assistido |
+| Insights | frases automaticas geradas a partir das metricas acima |
+
+### Metodologia (documentada porque cada escolha tem uma alternativa razoavel)
+
+- **Fonte de verdade**: exclusivamente `UserEpisodeProgress` (`watched: true`) e `UserSeriesStatus`. `Activity`/`Review` existem e foram auditados, mas nao alimentam nenhum calculo desta sprint.
+- **`watchedAt`**: `lib/progress/mutations.ts` sempre zera esse campo ao desmarcar um episodio — por isso qualquer linha com `watched: true` tem garantidamente um `watchedAt` valido, sem precisar de fallback.
+- **Runtime ausente**: episodios sem `runtimeMinutes` sao **excluidos** dos calculos de tempo (nunca vira "42min" inventado); `episodesWithoutRuntime` informa quantos ficaram de fora para a UI ser transparente sobre o numero ser um piso, nao o total real.
+- **Generos por episodio**: uma serie pode ter varios generos; cada episodio assistido soma 1 ponto em **cada** genero da sua serie (nao divide fracionadamente entre eles). O percentual e relativo ao total de "pontos de genero", por isso sempre soma 100% no ranking.
+- **Fuso horario**: todo agrupamento por dia/semana/mes/ano usa UTC, nao o fuso do servidor nem do visitante — o mesmo historico sempre produz os mesmos buckets, custe onde custar rodar o app. Um fuso por usuario ficaria como extensao futura no mesmo `timeline.ts`.
+- **Sequencia (streak)**: um "dia ativo" e um dia (UTC) com pelo menos 1 episodio assistido. A sequencia atual conta dias consecutivos terminando hoje **ou** ontem (se ainda nao assistiu nada hoje, a sequencia de ontem continua "viva" ate o fim do dia).
+- **"Serie mais assistida" (insight)**: definida como a serie com mais episodios assistidos pelo usuario — nao a serie com mais episodios no catalogo.
+- **Episodios restantes**: so conta series que o usuario esta acompanhando (tem um `UserSeriesStatus`) — series nunca adicionadas a nenhum status nao entram como "pendentes".
+
+### Dashboard (`/me/stats`)
+
+Nova aba em `/me/*` (`Estatisticas`, ao lado de Resumo/Assistindo/Concluidas/Watchlist/Listas). Secoes: Insights, Resumo Geral (com um donut de distribuicao por status), Tempo Assistido, Generos (ranking em barras), Atividade (grafico de colunas dos ultimos meses + heatmap tipo GitHub das ultimas semanas) e Sequencias. Usuario sem nenhum episodio assistido e sem nenhuma serie acompanhada ve um `EmptyState` com CTA para o catalogo, em vez de uma parede de zeros.
+
+Graficos (`components/ui/bar-list.tsx`, `column-chart.tsx`, `donut-chart.tsx`, `heatmap.tsx`): SVG/CSS puro, sem nenhuma biblioteca de graficos — leves de proposito, consistentes com os tokens do Design System (cores via `stroke-primary`/`bg-success` etc., nunca hex hardcoded).
+
+### Exportacao (preparado, nao implementado)
+
+`GET /api/me/stats` retorna o mesmo objeto estruturado (`UserStats`) que a pagina renderiza — pensado como o ponto de integracao para uma futura exportacao (PDF, imagem, recap compartilhavel) consumir os numeros sem duplicar nenhum calculo. Nenhuma geracao visual (PDF/PNG) foi implementada nesta sprint.
+
+### Performance
+
+Uma unica chamada a `getUserStats(userId)` por carregamento de pagina — ela mesma faz so 3 queries (usuario, progresso, status) e todo o resto (generos, tempo, sequencias, insights) e computado em memoria a partir desses dois arrays, sem N+1 e sem recalcular nada em componentes separados. Deliberadamente **sem cache**: os numeros precisam refletir a marcação de episodio que acabou de acontecer; um cache (TTL curto por `userId`, invalidado nas mutacoes de progresso/status) fica documentado como proxima extensao caso um endpoint publico de recap precise de um em escala.
+
+### Privacidade
+
+`/me/stats` e `GET /api/me/stats` exigem sessao propria (`requireUser()`/`getApiUser()`) — estatisticas sao sempre privadas por padrao, nunca expostas no perfil publico (`/profile/[username]`) nesta sprint. Como `getUserStats` recebe um `userId` puro (nunca le a sessao internamente), a mesma funcao ja esta pronta para um futuro fluxo de compartilhamento opcional ou para uma tela administrativa global, sem precisar mudar a camada de calculo.
+
+### Limitacoes atuais
+
+- Recap mensal/anual: as funcoes existem (`getMonthlyRecapData`, `getYearlyRecapData`) mas nao ha nenhuma UI, geracao automatica (cron) ou notificacao associada
+- Sem exportacao visual (PDF/PNG) — so o endpoint estruturado
+- Sem estatisticas globais no admin nesta sprint (a camada ja suporta, falta so a tela)
+- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:
@@ -520,7 +584,8 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 16. logout e confirmacao de que a sessao foi invalidada;
 17. notificacoes: seguir gera `FOLLOWED_YOU`; review publica de quem se segue gera `REVIEW_FROM_FOLLOWING` e review privada nao gera notificacao adicional; lista publica de quem se segue gera `LIST_FROM_FOLLOWING` e lista privada nao gera notificacao adicional; concluir uma serie gera `SERIES_COMPLETED` para o proprio usuario; contador de nao lidas, marcar uma como lida e marcar todas como lidas; usuario nao consegue ler/alterar notificacao de outro (403); `/notifications` exige sessao (redireciona convidado); script `notifications:episodes` roda duas vezes seguidas sem duplicar notificacoes;
 18. workspace administrativo: `/admin` bloqueado para convidado e para usuario comum, login do admin de desenvolvimento (requer `npm run seed:admin`), acesso ao dashboard/catalogo/sync/usuarios/sistema/reviews/listas, disparo de sync sem TMDb configurado retornando erro amigavel, bloqueio de usuario comum nas rotas de admin (403), ocultar/restaurar review e lista (com o item sumindo/voltando das paginas publicas) e confirmacao de que o `AdminAuditLog` registra as acoes em `/admin/logs`;
-19. observabilidade: `/api/health` responde com status/versao/ambiente/timestamp e propaga `x-request-id`; `/api/ready` responde `ready` com banco e configuracao saudaveis (a falha do banco gerando `ready` com `503` foi validada manualmente parando o Postgres, ja que o smoke test nao derruba servicos do sistema); um `x-request-id` recebido por header e reaproveitado em vez de substituido; um payload JSON invalido gera uma resposta consistente (`INTERNAL_ERROR`, sem stack trace); `/api/admin/metrics` bloqueia usuario comum (403) e o contador de requests cresce a cada chamada; `/admin/system` mostra feature flags, health/ready e metricas.
+19. observabilidade: `/api/health` responde com status/versao/ambiente/timestamp e propaga `x-request-id`; `/api/ready` responde `ready` com banco e configuracao saudaveis (a falha do banco gerando `ready` com `503` foi validada manualmente parando o Postgres, ja que o smoke test nao derruba servicos do sistema); um `x-request-id` recebido por header e reaproveitado em vez de substituido; um payload JSON invalido gera uma resposta consistente (`INTERNAL_ERROR`, sem stack trace); `/api/admin/metrics` bloqueia usuario comum (403) e o contador de requests cresce a cada chamada; `/admin/system` mostra feature flags, health/ready e metricas;
+20. estatisticas: `/me/stats` e `/api/me/stats` exigem sessao (anonimo recebe redirect/401); apos assistir 1 episodio (runtime de 42min conhecido do seed), as estatisticas do usuario refletem `episodesWatched: 1`, `minutesWatched: 42`, generos calculados a partir da serie assistida, sequencia atual de 1 dia e ao menos um insight gerado; o dashboard carrega e mostra as secoes Resumo geral/Tempo assistido/Sequencias; um usuario recem-criado sem nenhum episodio assistido ve estatisticas zeradas (API) e o empty state "Ainda sem estatisticas" (dashboard).
 
 ## Comandos
 

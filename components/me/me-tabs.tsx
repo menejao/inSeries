@@ -5,7 +5,8 @@ export const ME_TABS = [
   { href: "/me/watching", label: "Assistindo" },
   { href: "/me/completed", label: "Concluidas" },
   { href: "/me/watchlist", label: "Watchlist" },
-  { href: "/me/lists", label: "Listas" }
+  { href: "/me/lists", label: "Listas" },
+  { href: "/me/stats", label: "Estatisticas" }
 ];
 
 export function MeTabs({ active }: { active: string }) {
