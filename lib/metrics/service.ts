@@ -17,6 +17,9 @@ type MetricsState = {
   syncsStarted: number;
   notificationsCreated: number;
   activitiesCreated: number;
+  recommendationsGenerated: number;
+  recommendationCacheHits: number;
+  recommendationCacheMisses: number;
   startedAt: string;
 };
 
@@ -31,6 +34,9 @@ function createInitialState(): MetricsState {
     syncsStarted: 0,
     notificationsCreated: 0,
     activitiesCreated: 0,
+    recommendationsGenerated: 0,
+    recommendationCacheHits: 0,
+    recommendationCacheMisses: 0,
     startedAt: new Date().toISOString()
   };
 }
@@ -67,6 +73,18 @@ export function incrementNotificationsCreated(count = 1) {
 
 export function incrementActivitiesCreated() {
   state.activitiesCreated += 1;
+}
+
+export function incrementRecommendationsGenerated(count = 1) {
+  state.recommendationsGenerated += count;
+}
+
+export function incrementRecommendationCacheHit() {
+  state.recommendationCacheHits += 1;
+}
+
+export function incrementRecommendationCacheMiss() {
+  state.recommendationCacheMisses += 1;
 }
 
 export function getMetricsSnapshot() {

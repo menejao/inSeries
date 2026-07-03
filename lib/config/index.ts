@@ -34,7 +34,14 @@ const envSchema = z.object({
   FEATURE_REVIEWS: optionalNonEmpty(),
   FEATURE_LISTS: optionalNonEmpty(),
   FEATURE_FEED: optionalNonEmpty(),
-  FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty()
+  FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_GENRE: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_SIMILAR: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_POPULAR: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_RATING: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_TRENDING: optionalNonEmpty(),
+  RECOMMENDATION_CANDIDATE_POOL_SIZE: optionalNonEmpty(),
+  RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty()
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -49,6 +56,12 @@ if (!parsedEnv.success) {
 function parseBooleanFlag(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
   return value === "1" || value.toLowerCase() === "true";
+}
+
+function parseNumberFlag(value: string | undefined, fallback: number) {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 const nodeEnv = rawEnv.NODE_ENV ?? "development";
@@ -101,8 +114,25 @@ export const config = {
   logging: {
     level: rawEnv.LOG_LEVEL ?? (nodeEnv === "production" ? "info" : "debug")
   },
+  recommendations: {
+    // Every provider's contribution is `providerScore * weight`, summed —
+    // centralized here (instead of magic numbers inside each provider) so
+    // tuning one signal's influence never means hunting through providers/.
+    weights: {
+      genre: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_GENRE, 1),
+      similar: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_SIMILAR, 0.8),
+      popular: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_POPULAR, 0.5),
+      rating: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_RATING, 0.6),
+      trending: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_TRENDING, 0.4)
+    },
+    candidatePoolSize: parseNumberFlag(rawEnv.RECOMMENDATION_CANDIDATE_POOL_SIZE, 200),
+    cacheTtlSeconds: parseNumberFlag(rawEnv.RECOMMENDATION_CACHE_TTL_SECONDS, 300)
+  },
   featureFlags: {
-    recommendations: parseBooleanFlag(rawEnv.FEATURE_RECOMMENDATIONS, false),
+    // Was a placeholder (default off) before this sprint implemented the
+    // engine — now a shipped, tested feature, so it defaults on like the
+    // other complete features below (calendar/reviews/lists/feed).
+    recommendations: parseBooleanFlag(rawEnv.FEATURE_RECOMMENDATIONS, true),
     tvtimeImport: parseBooleanFlag(rawEnv.FEATURE_TVTIME_IMPORT, false),
     notifications: parseBooleanFlag(rawEnv.FEATURE_NOTIFICATIONS, true),
     adminWorkspace: parseBooleanFlag(rawEnv.FEATURE_ADMIN_WORKSPACE, true),
@@ -142,6 +172,7 @@ export function getPublicConfig() {
     pagination: config.pagination,
     featureFlags: config.featureFlags,
     rateLimit: config.rateLimit,
+    recommendations: config.recommendations,
     tmdbConfigured: config.tmdb.isConfigured
   };
 }

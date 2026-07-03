@@ -554,7 +554,89 @@ Uma unica chamada a `getUserStats(userId)` por carregamento de pagina — ela me
 - Recap mensal/anual: as funcoes existem (`getMonthlyRecapData`, `getYearlyRecapData`) mas nao ha nenhuma UI, geracao automatica (cron) ou notificacao associada
 - Sem exportacao visual (PDF/PNG) — so o endpoint estruturado
 - Sem estatisticas globais no admin nesta sprint (a camada ja suporta, falta so a tela)
-- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint
+- Sem comparacao entre usuarios, ranking, gamificacao ou recomendacoes — fora de escopo desta sprint (o motor de recomendacoes chegou na sprint seguinte, ver abaixo)
+
+## Motor de recomendacoes
+
+Sugere series para cada usuario a partir de dados ja existentes no catalogo e no historico de progresso — **sem IA, sem embeddings, sem aprendizado de maquina**. Cada recomendacao carrega um motivo explicito ("por que estou vendo isso?"), e nenhuma serie concluida ou abandonada pelo usuario aparece.
+
+### Recommendation Layer (`lib/recommendations/`)
+
+Nenhuma pagina React calcula recomendacao — todas passam pelo engine.
+
+- `types.ts` — contratos compartilhados (`CandidateSeries`, `RecommendationContext`, `RecommendationProvider`, `ScoredRecommendation`, etc).
+- `engine.ts` — monta o `RecommendationContext` (reutilizando o **Analytics Layer** para afinidade de genero — `fetchAnalyticsDataset`/`computeGenreStats` — e uma query de reviews positivas), roda todos os providers, combina os scores, aplica os filtros e corta no limite. E o unico lugar que decide "quais series entram na pool de candidatos".
+- `providers/` — cinco providers independentes (ver abaixo), cada um implementando `run(context): ProviderSignal[]`.
+- `scoring.ts` — combina os sinais de todos os providers num score final por serie (`score = soma(sinal_do_provider * peso_do_provider)`).
+- `reasons.ts` — todo texto de motivo ("Porque voce gosta de X", "Semelhante a Y"...) vive aqui, nao espalhado pelos providers — muda a copy num lugar so.
+- `filters.ts` — as regras de exclusao (Fase 5).
+- `cache.ts` — cache em memoria por usuario (Fase 9).
+- `service.ts` — `getRecommendationsForUser(userId, options)`: unico ponto de entrada, usado pela API, pelo dashboard e (futuramente) pelo admin.
+
+### Providers (sinais disponiveis)
+
+Auditados antes de implementar (Fase 1): o catalogo **nao tem** palavras-chave, criadores nem elenco (nao existem no schema `Series`/normalizacao do TMDb), e a tabela `Rating` existe mas nunca foi usada (avaliacoes reais vivem em `Review.rating`) — por isso os 5 providers usam apenas sinais que realmente existem:
+
+| Provider | Sinal | Motivo tipico |
+|---|---|---|
+| `genre` | Afinidade de genero do usuario (reaproveita `computeGenreStats` do Analytics Layer sobre os episodios assistidos) | "Voce concluiu 3 series de Drama." / "Porque voce gosta de Drama." |
+| `similar` | Sobreposicao de genero (indice de Jaccard) com series que o usuario concluiu ou esta assistindo — sem embeddings, ver metodologia abaixo | "Semelhante a Dark." |
+| `popular` | `Series.popularityScore` (TMDb, via sync), normalizado dentro do pool de candidatos | "Muito popular no catalogo." |
+| `rating` | `Series.voteAverage` (TMDb) **ou**, se o usuario deu review >= 4/5 a uma serie com genero em comum, um boost personalizado | "Bem avaliada (nota 8.5/10)." / "Baseado nas suas avaliacoes positivas." |
+| `trending` | Proxy deterministico: series com `status: RETURNING` (em exibicao), rankeadas por popularidade, com bonus se o primeiro ano de exibicao for recente | "Em alta agora (em exibicao)." |
+
+Pesos de cada provider ficam centralizados em `config.recommendations.weights` (`lib/config`), nunca como numero solto dentro do provider — e configuravel por env (`RECOMMENDATION_WEIGHT_GENRE`, `_SIMILAR`, `_POPULAR`, `_RATING`, `_TRENDING`), com defaults sensatos.
+
+### Metodologia (decisoes documentadas)
+
+- **"Series parecidas" sem IA**: como o catalogo nao tem palavras-chave/embeddings, similaridade e o indice de Jaccard entre os generos de duas series (`|intersecao| / |uniao|`). E uma aproximacao honesta, nao uma recomendacao semantica de verdade — documentado para nao ser confundido com um sistema de embeddings.
+- **"Em alta" sem telemetria real**: nao existe feed de trending nem contagem de visualizacoes por serie na plataforma. O provider `trending` e um proxy deterministico e reproduzivel (mesma entrada, mesma saida sempre), nao dado de trending em tempo real.
+- **Popularidade "entre usuarios"**: o provider `popular` usa a popularidade do TMDb (sinal de catalogo), nao uma contagem real de quantos usuarios do inSeries acompanham cada serie — mais preciso dizer "popular no catalogo" do que "popular entre usuarios do inSeries".
+- **Motivo unico por recomendacao**: cada serie recomendada tem um `primaryReason`/`primaryProvider` (o sinal de maior peso), mas o array `reasons` completo (todos os providers que contribuiram, ordenados por contribuicao) tambem e retornado pela API — o dashboard so mostra o principal.
+
+### Filtros (nunca recomendar)
+
+Aplicados em `filters.ts`, em uma unica passada:
+
+- Series **concluidas** ou **abandonadas** pelo usuario — sempre excluidas, nao configuravel (regra dura do motor).
+- Series na **watchlist** (`WANT_TO_WATCH`) — excluidas por padrao, configuravel via `RecommendationOptions.excludeWatchlisted`.
+- Series **assistindo no momento** — excluidas por padrao (nao faz sentido "descobrir" algo que o usuario ja esta acompanhando), configuravel via `excludeWatchlisted`/`excludeWatching`.
+- Series ocultadas pelo admin: **preparado, nao implementado** — `Series` nao tem campo `hiddenByAdminAt` hoje (so `Review`/`List` tem); `filters.ts` e o unico lugar que ganharia essa linha se o campo for adicionado no futuro.
+
+### API — `GET /api/recommendations`
+
+Autenticado (`getApiUser()`, 401 se anonimo). Aceita `?limit=` (max 50, default 10). Retorna o mesmo objeto estruturado que o dashboard renderiza — serie, score, motivo, provider principal e a lista completa de motivos, pronto para uma futura tela de "todas as recomendacoes" ou um app externo consumir.
+
+### Dashboard (`/me`)
+
+Secao "Recomendado para voce" (limite de 10), com poster, titulo e motivo — some completamente se a feature flag estiver desligada ou se nao houver nenhuma recomendacao elegivel.
+
+### Cache (Fase 9)
+
+Em memoria, por `userId`, TTL configuravel (`RECOMMENDATION_CACHE_TTL_SECONDS`, default 300s) — mesmo padrao `globalThis` de `lib/rate-limit`/`lib/metrics`. `RecommendationCache` e uma interface: trocar por Redis no futuro e implementar a interface e trocar uma linha em `service.ts`, sem tocar no engine.
+
+**Invalidacao real, nao só TTL**: marcar/desmarcar episodio (`toggleEpisodeProgress`), mudar status de serie (`upsertSeriesStatus`) e criar/editar/apagar review (`upsertReview`/`deleteReview`) invalidam o cache do usuario imediatamente — sem isso, completar uma serie ainda a mostraria como "recomendada" ate o TTL expirar. Validado manualmente marcando uma serie como concluida via API e confirmando que a proxima chamada teve `fromCache: false` e ja excluia a serie.
+
+### Performance (Fase 10)
+
+Uma pool de candidatos (`prisma.series.findMany`, ate `RECOMMENDATION_CANDIDATE_POOL_SIZE` series, default 200) e buscada **uma vez** por calculo; todos os 5 providers rodam sobre essa mesma lista em memoria — nenhum provider faz sua propria query. Reaproveita o Analytics Layer inteiro para afinidade de genero em vez de recalcular do zero.
+
+### Feature flag (Fase 12)
+
+`recommendations` (ja existia no sistema de feature flags desde a sprint de observabilidade, como placeholder desligado — agora que o motor esta implementado e testado, o default virou ligado, igual as outras features completas como calendario/reviews/listas/feed). Com a flag desligada, `getRecommendationsForUser` retorna `{ enabled: false, items: [] }` **sem rodar o engine** — nenhuma query de candidatos, nenhum calculo. Validado manualmente (`FEATURE_RECOMMENDATIONS=false`, reiniciando o servidor) — o smoke test roda contra um unico processo com uma configuracao fixa, entao nao alterna a flag em tempo real, igual ao caso do banco indisponivel documentado na secao de observabilidade.
+
+### Admin (`/admin/system`)
+
+Cartao somente leitura "Motor de recomendacoes": status da feature flag, cada provider com seu peso, quantidade de recomendacoes geradas, hits/misses do cache e o TTL configurado.
+
+### Limitacoes atuais
+
+- Sem IA, embeddings ou recomendacao colaborativa — por decisao explicita do escopo desta sprint
+- "Similaridade" e só sobreposicao de genero — duas series de generos identicos mas tons completamente diferentes pontuam como "parecidas"
+- "Em alta" e um proxy (popularidade + em exibicao), nao trending real
+- Cache em memoria, por processo — nao compartilhado entre instancias; um deploy multi-instancia precisaria do Redis mencionado acima
+- Sem A/B testing nem personalizacao em tempo real
+- Sem UI dedicada de "ver todas as recomendacoes" — só as 10 primeiras no dashboard
 
 ## Smoke test (validacao ponta a ponta)
 

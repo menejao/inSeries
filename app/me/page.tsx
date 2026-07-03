@@ -3,17 +3,20 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MeTabs } from "@/components/me/me-tabs";
-import { CalendarIcon, CheckCircleIcon, FilmIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, CompassIcon, FilmIcon } from "@/components/ui/icons";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
+import { RecommendationCard } from "@/components/recommendations/recommendation-card";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getUpcomingEpisodesForUser } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
+import { getRecommendationsForUser } from "@/lib/recommendations";
 
 export default async function MePage() {
   const user = await requireUser();
+  const recommendations = await getRecommendationsForUser(user.id, { limit: 10 });
   const statuses = await prisma.userSeriesStatus.findMany({
     where: { userId: user.id },
     include: { series: true },
@@ -76,6 +79,19 @@ export default async function MePage() {
         </div>
         <Progress value={averageProgress} label="Progresso medio" />
       </Card>
+      {recommendations.enabled && recommendations.items.length ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+            <CompassIcon className="h-5 w-5 text-subtle" />
+            Recomendado para voce
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {recommendations.items.map((recommendation) => (
+              <RecommendationCard key={recommendation.series.id} recommendation={recommendation} />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { recordActivity, syncActivityVisibility } from "@/lib/social/activity";
 import { notifyFollowersOfPublicReview } from "@/lib/notifications/events";
+import { invalidateRecommendationCache } from "@/lib/recommendations";
 
 export async function upsertReview(
   userId: string,
@@ -38,11 +39,15 @@ export async function upsertReview(
     await syncActivityVisibility({ reviewId: review.id }, visibility);
   }
 
+  // A review's rating feeds RatingRecommendationProvider's "positively reviewed genres" signal.
+  invalidateRecommendationCache(userId);
+
   return { ok: true as const, review };
 }
 
 export async function deleteReview(userId: string, seriesId: string) {
   await prisma.review.deleteMany({ where: { userId, seriesId } });
+  invalidateRecommendationCache(userId);
   return { ok: true as const };
 }
 

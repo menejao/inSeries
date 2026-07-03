@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { recordActivity } from "@/lib/social/activity";
 import { notifySeriesCompleted } from "@/lib/notifications/events";
+import { invalidateRecommendationCache } from "@/lib/recommendations";
 
 export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
   const previous = await prisma.userSeriesStatus.findUnique({
@@ -52,6 +53,8 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
       });
     }
   }
+
+  invalidateRecommendationCache(userId);
 
   return status;
 }
@@ -144,6 +147,8 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
     });
     await notifySeriesCompleted(userId, episode.season.seriesId);
   }
+
+  invalidateRecommendationCache(userId);
 
   return progress;
 }

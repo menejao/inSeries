@@ -11,6 +11,7 @@ import { getAllFeatureFlags } from "@/lib/config/flags";
 import { getHealthSnapshot, getReadySnapshot } from "@/lib/health/service";
 import { getMetricsSnapshot } from "@/lib/metrics/service";
 import { listSystemSettings } from "@/lib/system-settings/service";
+import { RECOMMENDATION_PROVIDERS } from "@/lib/recommendations";
 import packageJson from "@/package.json";
 import prismaClientPackageJson from "@prisma/client/package.json";
 
@@ -118,6 +119,42 @@ export default async function AdminSystemPage() {
               <dd className="mt-1 text-sm font-medium text-ink">{row.value}</dd>
             </div>
           ))}
+        </dl>
+      </Card>
+
+      <Card className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-ink">Motor de recomendacoes</h2>
+          <Badge variant={featureFlags.recommendations ? "success" : "default"}>
+            {featureFlags.recommendations ? "ativo" : "desligado"}
+          </Badge>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-subtle">Providers e pesos</p>
+          <dl className="mt-2 grid gap-3 sm:grid-cols-3">
+            {RECOMMENDATION_PROVIDERS.map((provider) => (
+              <div key={provider.id} className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+                <dt className="text-xs uppercase tracking-[0.2em] text-subtle">{provider.label}</dt>
+                <dd className="mt-1 text-sm font-medium text-ink">peso {publicConfig.recommendations.weights[provider.id]}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <dl className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Recomendacoes geradas</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{metrics.recommendationsGenerated}</dd>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">Cache hits / misses</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">
+              {metrics.recommendationCacheHits} / {metrics.recommendationCacheMisses}
+            </dd>
+          </div>
+          <div className="rounded-2xl border border-border bg-surface-strong/50 p-3">
+            <dt className="text-xs uppercase tracking-[0.2em] text-subtle">TTL do cache</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{publicConfig.recommendations.cacheTtlSeconds}s</dd>
+          </div>
         </dl>
       </Card>
 

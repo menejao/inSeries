@@ -300,6 +300,90 @@ async function main() {
     statsEmptyDashboard.status
   );
 
+  // ---- Recomendacoes: motor, providers, filtros, motivo, cache, feature flag ----
+  const recsGuestApi = await request({ value: "" }, "/api/recommendations");
+  check("acesso anonimo a /api/recommendations retorna 401", recsGuestApi.status === 401, recsGuestApi.body);
+
+  const jarRecsNew: CookieJar = { value: "" };
+  await registerUser(jarRecsNew, "userrecsnew");
+
+  const recsNewUser = await request(jarRecsNew, "/api/recommendations");
+  const recsNewData = recsNewUser.body?.data;
+  check(
+    "usuario novo recebe recomendacoes sem sinais pessoais (sem genero/similaridade)",
+    recsNewUser.status === 200 &&
+      recsNewData?.enabled === true &&
+      Array.isArray(recsNewData?.items) &&
+      recsNewData.items.length > 0 &&
+      recsNewData.items.every((item: Json) => item.primaryProvider !== "genre" && item.primaryProvider !== "similar"),
+    recsNewData
+  );
+  check(
+    "toda recomendacao possui motivo (reason) e provider principal",
+    Array.isArray(recsNewData?.items) &&
+      recsNewData.items.every((item: Json) => typeof item.primaryReason === "string" && item.primaryReason.length > 0 && typeof item.primaryProvider === "string"),
+    recsNewData?.items
+  );
+  check(
+    "scores das recomendacoes sao numericos e ordenados de forma decrescente",
+    Array.isArray(recsNewData?.items) &&
+      recsNewData.items.every((item: Json, index: number, arr: Json[]) => typeof item.score === "number" && (index === 0 || arr[index - 1].score >= item.score)),
+    recsNewData?.items
+  );
+
+  const recsNewUserCached = await request(jarRecsNew, "/api/recommendations");
+  check("segunda chamada retorna do cache (fromCache true)", recsNewUserCached.body?.data?.fromCache === true, recsNewUserCached.body);
+
+  const jarRecsPersonal: CookieJar = { value: "" };
+  await registerUser(jarRecsPersonal, "userrecspersonal");
+  const secondSeriesId: string | undefined = catalog.body?.data?.[1]?.id;
+
+  const watchForRecs = await request(jarRecsPersonal, `/api/episodes/${episodeId}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ episodeId, watched: true })
+  });
+  check("usuario dedicado assiste episodio para gerar afinidade de genero", watchForRecs.status === 200, watchForRecs.body);
+
+  const completeForRecs = await request(jarRecsPersonal, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "COMPLETED" })
+  });
+  check("usuario dedicado conclui a serie assistida", completeForRecs.status === 200, completeForRecs.body);
+
+  if (secondSeriesId) {
+    const dropForRecs = await request(jarRecsPersonal, `/api/series/${secondSeriesId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: secondSeriesId, state: "DROPPED" })
+    });
+    check("usuario dedicado abandona uma segunda serie", dropForRecs.status === 200, dropForRecs.body);
+  }
+
+  const recsPersonal = await request(jarRecsPersonal, "/api/recommendations");
+  const recsPersonalData = recsPersonal.body?.data;
+  check(
+    "recomendacoes nunca incluem a serie que o usuario concluiu",
+    Array.isArray(recsPersonalData?.items) && !recsPersonalData.items.some((item: Json) => item.series.id === seriesId),
+    recsPersonalData?.items?.map((item: Json) => item.series.id)
+  );
+  check(
+    "recomendacoes nunca incluem a serie que o usuario abandonou",
+    !secondSeriesId || (Array.isArray(recsPersonalData?.items) && !recsPersonalData.items.some((item: Json) => item.series.id === secondSeriesId)),
+    recsPersonalData?.items?.map((item: Json) => item.series.id)
+  );
+  check(
+    "recomendacoes ficam personalizadas (genero ou series parecidas) apos concluir uma serie",
+    Array.isArray(recsPersonalData?.items) &&
+      recsPersonalData.items.some((item: Json) => item.reasons.some((reason: Json) => reason.provider === "genre" || reason.provider === "similar")),
+    recsPersonalData?.items
+  );
+
+  const dashboardWithRecs = await request(jarRecsPersonal, "/me");
+  check(
+    "dashboard /me mostra secao Recomendado para voce quando ha recomendacoes",
+    dashboardWithRecs.status === 200 && String(dashboardWithRecs.body).includes("Recomendado para voce"),
+    dashboardWithRecs.status
+  );
+
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");
   const trackedSeries = seriesDetail.body?.data?.find((item: Json) => item.id === seriesId);
