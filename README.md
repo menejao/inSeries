@@ -917,6 +917,66 @@ A Sidebar sugeria "Recomendacoes" como item proprio, mas so existia como secao d
 - Transicoes reusam animacoes ja existentes no Tailwind config (`fade-in`, `fade-in-up`, `slide-up`, `shimmer`) — nenhuma animacao nova foi criada
 - Nenhuma regra de negocio, schema ou mutation foi alterada — a sprint e estritamente shell/navegacao/tema
 
+## Experiencia cinematografica — catalogo como protagonista visual
+
+Principio central desta sprint (INSERIES-CINEMATIC-EXPERIENCE-FOUNDATION-01): o catalogo — posteres, backdrops, stills — deixa de ser um detalhe de card e passa a ser o elemento visual dominante de toda a aplicacao. Nenhuma regra de negocio mudou; o que mudou foi quanto espaco e prioridade essas imagens (ja existentes no schema — `Series.posterUrl`/`backdropUrl`, `Episode.stillUrl`) recebem em cada tela.
+
+### Auditoria (Fase 1)
+
+Antes de qualquer implementacao, a auditoria visual identificou: Landing sem hero real (so um card de texto); `SeriesCard`/`RecommendationCard`/`WatchNextCard`/`EpisodeCalendarCard` usando `background-image` inline em vez de `next/image` (sem lazy loading, sem `sizes`, sem otimizacao); pagina da serie sem poster nem backdrop de verdade (so uma imagem de fundo esmaecida); `Episode.stillUrl` existia no schema desde sempre mas **nunca era populado** — nem pelo seed dev, nem pelo sync real do TMDb (`lib/catalog/repository.ts` gravava `stillUrl: null` no import, e `Episode` (tipo usado pela pagina da serie) nem tinha o campo); catalogo com paginas muito parecidas (mesma estrutura de card, so trocando o conteudo).
+
+### Primitivas de imagem (`components/media/`)
+
+Toda imagem do catalogo passa por dois componentes, nunca por `background-image` inline:
+
+- `PosterImage`/`BackdropImage` (`poster-image.tsx`) — `next/image` com `fill`, `sizes` calculado por contexto de uso, e fallback: se `src` for vazio **ou** o carregamento falhar (`onError`), renderiza um gradiente tematico com `TvIcon` + o `alt` — nunca um icone de imagem quebrada, nunca um retangulo vazio (Fase 10).
+- `Carousel`/`CarouselItem` (`carousel.tsx`) — a prateleira horizontal usada por todos os carrosseis. Scroll nativo com `snap-x snap-mandatory` (funciona em touch sem nenhum JS extra); setas de navegacao aparecem so no hover em desktop (`lg:flex`, escondidas por padrao).
+- `SeriesPosterCard` (`series-poster-card.tsx`) — o tile de poster usado nos carrosseis e em "Series semelhantes": poster + nota, sem mais nenhum texto ate o hover.
+
+### Landing — Hero cinematografico + carrosseis (Fase 2/3/4)
+
+`LandingPage` busca a serie mais popular do catalogo (`searchSeries({ sort: "popular" })[0]`) e usa o **backdrop real dela** como Hero em tela cheia (`min-h-[70vh]`, `min-h-[80vh]` em telas maiores) — nunca uma imagem estatica inventada. Gradientes (`bg-gradient-to-t`/`bg-gradient-to-r`, ambos usando o token `canvas` do tema) escurecem o canto onde o texto fica, mantendo o resto do backdrop visivel. Abaixo do Hero, 5 secoes usam `Carousel` sobre queries diferentes do mesmo `searchSeries` ja existente (Fase 9's "identidade por secao", sem nenhuma query nova): Em Alta (`sort=popular`), Lancamentos (`sort=latest`), Mais Bem Avaliadas (`sort=rating`), Em Exibicao (`status=RETURNING`), Finalizadas (`status=ENDED`). Beneficios/Recursos/Depoimentos/FAQ (da sprint anterior) continuam existindo, agora abaixo dos carrosseis.
+
+**Bug real encontrado e corrigido**: o Hero inicialmente renderizava com o backdrop completamente invisivel (so o gradiente escuro aparecia). Causa: o container usava `min-h-[70vh]` (uma altura minima, nao uma altura definida) enquanto o backdrop e o bloco de texto usavam `position: relative` + `h-full` — porcentagem de altura contra um container sem altura definida resolve para `auto`/0 em vez do valor esperado, entao a imagem (que usa `fill`, absoluta dentro do seu proprio wrapper) colapsava para 0px de altura. Corrigido tornando todas as camadas do Hero (backdrop, gradientes, texto) `absolute inset-0` dentro do container `min-h-[70vh]` — so o container define altura; todo o resto preenche 100% dela de forma inequivoca.
+
+### Catalogo e cards de series (Fase 5)
+
+`SeriesCard` deixou de ser um card com `aspect-[5/3]` + texto abaixo; agora e poster-first (`aspect-[2/3]`), com status e nota sobrepostos no topo do poster, titulo/ano/plataforma sobre um gradiente na base, e generos revelados so no hover (`opacity-0 group-hover:opacity-100`) — bem menos texto sempre visivel, mais imagem. `/series` foi de 3 para ate 5 colunas (`sm:3 lg:4 xl:5`) para acomodar o formato retrato. `RecommendationCard` (ja era poster-first) so trocou o `background-image` por `PosterImage`.
+
+### Pagina da serie — cinematografica (Fase 6)
+
+Hero de tela cheia com `BackdropImage` (`aspect-[3/4]` no mobile, `aspect-[16/6]` no desktop), gradiente, poster grande sobreposto por cima do backdrop (`-mt-24`/`-mt-32`, escondido no mobile por espaco), titulo grande, botoes de status em `size="md"` (antes `sm`). Ordem das secoes abaixo do Hero, exatamente como pedido: Temporadas (cada `EpisodeRow` agora mostra o still do episodio) → Reviews → **Listas** (nova secao "Aparece nestas listas", via `getPublicListsContainingSeries` — query nova mas so leitura, mesmo padrao de `listPublicLists`, nenhuma regra de negocio nova) → **Series semelhantes** (carrossel via `searchSeries({ genre: series.genres[0] })`, excluindo a propria serie — reaproveita a busca existente, nao o motor de recomendacoes).
+
+### Dashboard e Watch Next (Fase 7/8)
+
+O Dashboard Home (`/`) nao precisou de nenhuma mudanca propria — como cada card (`WatchNextCard`, `EpisodeCalendarCard`, `RecommendationCard`, `ActivityCard`) ja é reaproveitado ali, a atualizacao visual desses componentes se propaga automaticamente para o hub. `WatchNextCard` ganhou poster maior (`PosterImage`, sem mais o still dividido 50/50) e uma barra de progresso fina (proporcao `1 / totalPending`, o "1" sendo o proprio episodio prestes a ser marcado) alem do texto "N episodio(s) restante(s)" ja existente. `ActivityCard` (Feed) ganhou uma miniatura de poster para atividades ligadas a uma serie (usa `posterUrl`, que ja vinha selecionado na query da activity, nenhum campo novo).
+
+### `stillUrl` — campo que existia mas nunca era usado
+
+`Episode.stillUrl` sempre existiu no schema, mas o tipo `Episode` (`lib/types.ts`, usado pela pagina da serie) nao tinha o campo, e o import real do TMDb (`lib/catalog/repository.ts`) gravava `stillUrl: null` incondicionalmente. Corrigido: `Episode.stillUrl` agora existe (opcional, para nao quebrar `lib/catalog/mock-data.ts`), `normalizeTmdbEpisode` mapeia `still_path` do TMDb, e o import grava `episode.stillUrl || null` de verdade. `lib/watch-next` e `lib/calendar/queries.ts` ja liam esse campo direto do Prisma havia sprints; so a pagina da serie e o catalogo TMDb estavam com essa lacuna.
+
+### Skeletons especificos (Fase 13)
+
+`SkeletonPosterGrid` (grade `aspect-[2/3]`, mesmas colunas do catalogo/recomendacoes) e `SkeletonCarouselRow` (prateleira horizontal de tiles `aspect-[2/3]`) — usados por `app/series/loading.tsx`, `app/series/[id]/loading.tsx`, `app/recommendations/loading.tsx` e `app/loading.tsx` (o loading de `/`, que precisa funcionar tanto para a Landing quanto para o Dashboard — usa um banner grande + duas prateleiras, uma forma neutra que serve para os dois).
+
+### Performance e imagens (Fase 14)
+
+`next.config.ts` mantem `remotePatterns` para `image.tmdb.org` (fotos reais em producao) e adiciona `dangerouslyAllowSVG` + uma CSP restrita (`script-src 'none'; sandbox;`) exclusivamente para as artes locais geradas em `/dev-media` (ver abaixo) — nunca para SVG de origem externa/nao confiavel. Todo uso de imagem passa por `next/image`: `sizes` calculado por contexto (poster de card, poster de carrossel, backdrop full-bleed) para nunca baixar mais resolucao que o necessario; `priority` so no Hero e nos primeiros itens do primeiro carrossel (acima da dobra) — todo o resto usa lazy loading (padrao do `next/image`).
+
+### Dev media — por que SVGs gerados localmente (`public/dev-media/`)
+
+Este ambiente de desenvolvimento nao tem acesso de rede para `image.tmdb.org` (bloqueado pela politica de rede do sandbox). Como o catalogo real (via `lib/tmdb` + sync) so preenche `posterUrl`/`backdropUrl`/`stillUrl` com fotos reais quando ha acesso a API do TMDb, `scripts/generate-dev-media.mjs` gera localmente um pequeno conjunto de artes abstratas (gradiente + formas, sem nenhum texto — ver "bug real" abaixo) para as 5 series fixas do `seed:dev`, e `npm run seed:dev` grava esses caminhos locais (`/dev-media/*.svg`) nos mesmos campos que o sync real usaria. Nenhum componente sabe a diferenca — `PosterImage`/`BackdropImage` tratam um caminho local exatamente como tratariam uma URL do TMDb. Em producao, com `TMDB_API_KEY` configurada, o sync grava fotos reais nesses mesmos campos e a arte gerada nunca e usada.
+
+**Bug real encontrado e corrigido**: a primeira versao do gerador (`generate-dev-media.mjs`) desenhava o titulo da serie dentro do proprio SVG do poster/backdrop. Como todo componente que usa essas imagens (`SeriesCard`, `SeriesPosterCard`, Hero da Landing, Hero da pagina da serie) **ja** sobrepõe o titulo real como HTML por cima da imagem, o resultado era o titulo aparecendo duas vezes, sobreposto. Corrigido removendo o texto do SVG — a arte gerada agora e puramente abstrata (gradiente + formas), do jeito que uma foto real do TMDb tambem seria (sem nenhum texto embutido).
+
+### Limitacoes atuais
+
+- Sem trailers, player, autoplay ou qualquer integracao de streaming/video — fora de escopo explicito do ticket
+- Sem geracao de imagem por IA nem wallpapers customizados — a arte de desenvolvimento e deliberadamente simples (gradiente + iniciais), pensada para ser substituida por fotos reais do TMDb em producao, nao para parecer uma foto de verdade
+- `Season.posterUrl` existe e e gravado (seed e sync), mas nenhuma tela ainda usa o poster por temporada separadamente do poster da serie — nao fazia parte do escopo desta sprint
+- Sem logo por serie (campo nao existe no schema do TMDb usado aqui) — a Fase 10 permite "quando disponivel", e para este catalogo nunca esta
+- Nenhuma regra de negocio, schema ou mutation foi alterada — a sprint e estritamente visual/imagens/performance de carregamento
+
 ## Smoke test (validacao ponta a ponta)
 
 Com o banco no ar, migrations aplicadas e seed dev rodado, suba o projeto (`npm run dev`) em um terminal e, em outro, rode:

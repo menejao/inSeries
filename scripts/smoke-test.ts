@@ -1528,6 +1528,51 @@ async function main() {
   const recommendationsAuth = await request(jarShell, "/recommendations");
   check("/recommendations autenticado carrega (200)", recommendationsAuth.status === 200, recommendationsAuth.status);
 
+  // ---- Experiencia cinematografica: Hero, carrosseis, posters/backdrops reais, stills ----
+  check(
+    "Landing possui Hero cinematografico (backdrop real da serie mais popular)",
+    /Em destaque: <span[^>]*>[^<]+<\/span>/.test(String(landingAnon.body)) &&
+      String(landingAnon.body).includes("dev-media") &&
+      String(landingAnon.body).includes("backdrop.svg"),
+    landingAnon.status
+  );
+  check(
+    "Landing possui multiplos carrosseis (Em Alta, Lancamentos, Mais Bem Avaliadas, Em Exibicao/Finalizadas)",
+    String(landingAnon.body).includes("Em Alta") &&
+      String(landingAnon.body).includes("Lancamentos") &&
+      String(landingAnon.body).includes("Mais Bem Avaliadas"),
+    landingAnon.status
+  );
+
+  const catalogPage = await request(jarShell, "/series");
+  check(
+    "Catalogo renderiza posteres reais (poster.svg via next/image)",
+    catalogPage.status === 200 && countOccurrences(String(catalogPage.body), "poster.svg") >= 5,
+    catalogPage.status
+  );
+
+  const seriesDetailPage = await request(jarShell, `/series/${seriesId}`);
+  check(
+    "Pagina da serie usa backdrop (Hero) e poster (destaque) reais",
+    seriesDetailPage.status === 200 &&
+      String(seriesDetailPage.body).includes("backdrop.svg") &&
+      String(seriesDetailPage.body).includes("poster.svg"),
+    seriesDetailPage.status
+  );
+
+  check(
+    "Dashboard autenticado usa imagens reais do catalogo (posteres nos cards)",
+    dashboardAuth.status === 200 && String(dashboardAuth.body).includes("poster.svg"),
+    dashboardAuth.status
+  );
+
+  const watchNextPosterCheck = await request(jarWatchNextDashboard, "/watch-next");
+  check(
+    "Watch Next usa poster grande (nao mais still dividido 50/50)",
+    watchNextPosterCheck.status === 200 && String(watchNextPosterCheck.body).includes("poster.svg"),
+    watchNextPosterCheck.status
+  );
+
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
 
   // ---- Encerramento ----
