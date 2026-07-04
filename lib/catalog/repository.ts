@@ -47,7 +47,8 @@ function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons: { inc
             overview: episode.overview ?? "Sinopse indisponivel.",
             runtimeMinutes: episode.runtimeMinutes ?? 0,
             airedOn: episode.airedAt?.toISOString().slice(0, 10) ?? "",
-            watched: false
+            watched: false,
+            stillUrl: episode.stillUrl ?? ""
           }))
       }))
   };
@@ -265,7 +266,7 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
       const episodeData = {
         title: episode.title,
         overview: episode.overview,
-        stillUrl: null,
+        stillUrl: episode.stillUrl || null,
         runtimeMinutes: episode.runtimeMinutes || null,
         airedAt: episode.airedOn ? new Date(episode.airedOn) : null,
         externalSource: episode.external ? ExternalSource.TMDB : null,

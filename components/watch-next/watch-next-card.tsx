@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PosterImage } from "@/components/media/poster-image";
 import { WatchNextMarkButton } from "@/components/watch-next/watch-next-mark-button";
 import { formatShortDate } from "@/lib/calendar/dates";
 import type { WatchNextItem } from "@/lib/watch-next";
@@ -12,17 +13,12 @@ function formatWatchNextCode(seasonNumber: number, episodeNumber: number, pendin
 }
 
 export function WatchNextCard({ item }: { item: WatchNextItem }) {
+  const progressPercent = Math.round((1 / item.totalPending) * 100);
+
   return (
-    <Card padding="none" className="flex flex-col overflow-hidden sm:flex-row sm:items-stretch">
-      <Link href={`/series/${item.series.slug}`} aria-label={`Abrir ${item.series.title}`} className="flex h-32 shrink-0 sm:h-auto sm:w-40">
-        <div
-          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
-          style={{ backgroundImage: item.series.posterUrl ? `url(${item.series.posterUrl})` : undefined }}
-        />
-        <div
-          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
-          style={{ backgroundImage: item.episode.stillUrl ? `url(${item.episode.stillUrl})` : undefined }}
-        />
+    <Card padding="none" className="flex overflow-hidden">
+      <Link href={`/series/${item.series.slug}`} aria-label={`Abrir ${item.series.title}`} className="relative w-24 shrink-0 sm:w-32">
+        <PosterImage src={item.series.posterUrl} alt={item.series.title} sizes="128px" />
       </Link>
       <div className="flex flex-1 flex-col gap-2 p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
@@ -38,12 +34,20 @@ export function WatchNextCard({ item }: { item: WatchNextItem }) {
         <p className="text-sm font-semibold text-ink">
           {formatWatchNextCode(item.episode.seasonNumber, item.episode.number, item.pendingAfterNext)}
         </p>
-        <p className="text-sm text-muted">{item.episode.title}</p>
+        <p className="line-clamp-1 text-sm text-muted">{item.episode.title}</p>
         <p className="text-xs text-subtle">
           {formatShortDate(item.episode.airedAt)}
           {item.isOverdue ? " · atrasado" : ""}
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-1 space-y-1">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-strong">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p className="text-xs text-subtle">
+            {item.pendingAfterNext > 0 ? `${item.pendingAfterNext} episodio(s) restante(s) depois deste` : "Ultimo pendente desta serie"}
+          </p>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3">
           <WatchNextMarkButton episodeId={item.episode.id} />
           <Link href={`/series/${item.series.slug}`} className="link-accent text-sm">
             Abrir serie

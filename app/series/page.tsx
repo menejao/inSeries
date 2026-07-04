@@ -48,7 +48,7 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
       <Filters query={params.q} genre={params.genre} status={params.status} year={params.year} sort={sort} metadata={metadata} />
       {result.items.length ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {result.items.map((item) => (
               <SeriesCard key={item.id} series={item} />
             ))}

@@ -9,7 +9,7 @@ export default function WatchNextLoading() {
       </div>
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-4xl" />
+          <Skeleton key={index} className="h-40 w-full rounded-4xl" />
         ))}
       </div>
     </div>

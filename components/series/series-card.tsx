@@ -1,49 +1,49 @@
 import Link from "next/link";
+import { PosterImage } from "@/components/media/poster-image";
 import { Badge } from "@/components/ui/badge";
 import { StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import type { Series } from "@/lib/types";
 
+/** Fase 5 — poster-first catalog card: poster, nota, status, ano, plataforma, generos (no hover). Sinopse foi removida do card (fica na pagina da serie). */
 export function SeriesCard({ series }: { series: Series }) {
-
   return (
     <Link
       href={`/series/${series.slug}`}
-      className="group block overflow-hidden rounded-4xl border border-border bg-surface/70 shadow-card backdrop-blur-sm transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised"
+      className="group block overflow-hidden rounded-3xl border border-border bg-surface/70 shadow-card transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised"
     >
-      <div className="relative aspect-[5/3] overflow-hidden">
-        <div
-          className="h-full w-full scale-100 bg-surface-strong bg-cover bg-center transition duration-300 ease-out group-hover:scale-105"
-          style={{ backgroundImage: series.backdropUrl ? `url(${series.backdropUrl})` : undefined }}
+      <div className="relative aspect-[2/3] overflow-hidden">
+        <PosterImage
+          src={series.posterUrl}
+          alt={series.title}
+          sizes="(min-width: 1280px) 220px, (min-width: 1024px) 22vw, (min-width: 640px) 30vw, 45vw"
+          imageClassName="transition duration-300 ease-out group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-canvas/70 via-transparent to-transparent" />
-        <div className="absolute left-3 top-3">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/95 via-canvas/25 to-transparent" />
+        <div className="absolute left-2 top-2">
           <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge>
         </div>
         {typeof series.voteAverage === "number" ? (
-          <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2.5 py-1 text-xs font-semibold text-ink backdrop-blur">
-            <StarIcon className="h-3.5 w-3.5 fill-current text-warning-text" />
+          <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-xs font-semibold text-ink backdrop-blur">
+            <StarIcon className="h-3 w-3 fill-current text-warning-text" />
             {series.voteAverage.toFixed(1)}
           </div>
         ) : null}
-      </div>
-      <div className="space-y-3 p-5">
-        <div>
-          <p className="line-clamp-1 text-lg font-semibold text-ink">{series.title}</p>
-          <p className="text-sm text-muted">
-            {series.year} · {series.platform}
+        <div className="absolute inset-x-0 bottom-0 space-y-1.5 p-3">
+          <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
+          <p className="text-xs text-muted">
+            {series.year || "—"} · {series.platform}
           </p>
+          {series.genres.length ? (
+            <div className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100">
+              {series.genres.slice(0, 2).map((genre) => (
+                <span key={genre} className="rounded-full bg-surface-strong/80 px-2 py-0.5 text-[10px] text-ink backdrop-blur">
+                  {genre}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
-        <p className="line-clamp-2 text-sm text-muted">{series.overview}</p>
-        {series.genres.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {series.genres.slice(0, 3).map((genre) => (
-              <span key={genre} className="rounded-full bg-surface-strong px-2.5 py-1 text-xs text-muted">
-                {genre}
-              </span>
-            ))}
-          </div>
-        ) : null}
       </div>
     </Link>
   );

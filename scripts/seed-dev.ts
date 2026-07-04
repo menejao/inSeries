@@ -8,12 +8,14 @@ type EpisodeSeed = {
   overview: string;
   runtimeMinutes: number;
   airedAt: string;
+  stillUrl?: string;
 };
 
 type SeasonSeed = {
   number: number;
   title: string;
   airYear: number;
+  posterUrl?: string;
   episodes: EpisodeSeed[];
 };
 
@@ -34,7 +36,7 @@ type SeriesSeed = {
   seasons: SeasonSeed[];
 };
 
-function buildEpisodes(seasonNumber: number): EpisodeSeed[] {
+function buildEpisodes(seasonNumber: number, stillUrl?: string): EpisodeSeed[] {
   return Array.from({ length: 5 }, (_, index) => {
     const number = index + 1;
     return {
@@ -42,7 +44,8 @@ function buildEpisodes(seasonNumber: number): EpisodeSeed[] {
       title: `Temporada ${seasonNumber} Episodio ${number}`,
       overview: `Sinopse local de teste para o episodio ${number} da temporada ${seasonNumber}.`,
       runtimeMinutes: 42,
-      airedAt: `20${20 + seasonNumber}-0${number}-15`
+      airedAt: `20${20 + seasonNumber}-0${number}-15`,
+      stillUrl
     };
   });
 }
@@ -54,7 +57,7 @@ function relativeDate(offsetDays: number) {
   return date.toISOString();
 }
 
-function buildRelativeEpisodes(seasonNumber: number, offsets: number[]): EpisodeSeed[] {
+function buildRelativeEpisodes(seasonNumber: number, offsets: number[], stillUrl?: string): EpisodeSeed[] {
   return offsets.map((offsetDays, index) => {
     const number = index + 1;
     return {
@@ -62,12 +65,23 @@ function buildRelativeEpisodes(seasonNumber: number, offsets: number[]): Episode
       title: `Temporada ${seasonNumber} Episodio ${number}`,
       overview: `Episodio de calendario de teste (offset ${offsetDays} dia(s) a partir de hoje).`,
       runtimeMinutes: 42,
-      airedAt: relativeDate(offsetDays)
+      airedAt: relativeDate(offsetDays),
+      stillUrl
     };
   });
 }
 
 const nextYear = new Date().getFullYear() + 1;
+
+/**
+ * Fase 10 (INSERIES-CINEMATIC-EXPERIENCE-FOUNDATION-01) — posters/backdrops/stills reais do
+ * TMDb exigem acesso de rede que este sandbox nao possui (ver README, secao "Estrategia visual").
+ * Estes SVGs gerados localmente (scripts/generate-dev-media.mjs, publicos em /dev-media) substituem
+ * as fotos reais so no dataset de desenvolvimento, para que Hero/carrosseis/cards tenham imagem de
+ * verdade para renderizar. Em producao, lib/tmdb/lib/catalog/normalize.ts preenchem os mesmos campos
+ * (posterUrl/backdropUrl/stillUrl) com fotos reais via sync — nenhum componente sabe a diferenca.
+ */
+const DEV_MEDIA = "/dev-media";
 
 const seriesSeeds: SeriesSeed[] = [
   {
@@ -75,8 +89,8 @@ const seriesSeeds: SeriesSeed[] = [
     title: "Serie Teste Um",
     originalTitle: "Test Series One",
     overview: "Serie fixa de desenvolvimento usada para validar persistencia sem depender do TMDb.",
-    posterUrl: "",
-    backdropUrl: "",
+    posterUrl: `${DEV_MEDIA}/serie-teste-um-poster.svg`,
+    backdropUrl: `${DEV_MEDIA}/serie-teste-um-backdrop.svg`,
     firstAirYear: 2021,
     language: "pt-BR",
     network: "inSeries Dev",
@@ -85,10 +99,28 @@ const seriesSeeds: SeriesSeed[] = [
     popularityScore: 90,
     voteAverage: 8.5,
     seasons: [
-      { number: 1, title: "Temporada 1", airYear: 2021, episodes: buildEpisodes(1) },
-      { number: 2, title: "Temporada 2", airYear: 2022, episodes: buildEpisodes(2) },
-      { number: 3, title: "Temporada 3", airYear: new Date().getFullYear(), episodes: buildRelativeEpisodes(3, [0, 3, 20]) },
-      { number: 4, title: "Temporada 4", airYear: nextYear, episodes: [] }
+      {
+        number: 1,
+        title: "Temporada 1",
+        airYear: 2021,
+        posterUrl: `${DEV_MEDIA}/serie-teste-um-poster.svg`,
+        episodes: buildEpisodes(1, `${DEV_MEDIA}/serie-teste-um-s1-still.svg`)
+      },
+      {
+        number: 2,
+        title: "Temporada 2",
+        airYear: 2022,
+        posterUrl: `${DEV_MEDIA}/serie-teste-um-poster.svg`,
+        episodes: buildEpisodes(2, `${DEV_MEDIA}/serie-teste-um-s2-still.svg`)
+      },
+      {
+        number: 3,
+        title: "Temporada 3",
+        airYear: new Date().getFullYear(),
+        posterUrl: `${DEV_MEDIA}/serie-teste-um-poster.svg`,
+        episodes: buildRelativeEpisodes(3, [0, 3, 20], `${DEV_MEDIA}/serie-teste-um-s3-still.svg`)
+      },
+      { number: 4, title: "Temporada 4", airYear: nextYear, posterUrl: `${DEV_MEDIA}/serie-teste-um-poster.svg`, episodes: [] }
     ]
   },
   {
@@ -96,8 +128,8 @@ const seriesSeeds: SeriesSeed[] = [
     title: "Serie Teste Dois",
     originalTitle: "Test Series Two",
     overview: "Segunda serie fixa de desenvolvimento, usada para validar catalogo e progresso.",
-    posterUrl: "",
-    backdropUrl: "",
+    posterUrl: `${DEV_MEDIA}/serie-teste-dois-poster.svg`,
+    backdropUrl: `${DEV_MEDIA}/serie-teste-dois-backdrop.svg`,
     firstAirYear: 2019,
     language: "pt-BR",
     network: "inSeries Dev",
@@ -106,8 +138,20 @@ const seriesSeeds: SeriesSeed[] = [
     popularityScore: 75,
     voteAverage: 6.0,
     seasons: [
-      { number: 1, title: "Temporada 1", airYear: 2019, episodes: buildEpisodes(1) },
-      { number: 2, title: "Temporada 2", airYear: 2020, episodes: buildEpisodes(2) }
+      {
+        number: 1,
+        title: "Temporada 1",
+        airYear: 2019,
+        posterUrl: `${DEV_MEDIA}/serie-teste-dois-poster.svg`,
+        episodes: buildEpisodes(1, `${DEV_MEDIA}/serie-teste-dois-s1-still.svg`)
+      },
+      {
+        number: 2,
+        title: "Temporada 2",
+        airYear: 2020,
+        posterUrl: `${DEV_MEDIA}/serie-teste-dois-poster.svg`,
+        episodes: buildEpisodes(2, `${DEV_MEDIA}/serie-teste-dois-s2-still.svg`)
+      }
     ]
   },
   {
@@ -115,8 +159,8 @@ const seriesSeeds: SeriesSeed[] = [
     title: "Serie Teste Tres",
     originalTitle: "Test Series Three",
     overview: "Terceira serie fixa de desenvolvimento, cancelada apos uma temporada, usada para variar status/genero/ano nos filtros.",
-    posterUrl: "",
-    backdropUrl: "",
+    posterUrl: `${DEV_MEDIA}/serie-teste-tres-poster.svg`,
+    backdropUrl: `${DEV_MEDIA}/serie-teste-tres-backdrop.svg`,
     firstAirYear: 2016,
     language: "pt-BR",
     network: "inSeries Dev",
@@ -124,15 +168,23 @@ const seriesSeeds: SeriesSeed[] = [
     status: "CANCELED",
     popularityScore: 60,
     voteAverage: 4.2,
-    seasons: [{ number: 1, title: "Temporada 1", airYear: 2016, episodes: buildEpisodes(1) }]
+    seasons: [
+      {
+        number: 1,
+        title: "Temporada 1",
+        airYear: 2016,
+        posterUrl: `${DEV_MEDIA}/serie-teste-tres-poster.svg`,
+        episodes: buildEpisodes(1, `${DEV_MEDIA}/serie-teste-tres-s1-still.svg`)
+      }
+    ]
   },
   {
     slug: "serie-teste-quatro",
     title: "Serie Teste Quatro",
     originalTitle: "Test Series Four",
     overview: "Quarta serie fixa de desenvolvimento, ainda em producao, sem episodios lancados nem nota ainda.",
-    posterUrl: "",
-    backdropUrl: "",
+    posterUrl: `${DEV_MEDIA}/serie-teste-quatro-poster.svg`,
+    backdropUrl: `${DEV_MEDIA}/serie-teste-quatro-backdrop.svg`,
     firstAirYear: nextYear,
     language: "pt-BR",
     network: "inSeries Dev",
@@ -147,8 +199,8 @@ const seriesSeeds: SeriesSeed[] = [
     title: "Serie Teste Cinco",
     originalTitle: "Test Series Five",
     overview: "Quinta serie fixa de desenvolvimento, piloto anunciado, usada para validar series futuras nos filtros.",
-    posterUrl: "",
-    backdropUrl: "",
+    posterUrl: `${DEV_MEDIA}/serie-teste-cinco-poster.svg`,
+    backdropUrl: `${DEV_MEDIA}/serie-teste-cinco-backdrop.svg`,
     firstAirYear: nextYear,
     language: "pt-BR",
     network: "inSeries Dev",
@@ -200,6 +252,7 @@ async function seedSeries(seed: SeriesSeed) {
       update: {
         title: season.title,
         airYear: season.airYear,
+        posterUrl: season.posterUrl || null,
         episodeCount: season.episodes.length
       },
       create: {
@@ -207,6 +260,7 @@ async function seedSeries(seed: SeriesSeed) {
         number: season.number,
         title: season.title,
         airYear: season.airYear,
+        posterUrl: season.posterUrl || null,
         episodeCount: season.episodes.length
       }
     });
@@ -218,7 +272,8 @@ async function seedSeries(seed: SeriesSeed) {
           title: episode.title,
           overview: episode.overview,
           runtimeMinutes: episode.runtimeMinutes,
-          airedAt: new Date(episode.airedAt)
+          airedAt: new Date(episode.airedAt),
+          stillUrl: episode.stillUrl || null
         },
         create: {
           seasonId: seasonRow.id,
@@ -226,7 +281,8 @@ async function seedSeries(seed: SeriesSeed) {
           title: episode.title,
           overview: episode.overview,
           runtimeMinutes: episode.runtimeMinutes,
-          airedAt: new Date(episode.airedAt)
+          airedAt: new Date(episode.airedAt),
+          stillUrl: episode.stillUrl || null
         }
       });
     }

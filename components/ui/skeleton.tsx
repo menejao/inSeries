@@ -44,6 +44,31 @@ export function SkeletonGrid({ count = 6, className }: { count?: number; classNa
   );
 }
 
+/** Poster-shaped grid (2:3), used by catalog/recomendacoes loading states — mirrors SeriesCard/SeriesPosterCard aspect ratio. */
+export function SkeletonPosterGrid({ count = 10, className }: { count?: number; className?: string }) {
+  return (
+    <div className={cn("grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", className)}>
+      {Array.from({ length: count }).map((_, index) => (
+        <Skeleton key={index} className="aspect-[2/3] w-full rounded-3xl" />
+      ))}
+    </div>
+  );
+}
+
+/** Horizontal shelf skeleton for carousel sections (Landing, Series semelhantes). */
+export function SkeletonCarouselRow({ count = 6 }: { count?: number }) {
+  return (
+    <div className="flex gap-4 overflow-hidden" aria-hidden="true">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="w-40 shrink-0 space-y-2 sm:w-44 lg:w-48">
+          <Skeleton className="aspect-[2/3] w-full rounded-3xl" />
+          <Skeleton className="h-3.5 w-4/5 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SkeletonTable({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
   return (
     <div className="space-y-2" aria-hidden="true">

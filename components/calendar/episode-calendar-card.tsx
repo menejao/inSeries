@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { PosterImage } from "@/components/media/poster-image";
 import { EpisodeWatchButton } from "@/components/series/episode-watch-button";
 import { formatShortDate } from "@/lib/calendar/dates";
 import { formatEpisodeCode } from "@/lib/utils";
@@ -23,15 +24,8 @@ export function EpisodeCalendarCard({
 }) {
   return (
     <Card className="flex flex-col gap-4 overflow-hidden p-0 sm:flex-row sm:items-stretch">
-      <div className="flex h-28 shrink-0 sm:h-auto sm:w-44">
-        <div
-          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
-          style={{ backgroundImage: episode.series.posterUrl || episode.series.backdropUrl ? `url(${episode.series.posterUrl || episode.series.backdropUrl})` : undefined }}
-        />
-        <div
-          className="h-full w-1/2 bg-surface-strong bg-cover bg-center"
-          style={{ backgroundImage: episode.stillUrl || episode.series.backdropUrl ? `url(${episode.stillUrl || episode.series.backdropUrl})` : undefined }}
-        />
+      <div className="relative h-28 w-20 shrink-0 sm:h-auto sm:w-32">
+        <PosterImage src={episode.series.posterUrl || episode.series.backdropUrl} alt={episode.series.title} sizes="128px" />
       </div>
       <div className="flex flex-1 flex-col gap-2 p-5 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">

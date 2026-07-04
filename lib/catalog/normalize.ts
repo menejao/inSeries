@@ -182,6 +182,7 @@ export function normalizeTmdbEpisode(payload: TmdbEpisodeDetails): NormalizedCat
     runtimeMinutes: payload.runtime ?? 0,
     airedOn: payload.air_date ?? "",
     watched: false,
+    stillUrl: toImageUrl(payload.still_path, "w300"),
     external: {
       source: "TMDB",
       entityType: "EPISODE",

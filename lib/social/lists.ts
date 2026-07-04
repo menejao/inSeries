@@ -52,6 +52,19 @@ export async function listPublicLists() {
   });
 }
 
+/** Fase 6 (pagina cinematografica da serie) — listas publicas que ja incluem esta serie, para a secao "Listas". */
+export async function getPublicListsContainingSeries(seriesId: string, limit = 6) {
+  return prisma.list.findMany({
+    where: { visibility: "PUBLIC", hiddenByAdminAt: null, items: { some: { seriesId } } },
+    include: {
+      user: { select: { username: true, name: true } },
+      _count: { select: { items: true } }
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit
+  });
+}
+
 export async function listUserLists(userId: string) {
   return prisma.list.findMany({
     where: { userId },

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { PosterImage } from "@/components/media/poster-image";
 import { CheckCircleIcon, FilmIcon, HeartIcon, ListIcon, StarIcon, TvIcon } from "@/components/ui/icons";
 import { formatEpisodeCode, formatRelativeDate, getInitials } from "@/lib/utils";
 import type { ActivityFeedItem } from "@/lib/social/activity";
@@ -141,6 +142,11 @@ export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
         ) : null}
         <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
       </div>
+      {activity.series ? (
+        <Link href={`/series/${activity.series.slug}`} aria-label={`Abrir ${activity.series.title}`} className="relative hidden h-16 w-11 shrink-0 overflow-hidden rounded-xl sm:block">
+          <PosterImage src={activity.series.posterUrl} alt={activity.series.title} sizes="44px" />
+        </Link>
+      ) : null}
     </Card>
   );
 }

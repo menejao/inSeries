@@ -1,4 +1,4 @@
-import { Skeleton, SkeletonGrid } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonPosterGrid } from "@/components/ui/skeleton";
 
 export default function SeriesLoading() {
   return (
@@ -9,7 +9,7 @@ export default function SeriesLoading() {
         <Skeleton className="h-4 w-40 rounded-full" />
       </div>
       <Skeleton className="h-32 w-full rounded-4xl sm:h-24" />
-      <SkeletonGrid count={6} />
+      <SkeletonPosterGrid count={10} />
     </div>
   );
 }

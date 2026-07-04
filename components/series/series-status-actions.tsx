@@ -37,7 +37,7 @@ export function SeriesStatusActions({
       {labels.map((item) => (
         <Button
           key={item.value}
-          size="sm"
+          size="md"
           variant={state === item.value ? "primary" : "secondary"}
           disabled={isPending}
           loading={isPending && pendingValue === item.value}

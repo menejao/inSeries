@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { SeriesCard } from "@/components/series/series-card";
+import { BackdropImage } from "@/components/media/poster-image";
+import { Carousel, CarouselItem } from "@/components/media/carousel";
+import { SeriesPosterCard } from "@/components/media/series-poster-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { canUseDatabase } from "@/lib/db/health";
 import { prisma } from "@/lib/db/prisma";
 import { searchSeries } from "@/lib/discovery/search";
@@ -11,6 +14,7 @@ import {
   CalendarIcon,
   ChartIcon,
   CheckCircleIcon,
+  CompassIcon,
   FilmIcon,
   ListIcon,
   PlayIcon,
@@ -122,52 +126,115 @@ async function getCatalogStats() {
   return { seriesCount, episodeCount, userCount, reviewCount };
 }
 
+type CarouselSection = { eyebrow: string; title: string; href: string; items: Awaited<ReturnType<typeof searchSeries>>["items"] };
+
 /**
- * Fase 3 — the full public Landing Page: Hero, CTA, Beneficios, Demonstracao,
- * Recursos, Estatisticas do catalogo, Depoimentos (placeholder), FAQ. Never
- * shows anything from the authenticated product (no personal data, no
- * internal navigation) — "visitante conhece o produto", nao o usa.
+ * Fase 2/3/4 (INSERIES-CINEMATIC-EXPERIENCE-FOUNDATION-01) — o catalogo real vira o Hero
+ * (backdrop da serie mais popular) e o corpo da pagina vira uma sequencia de carrosseis de
+ * posteres, nao um grid estatico de cards. Beneficios/Recursos/Depoimentos/FAQ continuam
+ * existindo mais abaixo, mas o topo da pagina agora vende o catalogo, nao o texto.
  */
 export async function LandingPage() {
-  const [stats, popular] = await Promise.all([getCatalogStats(), searchSeries({ sort: "popular", page: 1, pageSize: 6 })]);
+  const [stats, popular, latest, topRated, onAir, ended] = await Promise.all([
+    getCatalogStats(),
+    searchSeries({ sort: "popular", page: 1, pageSize: 12 }),
+    searchSeries({ sort: "latest", page: 1, pageSize: 12 }),
+    searchSeries({ sort: "rating", page: 1, pageSize: 12 }),
+    searchSeries({ status: "RETURNING", sort: "popular", page: 1, pageSize: 12 }),
+    searchSeries({ status: "ENDED", sort: "popular", page: 1, pageSize: 12 })
+  ]);
+
+  const hero = popular.items[0];
+  const sections: CarouselSection[] = [
+    { eyebrow: "Em Alta", title: "O que esta bombando agora", href: "/series?sort=popular", items: popular.items },
+    { eyebrow: "Lancamentos", title: "As series mais recentes do catalogo", href: "/series?sort=latest", items: latest.items },
+    { eyebrow: "Mais Bem Avaliadas", title: "As notas mais altas da comunidade", href: "/series?sort=rating", items: topRated.items },
+    { eyebrow: "Em Exibicao", title: "Series que ainda estao no ar", href: "/series?status=RETURNING", items: onAir.items },
+    { eyebrow: "Finalizadas", title: "Maratonas completas, do inicio ao fim", href: "/series?status=ENDED", items: ended.items }
+  ].filter((section) => section.items.length > 0);
 
   return (
-    <div className="space-y-20">
-      <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <Card padding="lg" className="animate-fade-in-up overflow-hidden">
-          <Badge>Feito para maratonistas</Badge>
-          <h1 className="mt-4 max-w-2xl text-4xl font-black leading-[1.05] tracking-tight text-ink sm:text-5xl">
-            Sua central para acompanhar series, episodio por episodio.
-          </h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-muted">
-            Progresso real por episodio, calendario de lancamentos, recomendacoes, estatisticas, recap anual e conquistas — tudo
-            calculado a partir do que voce realmente assiste.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/register" className="inline-flex">
-              <Button size="lg">Criar conta gratis</Button>
-            </Link>
-            <Link href="/series" className="inline-flex">
-              <Button size="lg" variant="secondary">
-                Explorar catalogo
-              </Button>
-            </Link>
-          </div>
-        </Card>
-        <Card padding="lg" className="animate-fade-in-up [animation-delay:80ms]">
-          <p className="eyebrow">O catalogo em numeros</p>
-          {stats ? (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <StatTile label="Series" value={stats.seriesCount} />
-              <StatTile label="Episodios" value={stats.episodeCount} />
-              <StatTile label="Usuarios" value={stats.userCount} />
-              <StatTile label="Reviews" value={stats.reviewCount} />
-            </div>
+    <div className="space-y-16">
+      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
+        <div className="relative min-h-[70vh] sm:min-h-[80vh]">
+          {hero ? (
+            <BackdropImage src={hero.backdropUrl || hero.posterUrl} alt={hero.title} priority sizes="100vw" />
           ) : (
-            <p className="mt-4 text-sm text-muted">Estatisticas indisponiveis no momento.</p>
+            <div className="absolute inset-0 bg-gradient-to-br from-surface-strong via-surface to-canvas" />
           )}
-        </Card>
+          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-canvas/70 via-canvas/10 to-transparent" />
+          <div className="relative flex h-full min-h-[70vh] flex-col justify-end gap-5 p-5 sm:min-h-[80vh] sm:p-10 lg:max-w-2xl">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-lg font-black text-primary-foreground">
+                in
+              </span>
+              <span className="text-sm font-semibold text-ink">inSeries</span>
+            </div>
+            <Badge>Feito para maratonistas</Badge>
+            <h1 className="max-w-2xl text-4xl font-black leading-[1.05] tracking-tight text-ink sm:text-6xl">
+              Sua central para acompanhar series, episodio por episodio.
+            </h1>
+            <p className="max-w-xl text-base leading-7 text-ink/90 sm:text-lg">
+              Progresso real por episodio, calendario de lancamentos, recomendacoes, estatisticas, recap anual e conquistas — tudo
+              calculado a partir do que voce realmente assiste.
+            </p>
+            {hero ? (
+              <p className="text-sm text-muted">
+                Em destaque: <span className="font-semibold text-ink">{hero.title}</span>
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Link href="/register" className="inline-flex">
+                <Button size="lg">Criar conta gratis</Button>
+              </Link>
+              <Link href="/series" className="inline-flex">
+                <Button size="lg" variant="secondary">
+                  Explorar catalogo
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
+
+      {stats ? (
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Series" value={stats.seriesCount} />
+          <StatTile label="Episodios" value={stats.episodeCount} />
+          <StatTile label="Usuarios" value={stats.userCount} />
+          <StatTile label="Reviews" value={stats.reviewCount} />
+        </section>
+      ) : null}
+
+      {sections.length ? (
+        sections.map((section, index) => (
+          <section key={section.eyebrow} className="space-y-3">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="eyebrow">{section.eyebrow}</p>
+                <h2 className="section-title">{section.title}</h2>
+              </div>
+              <Link href={section.href} className="link-accent shrink-0 text-sm">
+                Ver tudo
+              </Link>
+            </div>
+            <Carousel>
+              {section.items.map((series, itemIndex) => (
+                <CarouselItem key={series.id}>
+                  <SeriesPosterCard series={series} priority={index === 0 && itemIndex < 4} />
+                </CarouselItem>
+              ))}
+            </Carousel>
+          </section>
+        ))
+      ) : (
+        <EmptyState
+          icon={<CompassIcon className="h-6 w-6" />}
+          title="Catalogo ainda vazio"
+          copy="Assim que series forem sincronizadas, elas aparecem aqui em destaque."
+        />
+      )}
 
       <section className="space-y-4">
         <div>
@@ -185,23 +252,6 @@ export async function LandingPage() {
                 <p className="mt-1 text-sm text-muted">{benefit.copy}</p>
               </div>
             </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow">Demonstracao</p>
-            <h2 className="section-title">Em destaque no catalogo agora</h2>
-          </div>
-          <Link href="/series" className="link-accent shrink-0 text-sm">
-            Ver tudo
-          </Link>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {popular.items.map((series) => (
-            <SeriesCard key={series.id} series={series} />
           ))}
         </div>
       </section>
@@ -276,7 +326,7 @@ export async function LandingPage() {
 
 function StatTile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-3xl border border-border bg-surface-strong/50 p-3">
+    <div className="rounded-3xl border border-border bg-surface-strong/50 p-4 text-center sm:text-left">
       <p className="text-2xl font-semibold text-ink">{value.toLocaleString("pt-BR")}</p>
       <p className="text-xs text-muted">{label}</p>
     </div>

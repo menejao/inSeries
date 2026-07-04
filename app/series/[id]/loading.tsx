@@ -1,9 +1,18 @@
-import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonCarouselRow, SkeletonText } from "@/components/ui/skeleton";
 
 export default function SeriesDetailsLoading() {
   return (
     <div className="space-y-6">
-      <Skeleton className="h-80 w-full rounded-4xl" />
+      <div className="space-y-4">
+        <Skeleton className="aspect-[16/7] w-full rounded-4xl" />
+        <div className="flex gap-4 px-2">
+          <Skeleton className="hidden h-48 w-32 shrink-0 rounded-3xl sm:block" />
+          <div className="flex-1 space-y-3 pt-2">
+            <Skeleton className="h-8 w-2/3 rounded-full" />
+            <SkeletonText lines={2} />
+          </div>
+        </div>
+      </div>
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <Skeleton className="h-48 rounded-4xl" />
         <div className="space-y-4">
@@ -11,7 +20,7 @@ export default function SeriesDetailsLoading() {
           <Skeleton className="h-40 rounded-4xl" />
         </div>
       </section>
-      <SkeletonText lines={3} />
+      <SkeletonCarouselRow count={6} />
     </div>
   );
 }

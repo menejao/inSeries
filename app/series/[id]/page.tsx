@@ -9,7 +9,10 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { buttonVariants } from "@/components/ui/button";
-import { CalendarIcon, FilmIcon, StarIcon } from "@/components/ui/icons";
+import { BackdropImage, PosterImage } from "@/components/media/poster-image";
+import { Carousel, CarouselItem } from "@/components/media/carousel";
+import { SeriesPosterCard } from "@/components/media/series-poster-card";
+import { CalendarIcon, FilmIcon, ListIcon, StarIcon } from "@/components/ui/icons";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
@@ -17,9 +20,11 @@ import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
+import { getPublicListsContainingSeries } from "@/lib/social/lists";
 import { getNextEpisodeForSeries } from "@/lib/calendar/queries";
+import { searchSeries } from "@/lib/discovery/search";
 import { formatShortDate } from "@/lib/calendar/dates";
-import { formatEpisodeCode, getInitials } from "@/lib/utils";
+import { formatEpisodeCode, formatDate, getInitials } from "@/lib/utils";
 
 export default async function SeriesDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,6 +63,11 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   const reviews = dbAvailable ? await getSeriesReviews(series.id, user?.id) : [];
   const ownReview = user && dbAvailable ? await getOwnReview(user.id, series.id) : null;
   const nextEpisode = dbAvailable ? await getNextEpisodeForSeries(series.id) : null;
+  const listsWithSeries = dbAvailable ? await getPublicListsContainingSeries(series.id) : [];
+  const similar = dbAvailable && series.genres[0]
+    ? await searchSeries({ genre: series.genres[0], sort: "popular", pageSize: 12 })
+    : { items: [] };
+  const similarSeries = similar.items.filter((item) => item.id !== series.id).slice(0, 10);
 
   const hydratedSeasons = series.seasons.map((season) => ({
     ...season,
@@ -71,35 +81,42 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-4xl border border-border">
-        <div
-          className="min-h-80 bg-cover bg-center p-6 sm:p-8"
-          style={{
-            backgroundImage: `linear-gradient(180deg, rgb(var(--c-canvas) / 0.25), rgb(var(--c-canvas) / 0.97)), url(${series.backdropUrl || series.posterUrl})`
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge>
-            {typeof series.voteAverage === "number" ? (
-              <Badge variant="warning">
-                <StarIcon className="h-3 w-3 fill-current" /> {series.voteAverage.toFixed(1)}
-              </Badge>
+      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
+        <div className="relative aspect-[3/4] sm:aspect-[16/8] lg:aspect-[16/6]">
+          <BackdropImage src={series.backdropUrl || series.posterUrl} alt={series.title} priority sizes="100vw" />
+          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/70 sm:via-canvas/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-canvas/60 via-transparent to-transparent hidden sm:block" />
+        </div>
+        <div className="relative -mt-24 flex flex-col gap-6 px-4 pb-6 sm:-mt-32 sm:flex-row sm:items-end sm:px-8 sm:pb-8">
+          <div className="hidden w-40 shrink-0 overflow-hidden rounded-3xl border-2 border-border-strong shadow-raised sm:block lg:w-48">
+            <div className="relative aspect-[2/3]">
+              <PosterImage src={series.posterUrl} alt={series.title} sizes="192px" priority />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge>
+              {typeof series.voteAverage === "number" ? (
+                <Badge variant="warning">
+                  <StarIcon className="h-3 w-3 fill-current" /> {series.voteAverage.toFixed(1)}
+                </Badge>
+              ) : null}
+            </div>
+            <h1 className="max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-5xl">{series.title}</h1>
+            {series.originalTitle && series.originalTitle !== series.title ? (
+              <p className="text-sm text-muted">{series.originalTitle}</p>
             ) : null}
-          </div>
-          <h1 className="mt-4 max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl">{series.title}</h1>
-          {series.originalTitle && series.originalTitle !== series.title ? (
-            <p className="mt-1 text-sm text-muted">{series.originalTitle}</p>
-          ) : null}
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-ink/90">{series.overview}</p>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted">
-            {series.genres.map((genre) => (
-              <span key={genre} className="rounded-full bg-surface-strong/80 px-2.5 py-1">
-                {genre}
-              </span>
-            ))}
-          </div>
-          <div className="mt-6">
-            <SeriesStatusActions seriesId={series.id} initialState={status?.state ?? null} authenticated={Boolean(user)} />
+            <p className="max-w-3xl text-sm leading-7 text-ink/90 line-clamp-3 sm:line-clamp-none">{series.overview}</p>
+            <div className="flex flex-wrap gap-2 text-xs text-muted">
+              {series.genres.map((genre) => (
+                <span key={genre} className="rounded-full bg-surface-strong/80 px-2.5 py-1">
+                  {genre}
+                </span>
+              ))}
+            </div>
+            <div className="pt-1">
+              <SeriesStatusActions seriesId={series.id} initialState={status?.state ?? null} authenticated={Boolean(user)} />
+            </div>
           </div>
         </div>
       </section>
@@ -237,6 +254,43 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
           )}
         </div>
       </section>
+
+      {listsWithSeries.length ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+            <ListIcon className="h-5 w-5 text-subtle" />
+            Aparece nestas listas
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {listsWithSeries.map((list) => (
+              <Link key={list.id} href={`/lists/${list.id}`}>
+                <Card interactive padding="sm" className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="line-clamp-1 font-semibold text-ink">{list.title}</p>
+                    <Badge variant="outline">{list._count.items}</Badge>
+                  </div>
+                  <p className="text-xs text-subtle">
+                    por <span className="font-semibold text-ink">@{list.user.username}</span> · {formatDate(list.createdAt)}
+                  </p>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {similarSeries.length ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-ink">Series semelhantes</h2>
+          <Carousel>
+            {similarSeries.map((item) => (
+              <CarouselItem key={item.id}>
+                <SeriesPosterCard series={item} />
+              </CarouselItem>
+            ))}
+          </Carousel>
+        </section>
+      ) : null}
     </div>
   );
 }
