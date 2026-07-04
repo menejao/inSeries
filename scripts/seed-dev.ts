@@ -52,7 +52,9 @@ function buildEpisodes(seasonNumber: number, stillUrl?: string): EpisodeSeed[] {
 
 function relativeDate(offsetDays: number) {
   const date = new Date();
-  date.setHours(12, 0, 0, 0);
+  // Midnight (not noon) so the offset-0 "airs today" episode always counts as already
+  // aired regardless of what time of day the seed/smoke test actually runs.
+  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + offsetDays);
   return date.toISOString();
 }

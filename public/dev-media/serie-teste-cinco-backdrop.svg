@@ -4,14 +4,8 @@
       <stop offset="0%" stop-color="#9f1239"/>
       <stop offset="100%" stop-color="#18181b"/>
     </linearGradient>
-    <linearGradient id="vignette" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="#000000" stop-opacity="0.55"/>
-      <stop offset="45%" stop-color="#000000" stop-opacity="0"/>
-    </linearGradient>
   </defs>
   <rect width="1280" height="720" fill="url(#g)"/>
   <circle cx="1000" cy="200" r="260" fill="#ffffff" fill-opacity="0.05"/>
   <circle cx="220" cy="560" r="200" fill="#ffffff" fill-opacity="0.05"/>
-  <rect width="1280" height="720" fill="url(#vignette)"/>
-  <text x="72" y="620" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="800" fill="#ffffff" fill-opacity="0.95">Serie Teste Cinco</text>
 </svg>

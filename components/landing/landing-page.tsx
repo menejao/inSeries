@@ -157,14 +157,16 @@ export async function LandingPage() {
     <div className="space-y-16">
       <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
         <div className="relative min-h-[70vh] sm:min-h-[80vh]">
-          {hero ? (
-            <BackdropImage src={hero.backdropUrl || hero.posterUrl} alt={hero.title} priority sizes="100vw" />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-surface-strong via-surface to-canvas" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/60 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-canvas/70 via-canvas/10 to-transparent" />
-          <div className="relative flex h-full min-h-[70vh] flex-col justify-end gap-5 p-5 sm:min-h-[80vh] sm:p-10 lg:max-w-2xl">
+          <div className="absolute inset-0">
+            {hero ? (
+              <BackdropImage src={hero.backdropUrl || hero.posterUrl} alt={hero.title} priority sizes="100vw" />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-br from-surface-strong via-surface to-canvas" />
+            )}
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/35 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-canvas/55 via-transparent to-transparent" />
+          <div className="absolute inset-0 flex flex-col justify-end gap-5 p-5 sm:p-10 lg:max-w-2xl">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-lg font-black text-primary-foreground">
                 in

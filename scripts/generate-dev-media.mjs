@@ -20,7 +20,10 @@ const SERIES = [
   { slug: "serie-teste-cinco", title: "Serie Teste Cinco", initials: "SC", from: "#9f1239", to: "#18181b" }
 ];
 
-function poster({ slug, title, initials, from, to }) {
+// No baked-in title text on poster/backdrop art: every place that renders these images
+// (SeriesCard, SeriesPosterCard, Landing hero, series detail hero) already overlays the
+// real title as HTML — baking it into the SVG too just doubles/overlaps the text.
+function poster({ slug, initials, from, to }) {
   const svg = `<svg width="500" height="750" viewBox="0 0 500 750" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -32,29 +35,21 @@ function poster({ slug, title, initials, from, to }) {
   <circle cx="250" cy="270" r="150" fill="#ffffff" fill-opacity="0.07"/>
   <circle cx="250" cy="270" r="95" fill="#ffffff" fill-opacity="0.06"/>
   <text x="250" y="300" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="800" fill="#ffffff" fill-opacity="0.92">${initials}</text>
-  <text x="250" y="660" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="700" fill="#ffffff" fill-opacity="0.95">${title}</text>
-  <text x="250" y="694" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="15" fill="#ffffff" fill-opacity="0.55">inSeries</text>
 </svg>`;
   writeFileSync(path.join(outDir, `${slug}-poster.svg`), svg, "utf8");
 }
 
-function backdrop({ slug, title, from, to }) {
+function backdrop({ slug, from, to }) {
   const svg = `<svg width="1280" height="720" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${from}"/>
       <stop offset="100%" stop-color="${to}"/>
     </linearGradient>
-    <linearGradient id="vignette" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="#000000" stop-opacity="0.55"/>
-      <stop offset="45%" stop-color="#000000" stop-opacity="0"/>
-    </linearGradient>
   </defs>
   <rect width="1280" height="720" fill="url(#g)"/>
   <circle cx="1000" cy="200" r="260" fill="#ffffff" fill-opacity="0.05"/>
   <circle cx="220" cy="560" r="200" fill="#ffffff" fill-opacity="0.05"/>
-  <rect width="1280" height="720" fill="url(#vignette)"/>
-  <text x="72" y="620" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="800" fill="#ffffff" fill-opacity="0.95">${title}</text>
 </svg>`;
   writeFileSync(path.join(outDir, `${slug}-backdrop.svg`), svg, "utf8");
 }
