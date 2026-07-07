@@ -28,7 +28,7 @@ import { resolvePreferredImageUrl } from "@/lib/catalog/image-resolution";
 import { computeCatalogStatistics } from "@/lib/catalog/statistics";
 import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
-import { pickHero } from "@/components/landing/landing-page";
+import { pickHero } from "@/lib/catalog/hero-selection";
 import type { Series } from "@/lib/types";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";

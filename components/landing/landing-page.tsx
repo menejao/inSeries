@@ -24,6 +24,7 @@ import {
   listNovidades,
   listPremiadas
 } from "@/lib/catalog/smart-lists";
+import { HERO_POOL_SIZE, pickHero } from "@/lib/catalog/hero-selection";
 import type { Series } from "@/lib/types";
 import {
   BellIcon,
@@ -38,26 +39,6 @@ import {
   StarIcon,
   TrophyIcon
 } from "@/components/ui/icons";
-
-/** Fase 2 — never highlight a low-quality series; below this bar, fall back to plain popularity. */
-const HERO_MIN_QUALITY_SCORE = 55;
-const HERO_POOL_SIZE = 10;
-
-/**
- * Fase 2 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — the Hero rotates among relevant,
- * high-quality series instead of always freezing on the single most popular one. "Relevant"
- * means qualityScore above the bar; if nothing in the catalog clears it yet (e.g. a fresh
- * catalog with no scored series), falls back to plain popularity so the Hero is never empty.
- * The rotation is hourly (deterministic per request, changes over time) rather than random,
- * so a page reload doesn't flicker between different heroes.
- */
-export function pickHero(qualityPool: Series[], popularPool: Series[]): Series | undefined {
-  const qualified = qualityPool.filter((item) => (item.qualityScore ?? 0) >= HERO_MIN_QUALITY_SCORE);
-  const pool = qualified.length ? qualified : popularPool;
-  if (!pool.length) return undefined;
-  const bucket = Math.floor(Date.now() / (60 * 60 * 1000));
-  return pool[bucket % pool.length];
-}
 
 const FEATURES = [
   {

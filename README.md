@@ -1389,6 +1389,79 @@ O script (`scripts/smoke-test.ts`) executa via HTTP contra `http://localhost:300
 19. observabilidade: `/api/health` responde com status/versao/ambiente/timestamp e propaga `x-request-id`; `/api/ready` responde `ready` com banco e configuracao saudaveis (a falha do banco gerando `ready` com `503` foi validada manualmente parando o Postgres, ja que o smoke test nao derruba servicos do sistema); um `x-request-id` recebido por header e reaproveitado em vez de substituido; um payload JSON invalido gera uma resposta consistente (`INTERNAL_ERROR`, sem stack trace); `/api/admin/metrics` bloqueia usuario comum (403) e o contador de requests cresce a cada chamada; `/admin/system` mostra feature flags, health/ready e metricas;
 20. estatisticas: `/me/stats` e `/api/me/stats` exigem sessao (anonimo recebe redirect/401); apos assistir 1 episodio (runtime de 42min conhecido do seed), as estatisticas do usuario refletem `episodesWatched: 1`, `minutesWatched: 42`, generos calculados a partir da serie assistida, sequencia atual de 1 dia e ao menos um insight gerado; o dashboard carrega e mostra as secoes Resumo geral/Tempo assistido/Sequencias; um usuario recem-criado sem nenhum episodio assistido ve estatisticas zeradas (API) e o empty state "Ainda sem estatisticas" (dashboard).
 
+## Catalogo Inteligente na interface (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01)
+
+As tres sprints anteriores (SCALE-01, COVERAGE-01, QUALITY-01) enriqueceram o catalogo — Quality Score, Collection Tags, Streaming Providers, Keywords, Smart Lists, metadados internacionais — mas tudo isso vivia só no banco, invisivel para quem usa o app. Esta sprint conecta essa camada de dados a interface, sem alterar autenticacao, navegacao, permissoes, sincronizacao ou schema (alem de nenhuma coluna nova — os campos ja existiam desde as sprints anteriores).
+
+### Auditoria (Fase 1) — o que a interface nao mostrava
+
+O tipo `Series` (`lib/types.ts`), usado por toda a UI, e os dois mappers que o alimentam (`toSeriesView` em `lib/catalog/repository.ts`, `toSeriesSummary` em `lib/discovery/search.ts`) simplesmente nao expunham `qualityScore`, `collectionTags`, `watchProviders`, `keywords`, `type`, `logoUrl`, `originCountry`, `spokenLanguages`, `createdBy`, `networks`, `productionCompanies`, `productionCountries`, `tagline` ou `homepage` — mesmo esses campos ja estando na tabela `Series` havia duas sprints. `SeriesCard`, `SeriesPosterCard`, `RecommendationCard` e `WatchNextCard` (todo componente que renderiza uma serie) eram, portanto, becos sem saida para esses dados. Essa auditoria foi o primeiro passo: sem estender o tipo `Series` e os dois mappers, nenhuma das fases seguintes seria possivel.
+
+### Plumbing (pre-requisito das Fases 2-10)
+
+- `lib/types.ts`: `Series` ganhou os 14 campos acima (a maioria `string[]` obrigatorio, default `[]` — nunca `undefined`, para a UI nunca precisar de `?? []` espalhado)
+- `toSeriesView`/`toSeriesSummary`: passaram a copiar esses campos do model do Prisma (que ja os tinha) — nenhuma consulta nova, so mais linhas de mapeamento
+- `lib/recommendations/types.ts`/`engine.ts`: `CandidateSeries`/`CANDIDATE_SELECT` ganharam `qualityScore`, `collectionTags`, `watchProviders`, `logoUrl` — puramente aditivo, `scoring.ts`/`engine.ts` continuam ignorando esses campos para fins de ranking
+- `lib/catalog/mock-data.ts`: as 3 series de fallback (usadas só quando o banco esta indisponivel) ganharam os mesmos campos, com valores ilustrativos
+
+### Hero Inteligente (Fase 2) — `components/landing/landing-page.tsx` (`pickHero`)
+
+O Hero da Landing deixou de fixar sempre a serie mais popular. Agora: busca um pool das series com maior Quality Score (`sort=quality`, novo — ver Fase 8), filtra as que atingem um piso minimo (`HERO_MIN_QUALITY_SCORE`, evita destacar series de baixa qualidade) e escolhe uma por rotacao horaria determinista (`Math.floor(Date.now() / 3600000) % pool.length`) — muda ao longo do tempo, mas nao a cada reload/requisicao. Se nenhuma serie atingir o piso (catalogo novo, sem series pontuadas ainda), cai de volta para a serie mais popular — o Hero nunca fica vazio.
+
+### Smart Lists Reais (Fase 3/11) — Landing reorganizada
+
+A Landing trocou 5 secoes ad-hoc (sorts genericos: popular/latest/rating/status) por 10 secoes que chamam diretamente o motor de Smart Lists (`lib/catalog/smart-lists.ts`, criado na sprint QUALITY-01, agora finalmente usado): **Mais Populares, Mais Bem Avaliadas, Em Alta, Novidades, Maratonas, Minisséries, Curtas, Baseadas em Livros, Premiadas, Longa Duração** — os mesmos nomes do ticket. Duas listas novas (`listBaseadasEmLivros`, `listPremiadas`) foram adicionadas ao motor, seguindo o padrao ja estabelecido (where/orderBy sobre `collectionTags`). Cada secao so aparece se tiver pelo menos uma serie (sem secao vazia). `fetchSmartList` (a query por tras de cada lista) deixou de incluir temporadas/episodios — nenhum card de carrossel precisa disso, e evitar esse join em 10 listas por carregamento de pagina e o ganho de performance real desta fase (Fase 12).
+
+### Collection Tags na UI (Fase 4) — `components/media/collection-tag-badge.tsx`, `lib/catalog/tag-labels.ts`
+
+Cada uma das 11 Collection Tags (`lib/catalog/collection-tags.ts`, sprint QUALITY-01) ganhou uma combinacao propria de cor (das 7 variantes de `Badge` já existentes) + icone (do set ja existente em `components/ui/icons.tsx`, mais um `BookIcon` novo) — nunca a mesma aparencia repetida. Aparecem: no Hero (ate 3), nos cards do catalogo/recomendacoes (no hover, ate 2 — trocam de lugar com os generos, nunca os dois ao mesmo tempo), na Landing (dentro dos cards de carrossel, so a tag de maior prioridade) e na pagina da serie (todas).
+
+### Providers e Logos (Fase 5/6) — `components/media/provider-badge.tsx`, `components/media/series-logo.tsx`
+
+**Providers**: `Series.watchProviders` (so nomes, sincronizados desde QUALITY-01 — nunca um caminho de logo, capturar isso exigiria tocar o pipeline de sync TMDb, fora do escopo desta sprint) viram um badge colorido por marca (`lib/catalog/provider-labels.ts`, cor + inicial — nao um logo oficial hotlinkado, decisao documentada abaixo) com um "+N" quando ha mais do que o limite exibido. Só aparecem quando ha provedores sincronizados (nunca um placeholder vazio).
+
+**Logos**: `SeriesLogoOrTitle` decide, por serie, entre logo oficial (`logoUrl`) e titulo em texto — nunca os dois ao mesmo tempo (`Nunca duplicar informacao` do ticket). Quando ha logo, o titulo em texto vira um `<span className="sr-only">` (preserva acessibilidade sem duplicar visualmente). Se a imagem do logo falhar ao carregar, cai para o texto automaticamente (mesmo padrao de fallback gracioso de `PosterImage`/`BackdropImage`). Usado no Hero e no cabecalho da pagina da serie.
+
+### Pagina da Serie Enriquecida (Fase 7)
+
+Cabecalho: badge de Quality Score (ao lado do status/nota), logo-ou-titulo, Collection Tags, Providers. Nova secao **Producao** (so aparece se houver pelo menos um dado): Criadores, Networks, Produtoras, Idiomas falados, Keywords reais do TMDb (cada uma linkando para `/series?keyword=...` — Fase 8) e link para o site oficial (`homepage`), quando existir. Card "Resumo" ganhou Tipo (`type`) e Pais de origem. Nada foi removido — so adicionado, condicionalmente, para nunca poluir a interface de uma serie com poucos metadados (ex.: `Serie Teste Cinco`, seedada deliberadamente "vazia" para validar esse caminho).
+
+### Descoberta (Fase 8) — `lib/discovery/search.ts`
+
+Novos filtros em `SeriesDiscoveryParams`, mesma forma dos existentes (`{ has: valor }` sobre a coluna array): `tag` (Collection Tag), `provider` (streaming), `country` (pais de origem), `language` (idioma, comparacao exata case-insensitive), `keyword` (TMDb). Mais um novo `sort=quality` (ordena por `qualityScore`, usado pelo Hero e disponivel no seletor de ordenacao do catalogo). `getCatalogFilterMetadata()` passou a agregar `tags`/`providers`/`countries`/`languages` (mesma consulta unica + reduce em memoria ja usada para `genres`, sem N+1). O formulario de filtros (`components/series/filters.tsx`) ganhou selects para Tag/Provedor/Pais/Idioma — cada um só aparece se o catalogo tiver pelo menos um valor para aquela faceta (nunca um select vazio). Os cards de tag/keyword da pagina da serie e das secoes da Landing linkam direto para esses filtros (`/series?tag=...`, `/series?keyword=...`).
+
+### Recomendacoes Visuais (Fase 9) — `components/recommendations/recommendation-card.tsx`
+
+O card de recomendacao ganhou o badge de Quality Score, a tag de maior prioridade e os providers — usando os mesmos campos que `CandidateSeries` passou a carregar (plumbing acima). **`lib/recommendations/scoring.ts` e `engine.ts` nao foram alterados**: o algoritmo de ranking continua exatamente o mesmo, so a apresentacao visual mudou.
+
+### Busca Enriquecida (Fase 10)
+
+A "busca" do inSeries e o proprio catalogo filtravel (`/series?q=...`, via `Filters`/`SeriesCard`) — nao existe uma tela de busca separada. Por isso, enriquecer a busca e enriquecer `SeriesCard`: além das Collection Tags/Providers (Fase 4/5), o card do catalogo ganhou o badge de Quality Score ao lado da nota (mesmo tratamento do card de recomendacao) — Status, Tipo e Ano já apareciam (status como badge, ano+plataforma como legenda); Tipo agora tambem aparece na pagina da serie (Fase 7).
+
+### Performance (Fase 12)
+
+- **Sem N+1**: toda consulta nova (Smart Lists da Landing, facetas de filtro, filtros de descoberta) e uma consulta bounded por `take`/`select`, nunca uma consulta por item exibido
+- **Sem join desnecessario**: `fetchSmartList` (smart-lists.ts) parou de incluir temporadas/episodios — nenhum carrossel precisa disso; reaproveita o mesmo mapper "so campos de card" que a busca do catalogo ja usava (`toSeriesSummary`, agora exportado e compartilhado entre `lib/discovery/search.ts` e `lib/catalog/smart-lists.ts`)
+- **Cache do pipeline preservado**: nenhuma linha de `lib/catalog/sync.ts`, `aggregator.ts`, `curation.ts`, `update-policy.ts` ou `sync-cache.ts` foi tocada nesta sprint — o cache de sincronizacao e o rate limiter continuam exatamente como estavam
+- **Lazy loading mantido**: os novos badges/listas sao HTML/CSS puro (sem imagem adicional) exceto o logo (Fase 6), que usa `next/image` sem `priority` (carrega normalmente, sem competir pelo LCP com o backdrop do Hero, que mantem sua `priority`)
+
+### Variaveis de ambiente
+
+Nenhuma nova — esta sprint e inteiramente sobre reutilizar dados e configuracao ja existentes (`config.catalogQuality.tags.minisserieMaxEpisodes`, reaproveitado como limiar da lista "Curtas").
+
+### Decisao documentada: por que providers nao usam logos oficiais
+
+O TMDb retorna, para cada provedor, tanto o nome quanto um `logo_path`. O pipeline de sync (sprint QUALITY-01) so persiste o nome (`Series.watchProviders: String[]`) — capturar o `logo_path` exigiria alterar `lib/tmdb/normalize.ts`/o payload de sync, e essa sprint proibe explicitamente alterar a sincronizacao TMDb ("Não alterar sincronização TMDb", "Não alterar pipeline"). A alternativa seria hotlinkar `image.tmdb.org` a partir de um mapa estatico de nome→path mantido a mao no frontend — fragil (quebra silenciosamente se a TMDb trocar um path) e fora do espirito de "reutilizar exclusivamente os dados ja sincronizados". Por isso, `ProviderBadge` usa uma cor de marca + inicial (`lib/catalog/provider-labels.ts`) — reconhecivel, mas nao um logo oficial pixel-a-pixel.
+
+### Limitacoes atuais
+
+- Providers aparecem como badge colorido com inicial, nao o logo oficial da marca (ver decisao acima)
+- `keyword` nao tem um seletor dedicado no formulario de filtros (so via link direto `/series?keyword=...`, a partir da pagina da serie) — adicionar um input de texto livre para keyword no formulario e um proximo passo natural, nao feito aqui para nao inflar ainda mais o formulario de filtros
+- Watch Next (`components/watch-next/watch-next-card.tsx`) usa um tipo de serie proprio, minimo, desacoplado de `Series` — nao foi estendido nesta sprint (fora do que o ticket pede explicitamente: Landing/Catalogo/Pagina da Serie/Cards/Busca/Recomendacoes/Descoberta)
+- O piso minimo de Quality Score do Hero (`HERO_MIN_QUALITY_SCORE = 55`) e uma constante documentada, nao uma variavel de ambiente — julgamento de escopo (ticket nao pede "tudo configuravel por env" desta vez, ao contrario da sprint QUALITY-01)
+- Sandbox sem acesso de rede real ao TMDb (como toda sprint anterior): a validacao usa `seed-dev.ts`, agora computando `qualityScore`/`collectionTags` com as mesmas funcoes reais do pipeline (`computeQualityScore`/`deriveCollectionTags`) em vez de numeros inventados — garante que a demonstracao local é honesta com a formula real, mas o caminho end-to-end com dados reais do TMDb nao pode ser validado aqui
+- Nenhuma regra de negocio, autenticacao, sincronizacao, pipeline, permissao ou schema foi alterada — a sprint e estritamente sobre conectar dados ja existentes a interface
+
 ## Comandos
 
 - `npm install`: instala dependencias
