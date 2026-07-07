@@ -1,11 +1,21 @@
 import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
+import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
+import { ProviderList } from "@/components/media/provider-badge";
 import { Badge } from "@/components/ui/badge";
 import { StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import type { Series } from "@/lib/types";
 
-/** Fase 5 — poster-first catalog card: poster, nota, status, ano, plataforma, generos (no hover). Sinopse foi removida do card (fica na pagina da serie). */
+/**
+ * Fase 5 — poster-first catalog card: poster, nota, status, ano, plataforma, generos (no hover).
+ * Sinopse foi removida do card (fica na pagina da serie).
+ *
+ * Fase 4/5 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — on hover, generos dao lugar a ate
+ * duas Collection Tags (sinal editorial, mais util que repetir genero) e, quando sincronizados,
+ * os provedores de streaming aparecem junto — nunca os dois grupos de chip disputando espaco
+ * com o genero ao mesmo tempo.
+ */
 export function SeriesCard({ series }: { series: Series }) {
   return (
     <Link
@@ -34,7 +44,13 @@ export function SeriesCard({ series }: { series: Series }) {
           <p className="text-xs text-muted">
             {series.year || "—"} · {series.platform}
           </p>
-          {series.genres.length ? (
+          {series.collectionTags.length ? (
+            <div className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100">
+              {series.collectionTags.slice(0, 2).map((tag) => (
+                <CollectionTagBadge key={tag} tag={tag} />
+              ))}
+            </div>
+          ) : series.genres.length ? (
             <div className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100">
               {series.genres.slice(0, 2).map((genre) => (
                 <span key={genre} className="rounded-full bg-surface-strong/80 px-2 py-0.5 text-[10px] text-ink backdrop-blur">
@@ -42,6 +58,13 @@ export function SeriesCard({ series }: { series: Series }) {
                 </span>
               ))}
             </div>
+          ) : null}
+          {series.watchProviders.length ? (
+            <ProviderList
+              providers={series.watchProviders}
+              limit={3}
+              className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100"
+            />
           ) : null}
         </div>
       </div>

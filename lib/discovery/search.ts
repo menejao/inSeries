@@ -4,13 +4,24 @@ import { prisma } from "@/lib/db/prisma";
 import { mockSeries } from "@/lib/catalog/mock-data";
 import type { Series } from "@/lib/types";
 
-export type SeriesSortOption = "popular" | "latest" | "title" | "rating";
+export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality";
 
+/**
+ * Fase 8 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — tag/provider/country/language
+ * discovery, on top of the pre-existing q/genre/status/year filters. Same `{ has: value }`
+ * pattern already used for `genre` — no new business rule, just more facets over data
+ * the sync pipeline already persists.
+ */
 export type SeriesDiscoveryParams = {
   q?: string;
   genre?: string;
   status?: string;
   year?: number;
+  tag?: string;
+  provider?: string;
+  country?: string;
+  language?: string;
+  keyword?: string;
   sort?: SeriesSortOption;
   page?: number;
   pageSize?: number;
@@ -28,6 +39,10 @@ export type CatalogFilterMetadata = {
   genres: string[];
   years: number[];
   statuses: string[];
+  tags: string[];
+  providers: string[];
+  countries: string[];
+  languages: string[];
   total: number;
 };
 
@@ -48,7 +63,8 @@ function normalizeStatusFilter(status?: string): SeriesLifecycleStatus | undefin
   return VALID_STATUSES.includes(normalized) ? normalized : undefined;
 }
 
-function toSeriesSummary(model: {
+/** Exported for lib/catalog/smart-lists.ts — same "no seasons/episodes" shape every card-only list needs (Fase 12: avoids an unnecessary join). */
+export function toSeriesSummary(model: {
   id: string;
   slug: string;
   title: string;
@@ -63,6 +79,20 @@ function toSeriesSummary(model: {
   status: SeriesLifecycleStatus;
   popularityScore: number | null;
   voteAverage: number | null;
+  qualityScore: number | null;
+  collectionTags: string[];
+  watchProviders: string[];
+  keywords: string[];
+  type: string | null;
+  logoUrl: string | null;
+  originCountry: string[];
+  spokenLanguages: string[];
+  createdBy: string[];
+  networks: string[];
+  productionCompanies: string[];
+  productionCountries: string[];
+  tagline: string | null;
+  homepage: string | null;
 }): Series {
   return {
     id: model.id,
@@ -79,6 +109,20 @@ function toSeriesSummary(model: {
     posterUrl: model.posterUrl ?? "",
     backdropUrl: model.backdropUrl ?? "",
     voteAverage: model.voteAverage,
+    qualityScore: model.qualityScore,
+    collectionTags: model.collectionTags,
+    watchProviders: model.watchProviders,
+    keywords: model.keywords,
+    type: model.type,
+    logoUrl: model.logoUrl,
+    originCountry: model.originCountry,
+    spokenLanguages: model.spokenLanguages,
+    createdBy: model.createdBy,
+    networks: model.networks,
+    productionCompanies: model.productionCompanies,
+    productionCountries: model.productionCountries,
+    tagline: model.tagline,
+    homepage: model.homepage,
     seasons: []
   };
 }
@@ -91,6 +135,8 @@ function buildOrderBy(sort?: SeriesSortOption): Prisma.SeriesOrderByWithRelation
       return [{ firstAirYear: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }];
     case "rating":
       return [{ voteAverage: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
+    case "quality":
+      return [{ qualityScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     case "popular":
     default:
       return [{ popularityScore: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }];
@@ -116,6 +162,26 @@ function matchesMock(series: (typeof mockSeries)[number], params: SeriesDiscover
   }
 
   if (params.year && series.year !== params.year) {
+    return false;
+  }
+
+  if (params.tag && !series.collectionTags.some((tag) => tag.toLowerCase() === params.tag?.toLowerCase())) {
+    return false;
+  }
+
+  if (params.provider && !series.watchProviders.some((provider) => provider.toLowerCase() === params.provider?.toLowerCase())) {
+    return false;
+  }
+
+  if (params.country && !series.originCountry.some((country) => country.toLowerCase() === params.country?.toLowerCase())) {
+    return false;
+  }
+
+  if (params.language && series.language.toLowerCase() !== params.language.toLowerCase()) {
+    return false;
+  }
+
+  if (params.keyword && !series.keywords.some((keyword) => keyword.toLowerCase() === params.keyword?.toLowerCase())) {
     return false;
   }
 
@@ -161,7 +227,12 @@ export async function searchSeries(params: SeriesDiscoveryParams): Promise<Serie
       : {}),
     ...(params.genre ? { genres: { has: params.genre } } : {}),
     ...(status ? { status } : {}),
-    ...(params.year ? { firstAirYear: params.year } : {})
+    ...(params.year ? { firstAirYear: params.year } : {}),
+    ...(params.tag ? { collectionTags: { has: params.tag } } : {}),
+    ...(params.provider ? { watchProviders: { has: params.provider } } : {}),
+    ...(params.country ? { originCountry: { has: params.country } } : {}),
+    ...(params.language ? { language: { equals: params.language, mode: "insensitive" } } : {}),
+    ...(params.keyword ? { keywords: { has: params.keyword } } : {})
   };
 
   try {
@@ -197,30 +268,42 @@ export async function getCatalogFilterMetadata(): Promise<CatalogFilterMetadata>
       genres: [...new Set(mockSeries.flatMap((series) => series.genres))].sort(),
       years: [...new Set(mockSeries.map((series) => series.year).filter(Boolean))].sort((a, b) => b - a),
       statuses: [...new Set(mockSeries.map((series) => series.status.replaceAll(" ", "_").toUpperCase()))],
+      tags: [...new Set(mockSeries.flatMap((series) => series.collectionTags))].sort(),
+      providers: [...new Set(mockSeries.flatMap((series) => series.watchProviders))].sort(),
+      countries: [...new Set(mockSeries.flatMap((series) => series.originCountry))].sort(),
+      languages: [...new Set(mockSeries.map((series) => series.language))].sort(),
       total: mockSeries.length
     };
   }
 
   try {
-    const [genreRows, yearRows, statusRows, total] = await Promise.all([
-      prisma.series.findMany({ select: { genres: true } }),
+    // Fase 12 — one query for every array-column facet (genres/tags/providers/countries),
+    // reduced in memory (Prisma's groupBy can't "explode" array columns) — never one
+    // query per facet, and never proportional to catalog size beyond this single findMany.
+    const [facetRows, yearRows, statusRows, languageRows, total] = await Promise.all([
+      prisma.series.findMany({ select: { genres: true, collectionTags: true, watchProviders: true, originCountry: true } }),
       prisma.series.findMany({ select: { firstAirYear: true }, distinct: ["firstAirYear"] }),
       prisma.series.findMany({ select: { status: true }, distinct: ["status"] }),
+      prisma.series.findMany({ select: { language: true }, distinct: ["language"] }),
       prisma.series.count()
     ]);
 
     return {
-      genres: [...new Set(genreRows.flatMap((row) => row.genres))].sort(),
+      genres: [...new Set(facetRows.flatMap((row) => row.genres))].sort(),
       years: yearRows
         .map((row) => row.firstAirYear)
         .filter((year): year is number => Boolean(year))
         .sort((a, b) => b - a),
       statuses: statusRows.map((row) => row.status),
+      tags: [...new Set(facetRows.flatMap((row) => row.collectionTags))].sort(),
+      providers: [...new Set(facetRows.flatMap((row) => row.watchProviders))].sort(),
+      countries: [...new Set(facetRows.flatMap((row) => row.originCountry))].sort(),
+      languages: languageRows.map((row) => row.language).filter((language): language is string => Boolean(language)).sort(),
       total
     };
   } catch (error) {
     if (isMissingTableError(error)) {
-      return { genres: [], years: [], statuses: [], total: 0 };
+      return { genres: [], years: [], statuses: [], tags: [], providers: [], countries: [], languages: [], total: 0 };
     }
     throw error;
   }

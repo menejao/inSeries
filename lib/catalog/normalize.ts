@@ -201,18 +201,23 @@ export function normalizeTmdbSeries(payload: TmdbSeriesDetails): NormalizedCatal
     voteCount: payload.vote_count,
     tagline: payload.tagline || undefined,
     homepage: payload.homepage || undefined,
-    originCountry: payload.origin_country,
-    spokenLanguages: payload.spoken_languages?.map((language) => language.english_name || language.name || language.iso_639_1 || "").filter(Boolean),
+    originCountry: payload.origin_country ?? [],
+    spokenLanguages:
+      payload.spoken_languages?.map((language) => language.english_name || language.name || language.iso_639_1 || "").filter(Boolean) ?? [],
     numberOfSeasons: payload.number_of_seasons,
     numberOfEpisodes: payload.number_of_episodes,
-    networks: payload.networks?.map((network) => network.name),
-    productionCountries: payload.production_countries?.map((country) => country.name),
-    productionCompanies: payload.production_companies?.map((company) => company.name),
-    createdBy: payload.created_by?.map((creator) => creator.name),
+    networks: payload.networks?.map((network) => network.name) ?? [],
+    productionCountries: payload.production_countries?.map((country) => country.name) ?? [],
+    productionCompanies: payload.production_companies?.map((company) => company.name) ?? [],
+    createdBy: payload.created_by?.map((creator) => creator.name) ?? [],
     logoUrl: toImageUrl(payload.images?.logos?.[0]?.file_path, "w300") || undefined,
-    keywords: payload.keywords?.results?.map((keyword) => keyword.name),
+    keywords: payload.keywords?.results?.map((keyword) => keyword.name) ?? [],
+    watchProviders: extractWatchProviders(payload) ?? [],
     type: payload.type,
-    watchProviders: extractWatchProviders(payload),
+    // Computed downstream by lib/catalog/collection-tags.ts (repository.ts, right before
+    // persisting) from genres/type/keywords/etc. — never read from here, just satisfies
+    // the `Series` base type's required field.
+    collectionTags: [],
     external: {
       source: "TMDB",
       entityType: "SERIES",

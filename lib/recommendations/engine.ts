@@ -25,7 +25,11 @@ const CANDIDATE_SELECT = {
   popularityScore: true,
   voteAverage: true,
   voteCount: true,
-  firstAirYear: true
+  firstAirYear: true,
+  qualityScore: true,
+  collectionTags: true,
+  watchProviders: true,
+  logoUrl: true
 } as const;
 
 /**

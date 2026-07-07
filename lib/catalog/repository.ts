@@ -31,6 +31,20 @@ export function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons
     posterUrl: model.posterUrl ?? "",
     backdropUrl: model.backdropUrl ?? "",
     voteAverage: model.voteAverage ?? null,
+    qualityScore: model.qualityScore ?? null,
+    collectionTags: model.collectionTags,
+    watchProviders: model.watchProviders,
+    keywords: model.keywords,
+    type: model.type ?? null,
+    logoUrl: model.logoUrl ?? null,
+    originCountry: model.originCountry,
+    spokenLanguages: model.spokenLanguages,
+    createdBy: model.createdBy,
+    networks: model.networks,
+    productionCompanies: model.productionCompanies,
+    productionCountries: model.productionCountries,
+    tagline: model.tagline ?? null,
+    homepage: model.homepage ?? null,
     seasons: model.seasons
       .sort((a, b) => a.number - b.number)
       .map((season) => ({

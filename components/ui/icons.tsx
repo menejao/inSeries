@@ -252,3 +252,10 @@ export const ChartIcon = createIcon(
     <path d="M4 20V10M10 20V4M16 20v-7M20 20H4" />
   </>
 );
+
+export const BookIcon = createIcon(
+  <>
+    <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5Z" />
+    <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20" />
+  </>
+);

@@ -15,6 +15,12 @@ export type CandidateSeries = {
   voteAverage: number | null;
   voteCount: number | null;
   firstAirYear: number | null;
+  // INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 (Fase 9) — additive only, purely for the
+  // card's visual enrichment (tags/quality/logo). No provider/scoring logic reads these.
+  qualityScore: number | null;
+  collectionTags: string[];
+  watchProviders: string[];
+  logoUrl: string | null;
 };
 
 /** One "seed" series the user has engaged with (completed or currently watching) — used by SimilarSeriesProvider. */

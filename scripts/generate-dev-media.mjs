@@ -54,6 +54,17 @@ function backdrop({ slug, from, to }) {
   writeFileSync(path.join(outDir, `${slug}-backdrop.svg`), svg, "utf8");
 }
 
+// Fase 6 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — a placeholder "official logo"
+// wordmark, transparent background, for the two series seeded with logoUrl (seed-dev.ts).
+// Only 2 of the 5 series get one, on purpose: the other 3 exercise the "no logo -> plain
+// text title" fallback in SeriesLogoOrTitle (components/media/series-logo.tsx).
+function logo({ slug, initials, from }) {
+  const svg = `<svg width="400" height="140" viewBox="0 0 400 140" xmlns="http://www.w3.org/2000/svg">
+  <text x="10" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="900" fill="${from}" stroke="#ffffff" stroke-width="2">${initials}</text>
+</svg>`;
+  writeFileSync(path.join(outDir, `${slug}-logo.svg`), svg, "utf8");
+}
+
 function still({ slug, season, from, to }) {
   const svg = `<svg width="640" height="360" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -76,6 +87,9 @@ for (const series of SERIES) {
   backdrop(series);
 }
 
+logo(SERIES[0]);
+logo(SERIES[1]);
+
 const stillSeasons = [1, 2, 3];
 for (const season of stillSeasons) {
   still({ slug: "serie-teste-um", season, from: SERIES[0].from, to: SERIES[0].to });
@@ -84,4 +98,4 @@ still({ slug: "serie-teste-dois", season: 1, from: SERIES[1].from, to: SERIES[1]
 still({ slug: "serie-teste-dois", season: 2, from: SERIES[1].from, to: SERIES[1].to });
 still({ slug: "serie-teste-tres", season: 1, from: SERIES[2].from, to: SERIES[2].to });
 
-console.log(`Placeholder dev media gerada em public/dev-media (${SERIES.length} posters, ${SERIES.length} backdrops, 6 stills).`);
+console.log(`Placeholder dev media gerada em public/dev-media (${SERIES.length} posters, ${SERIES.length} backdrops, 2 logos, 6 stills).`);

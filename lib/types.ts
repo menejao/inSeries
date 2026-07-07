@@ -39,6 +39,23 @@ export type Series = {
   seasons: Season[];
   userState?: WatchState;
   voteAverage?: number | null;
+  // INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 — metadata already synced/derived by the
+  // catalog pipeline (see lib/catalog/quality-score.ts, collection-tags.ts, normalize.ts),
+  // now exposed to the UI for the first time. All additive; no sync/pipeline logic changed.
+  qualityScore?: number | null;
+  collectionTags: string[];
+  watchProviders: string[];
+  keywords: string[];
+  type?: string | null;
+  logoUrl?: string | null;
+  originCountry: string[];
+  spokenLanguages: string[];
+  createdBy: string[];
+  networks: string[];
+  productionCompanies: string[];
+  productionCountries: string[];
+  tagline?: string | null;
+  homepage?: string | null;
 };
 
 export type UserProfile = {

@@ -1766,6 +1766,15 @@ async function main() {
       popularity: "10",
       posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
       backdropUrl: "https://image.tmdb.org/t/p/original/backdrop.jpg",
+      collectionTags: [],
+      watchProviders: [],
+      keywords: [],
+      originCountry: [],
+      spokenLanguages: [],
+      createdBy: [],
+      networks: [],
+      productionCompanies: [],
+      productionCountries: [],
       seasons: [
         {
           id: `season-${externalId}`,

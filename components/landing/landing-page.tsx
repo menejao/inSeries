@@ -2,6 +2,9 @@ import Link from "next/link";
 import { BackdropImage } from "@/components/media/poster-image";
 import { Carousel, CarouselItem } from "@/components/media/carousel";
 import { SeriesPosterCard } from "@/components/media/series-poster-card";
+import { SeriesLogoOrTitle } from "@/components/media/series-logo";
+import { CollectionTagList } from "@/components/media/collection-tag-badge";
+import { ProviderList } from "@/components/media/provider-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,6 +12,19 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { canUseDatabase } from "@/lib/db/health";
 import { prisma } from "@/lib/db/prisma";
 import { searchSeries } from "@/lib/discovery/search";
+import {
+  listBaseadasEmLivros,
+  listCurtas,
+  listEmAlta,
+  listLongaDuracao,
+  listMaisBemAvaliadas,
+  listMaisPopulares,
+  listMaratonas,
+  listMinisseries,
+  listNovidades,
+  listPremiadas
+} from "@/lib/catalog/smart-lists";
+import type { Series } from "@/lib/types";
 import {
   BellIcon,
   CalendarIcon,
@@ -22,6 +38,26 @@ import {
   StarIcon,
   TrophyIcon
 } from "@/components/ui/icons";
+
+/** Fase 2 — never highlight a low-quality series; below this bar, fall back to plain popularity. */
+const HERO_MIN_QUALITY_SCORE = 55;
+const HERO_POOL_SIZE = 10;
+
+/**
+ * Fase 2 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — the Hero rotates among relevant,
+ * high-quality series instead of always freezing on the single most popular one. "Relevant"
+ * means qualityScore above the bar; if nothing in the catalog clears it yet (e.g. a fresh
+ * catalog with no scored series), falls back to plain popularity so the Hero is never empty.
+ * The rotation is hourly (deterministic per request, changes over time) rather than random,
+ * so a page reload doesn't flicker between different heroes.
+ */
+function pickHero(qualityPool: Series[], popularPool: Series[]): Series | undefined {
+  const qualified = qualityPool.filter((item) => (item.qualityScore ?? 0) >= HERO_MIN_QUALITY_SCORE);
+  const pool = qualified.length ? qualified : popularPool;
+  if (!pool.length) return undefined;
+  const bucket = Math.floor(Date.now() / (60 * 60 * 1000));
+  return pool[bucket % pool.length];
+}
 
 const FEATURES = [
   {
@@ -126,31 +162,62 @@ async function getCatalogStats() {
   return { seriesCount, episodeCount, userCount, reviewCount };
 }
 
-type CarouselSection = { eyebrow: string; title: string; href: string; items: Awaited<ReturnType<typeof searchSeries>>["items"] };
+type CarouselSection = { eyebrow: string; title: string; href: string; items: Series[] };
+
+function tagHref(tag: string) {
+  return `/series?tag=${encodeURIComponent(tag)}`;
+}
 
 /**
- * Fase 2/3/4 (INSERIES-CINEMATIC-EXPERIENCE-FOUNDATION-01) — o catalogo real vira o Hero
- * (backdrop da serie mais popular) e o corpo da pagina vira uma sequencia de carrosseis de
- * posteres, nao um grid estatico de cards. Beneficios/Recursos/Depoimentos/FAQ continuam
- * existindo mais abaixo, mas o topo da pagina agora vende o catalogo, nao o texto.
+ * Fase 2/3/11 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — o Hero passa a considerar o
+ * Quality Score (pickHero acima) e o corpo da Landing deixa de usar sorts genericos
+ * (popular/latest/rating/status) e passa a usar o motor de Smart Lists de verdade
+ * (lib/catalog/smart-lists.ts) — as mesmas 10 listas nomeadas no ticket, cada uma com sua
+ * propria personalidade (eyebrow/titulo), sem redundancia entre secoes.
  */
 export async function LandingPage() {
-  const [stats, popular, latest, topRated, onAir, ended] = await Promise.all([
+  const [
+    stats,
+    heroQualityPool,
+    heroPopularFallback,
+    maisPopulares,
+    maisBemAvaliadas,
+    maratonas,
+    curtas,
+    minisseries,
+    emAlta,
+    baseadasEmLivros,
+    premiadas,
+    longaDuracao,
+    novidades
+  ] = await Promise.all([
     getCatalogStats(),
-    searchSeries({ sort: "popular", page: 1, pageSize: 12 }),
-    searchSeries({ sort: "latest", page: 1, pageSize: 12 }),
-    searchSeries({ sort: "rating", page: 1, pageSize: 12 }),
-    searchSeries({ status: "RETURNING", sort: "popular", page: 1, pageSize: 12 }),
-    searchSeries({ status: "ENDED", sort: "popular", page: 1, pageSize: 12 })
+    searchSeries({ sort: "quality", page: 1, pageSize: HERO_POOL_SIZE }),
+    searchSeries({ sort: "popular", page: 1, pageSize: HERO_POOL_SIZE }),
+    listMaisPopulares(12),
+    listMaisBemAvaliadas(12),
+    listMaratonas(12),
+    listCurtas(12),
+    listMinisseries(12),
+    listEmAlta(12),
+    listBaseadasEmLivros(12),
+    listPremiadas(12),
+    listLongaDuracao(12),
+    listNovidades(12)
   ]);
 
-  const hero = popular.items[0];
+  const hero = pickHero(heroQualityPool.items, heroPopularFallback.items);
   const sections: CarouselSection[] = [
-    { eyebrow: "Em Alta", title: "O que esta bombando agora", href: "/series?sort=popular", items: popular.items },
-    { eyebrow: "Lancamentos", title: "As series mais recentes do catalogo", href: "/series?sort=latest", items: latest.items },
-    { eyebrow: "Mais Bem Avaliadas", title: "As notas mais altas da comunidade", href: "/series?sort=rating", items: topRated.items },
-    { eyebrow: "Em Exibicao", title: "Series que ainda estao no ar", href: "/series?status=RETURNING", items: onAir.items },
-    { eyebrow: "Finalizadas", title: "Maratonas completas, do inicio ao fim", href: "/series?status=ENDED", items: ended.items }
+    { eyebrow: "Mais Populares", title: "O catalogo que todo mundo esta assistindo", href: "/series?sort=popular", items: maisPopulares },
+    { eyebrow: "Mais Bem Avaliadas", title: "As notas mais altas da comunidade", href: "/series?sort=rating", items: maisBemAvaliadas },
+    { eyebrow: "Em Alta", title: "Series com popularidade disparando agora", href: tagHref("Em Alta"), items: emAlta },
+    { eyebrow: "Novidades", title: "Os lancamentos mais recentes do catalogo", href: "/series?sort=latest", items: novidades },
+    { eyebrow: "Maratonas", title: "Temporadas de sobra para o fim de semana", href: tagHref("Maratona"), items: maratonas },
+    { eyebrow: "Minisseries", title: "Historias completas, sem compromisso longo", href: tagHref("Minissérie"), items: minisseries },
+    { eyebrow: "Curtas", title: "Poucos episodios, comeco-meio-fim rapido", href: "/series?sort=quality", items: curtas },
+    { eyebrow: "Baseadas em Livros", title: "Series adaptadas de romances e quadrinhos", href: tagHref("Baseada em Livro"), items: baseadasEmLivros },
+    { eyebrow: "Premiadas", title: "Aclamadas pela critica e pelo publico", href: tagHref("Premiada"), items: premiadas },
+    { eyebrow: "Longa Duracao", title: "Series com muitas temporadas para maratonar", href: tagHref("Longa Duração"), items: longaDuracao }
   ].filter((section) => section.items.length > 0);
 
   return (
@@ -182,9 +249,20 @@ export async function LandingPage() {
               calculado a partir do que voce realmente assiste.
             </p>
             {hero ? (
-              <p className="text-sm text-muted">
-                Em destaque: <span className="font-semibold text-ink">{hero.title}</span>
-              </p>
+              <div className="space-y-2.5">
+                <p className="text-sm text-muted">Em destaque:</p>
+                <SeriesLogoOrTitle
+                  title={hero.title}
+                  logoUrl={hero.logoUrl}
+                  as="p"
+                  textClassName="text-lg font-semibold text-ink"
+                  logoClassName="h-12 max-w-[220px]"
+                />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <CollectionTagList tags={hero.collectionTags} limit={3} />
+                  <ProviderList providers={hero.watchProviders} limit={3} />
+                </div>
+              </div>
             ) : null}
             <div className="flex flex-wrap gap-3">
               <Link href="/register" className="inline-flex">

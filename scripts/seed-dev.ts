@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { seedInitialSystemSettings } from "@/lib/system-settings/service";
+import { computeQualityScore } from "@/lib/catalog/quality-score";
+import { deriveCollectionTags } from "@/lib/catalog/collection-tags";
 
 type EpisodeSeed = {
   number: number;
@@ -34,6 +36,27 @@ type SeriesSeed = {
   popularityScore: number;
   voteAverage: number | null;
   seasons: SeasonSeed[];
+  // INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 — populates the same enrichment fields the
+  // TMDb sync pipeline would (see lib/catalog/normalize.ts), so the local dev catalog can
+  // actually demonstrate Quality Score/Collection Tags/Providers/Logos in the UI without
+  // real TMDb network access. qualityScore/collectionTags are computed below via the same
+  // functions the real pipeline uses (lib/catalog/quality-score.ts, collection-tags.ts) —
+  // never hand-picked numbers, so seed data stays honest to the real formulas.
+  voteCount: number | null;
+  numberOfSeasons: number | null;
+  numberOfEpisodes: number | null;
+  watchProviders: string[];
+  keywords: string[];
+  type: string | null;
+  logoUrl: string | null;
+  originCountry: string[];
+  spokenLanguages: string[];
+  createdBy: string[];
+  networks: string[];
+  productionCompanies: string[];
+  productionCountries: string[];
+  tagline: string | null;
+  homepage: string | null;
 };
 
 function buildEpisodes(seasonNumber: number, stillUrl?: string): EpisodeSeed[] {
@@ -100,6 +123,21 @@ const seriesSeeds: SeriesSeed[] = [
     status: "RETURNING",
     popularityScore: 90,
     voteAverage: 8.5,
+    voteCount: 5000,
+    numberOfSeasons: 4,
+    numberOfEpisodes: 120,
+    watchProviders: ["Netflix", "Globoplay"],
+    keywords: ["based on novel or book", "dystopia"],
+    type: "Scripted",
+    logoUrl: `${DEV_MEDIA}/serie-teste-um-logo.svg`,
+    originCountry: ["US"],
+    spokenLanguages: ["Ingles", "Portugues"],
+    createdBy: ["Criador Um"],
+    networks: ["inSeries Dev"],
+    productionCompanies: ["Estudio Um"],
+    productionCountries: ["Estados Unidos"],
+    tagline: "Todos tem um papel.",
+    homepage: "https://example.com/serie-teste-um",
     seasons: [
       {
         number: 1,
@@ -139,6 +177,21 @@ const seriesSeeds: SeriesSeed[] = [
     status: "ENDED",
     popularityScore: 75,
     voteAverage: 6.0,
+    voteCount: 300,
+    numberOfSeasons: 1,
+    numberOfEpisodes: 8,
+    watchProviders: ["Disney+"],
+    keywords: ["cooking", "family"],
+    type: "Miniseries",
+    logoUrl: `${DEV_MEDIA}/serie-teste-dois-logo.svg`,
+    originCountry: ["BR"],
+    spokenLanguages: ["Portugues"],
+    createdBy: ["Criadora Dois"],
+    networks: ["inSeries Dev"],
+    productionCompanies: ["Estudio Dois"],
+    productionCountries: ["Brasil"],
+    tagline: "Uma temporada, para sempre.",
+    homepage: null,
     seasons: [
       {
         number: 1,
@@ -170,6 +223,21 @@ const seriesSeeds: SeriesSeed[] = [
     status: "CANCELED",
     popularityScore: 60,
     voteAverage: 4.2,
+    voteCount: 50,
+    numberOfSeasons: 1,
+    numberOfEpisodes: 6,
+    watchProviders: [],
+    keywords: [],
+    type: "Scripted",
+    logoUrl: null,
+    originCountry: ["GB"],
+    spokenLanguages: ["Ingles"],
+    createdBy: [],
+    networks: ["inSeries Dev"],
+    productionCompanies: [],
+    productionCountries: ["Reino Unido"],
+    tagline: null,
+    homepage: null,
     seasons: [
       {
         number: 1,
@@ -194,6 +262,21 @@ const seriesSeeds: SeriesSeed[] = [
     status: "IN_PRODUCTION",
     popularityScore: 40,
     voteAverage: null,
+    voteCount: null,
+    numberOfSeasons: 6,
+    numberOfEpisodes: 130,
+    watchProviders: ["Paramount+"],
+    keywords: ["space"],
+    type: "Scripted",
+    logoUrl: null,
+    originCountry: ["US"],
+    spokenLanguages: ["Ingles"],
+    createdBy: ["Criador Quatro"],
+    networks: ["inSeries Dev"],
+    productionCompanies: ["Estudio Quatro"],
+    productionCountries: ["Estados Unidos"],
+    tagline: null,
+    homepage: null,
     seasons: []
   },
   {
@@ -210,11 +293,76 @@ const seriesSeeds: SeriesSeed[] = [
     status: "PILOT",
     popularityScore: 20,
     voteAverage: 7.8,
+    voteCount: 5,
+    numberOfSeasons: null,
+    numberOfEpisodes: null,
+    watchProviders: [],
+    keywords: [],
+    type: null,
+    logoUrl: null,
+    originCountry: [],
+    spokenLanguages: [],
+    createdBy: [],
+    networks: [],
+    productionCompanies: [],
+    productionCountries: [],
+    tagline: null,
+    homepage: null,
     seasons: []
   }
 ];
 
 async function seedSeries(seed: SeriesSeed) {
+  const qualityScore = computeQualityScore({
+    popularity: seed.popularityScore,
+    voteAverage: seed.voteAverage,
+    voteCount: seed.voteCount,
+    firstAirYear: seed.firstAirYear,
+    status: seed.status,
+    numberOfSeasons: seed.numberOfSeasons,
+    numberOfEpisodes: seed.numberOfEpisodes,
+    posterUrl: seed.posterUrl,
+    backdropUrl: seed.backdropUrl,
+    overview: seed.overview,
+    logoUrl: seed.logoUrl,
+    watchProviders: seed.watchProviders,
+    originCountry: seed.originCountry,
+    language: seed.language
+  });
+
+  const collectionTags = deriveCollectionTags({
+    genres: seed.genres,
+    type: seed.type,
+    keywords: seed.keywords,
+    originCountry: seed.originCountry,
+    numberOfSeasons: seed.numberOfSeasons,
+    numberOfEpisodes: seed.numberOfEpisodes,
+    status: seed.status,
+    popularity: seed.popularityScore,
+    voteAverage: seed.voteAverage,
+    voteCount: seed.voteCount
+  });
+
+  const enrichedFields = {
+    voteCount: seed.voteCount,
+    numberOfSeasons: seed.numberOfSeasons,
+    numberOfEpisodes: seed.numberOfEpisodes,
+    watchProviders: seed.watchProviders,
+    keywords: seed.keywords,
+    type: seed.type,
+    logoUrl: seed.logoUrl,
+    originCountry: seed.originCountry,
+    spokenLanguages: seed.spokenLanguages,
+    createdBy: seed.createdBy,
+    networks: seed.networks,
+    productionCompanies: seed.productionCompanies,
+    productionCountries: seed.productionCountries,
+    tagline: seed.tagline,
+    homepage: seed.homepage,
+    qualityScore,
+    collectionTags
+  };
+
   const series = await prisma.series.upsert({
     where: { slug: seed.slug },
     update: {
@@ -229,7 +377,8 @@ async function seedSeries(seed: SeriesSeed) {
       genres: seed.genres,
       status: seed.status,
       popularityScore: seed.popularityScore,
-      voteAverage: seed.voteAverage
+      voteAverage: seed.voteAverage,
+      ...enrichedFields
     },
     create: {
       slug: seed.slug,
@@ -244,7 +393,8 @@ async function seedSeries(seed: SeriesSeed) {
       genres: seed.genres,
       status: seed.status,
       popularityScore: seed.popularityScore,
-      voteAverage: seed.voteAverage
+      voteAverage: seed.voteAverage,
+      ...enrichedFields
     }
   });
 

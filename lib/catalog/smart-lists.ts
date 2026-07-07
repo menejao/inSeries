@@ -1,15 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import { config } from "@/lib/config";
 import { prisma } from "@/lib/db/prisma";
-import { toSeriesView } from "@/lib/catalog/repository";
+import { toSeriesSummary } from "@/lib/discovery/search";
 import type { Series } from "@/lib/types";
 
 /**
- * Fase 10 (INSERIES-TMDB-CATALOG-QUALITY-01) — named lists derived entirely from metadata
+ * Fase 10 (INSERIES-TMDB-CATALOG-QUALITY-01), wired into the UI by
+ * INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 — named lists derived entirely from metadata
  * already on `Series` (popularity/nota/status/collectionTags/counts) — no duplicated
- * filtering rules, no new tables, no manual per-series curation. Not wired to any
- * route/page (no navigation change this sprint): these are exported query functions,
- * ready for a future discovery/home-page feature to call.
+ * filtering rules, no new tables, no manual per-series curation.
+ *
+ * Fase 12 — `fetchSmartList` never includes seasons/episodes: every consumer of these
+ * lists so far (Landing carousels, poster cards) only needs poster-card-level fields, so
+ * pulling the full season/episode tree for every series in every list would be a pure
+ * cost with no UI benefit. Reuses the same "card-only" mapper as catalog search
+ * (`toSeriesSummary`) instead of duplicating it.
  */
 const DEFAULT_LIMIT = 20;
 const MIN_VOTES_FOR_RATED = 20;
@@ -25,7 +30,9 @@ export type SmartListKey =
   | "LONGA_DURACAO"
   | "CURTAS"
   | "EM_ALTA"
-  | "MAIS_COMENTADAS";
+  | "MAIS_COMENTADAS"
+  | "BASEADAS_EM_LIVROS"
+  | "PREMIADAS";
 
 type SmartListDefinition = {
   where?: Prisma.SeriesWhereInput;
@@ -46,18 +53,15 @@ const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
     orderBy: { qualityScore: "desc" }
   },
   EM_ALTA: { where: { collectionTags: { has: "Em Alta" } }, orderBy: { popularityScore: "desc" } },
-  MAIS_COMENTADAS: { orderBy: { voteCount: "desc" } }
+  MAIS_COMENTADAS: { orderBy: { voteCount: "desc" } },
+  BASEADAS_EM_LIVROS: { where: { collectionTags: { has: "Baseada em Livro" } }, orderBy: { qualityScore: "desc" } },
+  PREMIADAS: { where: { collectionTags: { has: "Premiada" } }, orderBy: { voteAverage: "desc" } }
 };
 
 async function fetchSmartList(key: SmartListKey, limit: number): Promise<Series[]> {
   const { where, orderBy } = SMART_LISTS[key];
-  const rows = await prisma.series.findMany({
-    where,
-    orderBy,
-    take: limit,
-    include: { seasons: { include: { episodes: true } } }
-  });
-  return rows.map(toSeriesView);
+  const rows = await prisma.series.findMany({ where, orderBy, take: limit });
+  return rows.map(toSeriesSummary);
 }
 
 export const listMaisPopulares = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_POPULARES", limit);
@@ -71,6 +75,8 @@ export const listLongaDuracao = (limit = DEFAULT_LIMIT) => fetchSmartList("LONGA
 export const listCurtas = (limit = DEFAULT_LIMIT) => fetchSmartList("CURTAS", limit);
 export const listEmAlta = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_ALTA", limit);
 export const listMaisComentadas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_COMENTADAS", limit);
+export const listBaseadasEmLivros = (limit = DEFAULT_LIMIT) => fetchSmartList("BASEADAS_EM_LIVROS", limit);
+export const listPremiadas = (limit = DEFAULT_LIMIT) => fetchSmartList("PREMIADAS", limit);
 
 /**
  * Fase 9/12 — how many series currently qualify for each smart list, for the sync report
