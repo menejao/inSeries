@@ -9,14 +9,20 @@ const sortLabels: Record<string, string> = {
   popular: "Popularidade",
   latest: "Lancamento",
   title: "Titulo",
-  rating: "Nota"
+  rating: "Nota",
+  quality: "Quality Score"
 };
 
+/** Fase 8 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — tag/provider/country/language discovery, alongside the pre-existing genre/status/year/sort. */
 export function Filters({
   query,
   genre,
   status,
   year,
+  tag,
+  provider,
+  country,
+  language,
   sort,
   metadata
 }: {
@@ -24,6 +30,10 @@ export function Filters({
   genre?: string;
   status?: string;
   year?: string;
+  tag?: string;
+  provider?: string;
+  country?: string;
+  language?: string;
   sort?: string;
   metadata: CatalogFilterMetadata;
 }) {
@@ -61,6 +71,46 @@ export function Filters({
           </option>
         ))}
       </Select>
+      {metadata.tags.length ? (
+        <Select name="tag" defaultValue={tag ?? ""} aria-label="Filtrar por tag">
+          <option value="">Tag</option>
+          {metadata.tags.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+      {metadata.providers.length ? (
+        <Select name="provider" defaultValue={provider ?? ""} aria-label="Filtrar por provedor">
+          <option value="">Provedor</option>
+          {metadata.providers.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+      {metadata.countries.length ? (
+        <Select name="country" defaultValue={country ?? ""} aria-label="Filtrar por pais">
+          <option value="">Pais</option>
+          {metadata.countries.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+      {metadata.languages.length ? (
+        <Select name="language" defaultValue={language ?? ""} aria-label="Filtrar por idioma">
+          <option value="">Idioma</option>
+          {metadata.languages.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </Select>
+      ) : null}
       <Select name="sort" defaultValue={sort ?? "popular"} aria-label="Ordenar por">
         {Object.entries(sortLabels).map(([value, label]) => (
           <option key={value} value={value}>

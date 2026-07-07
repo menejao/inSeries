@@ -3,7 +3,7 @@ import { PosterImage } from "@/components/media/poster-image";
 import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
 import { ProviderList } from "@/components/media/provider-badge";
 import { Badge } from "@/components/ui/badge";
-import { StarIcon } from "@/components/ui/icons";
+import { SparklesIcon, StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import type { Series } from "@/lib/types";
 
@@ -33,12 +33,21 @@ export function SeriesCard({ series }: { series: Series }) {
         <div className="absolute left-2 top-2">
           <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge>
         </div>
-        {typeof series.voteAverage === "number" ? (
-          <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-xs font-semibold text-ink backdrop-blur">
-            <StarIcon className="h-3 w-3 fill-current text-warning-text" />
-            {series.voteAverage.toFixed(1)}
-          </div>
-        ) : null}
+        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+          {typeof series.voteAverage === "number" ? (
+            <div className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-xs font-semibold text-ink backdrop-blur">
+              <StarIcon className="h-3 w-3 fill-current text-warning-text" />
+              {series.voteAverage.toFixed(1)}
+            </div>
+          ) : null}
+          {/* Fase 10 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — Quality Score alongside the vote average, so catalog/search results carry the same signal as the Hero/detail page. */}
+          {typeof series.qualityScore === "number" ? (
+            <div className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-xs font-semibold text-ink backdrop-blur">
+              <SparklesIcon className="h-3 w-3 text-primary-text" />
+              {Math.round(series.qualityScore)}
+            </div>
+          ) : null}
+        </div>
         <div className="absolute inset-x-0 bottom-0 space-y-1.5 p-3">
           <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
           <p className="text-xs text-muted">

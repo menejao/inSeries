@@ -51,7 +51,7 @@ const HERO_POOL_SIZE = 10;
  * The rotation is hourly (deterministic per request, changes over time) rather than random,
  * so a page reload doesn't flicker between different heroes.
  */
-function pickHero(qualityPool: Series[], popularPool: Series[]): Series | undefined {
+export function pickHero(qualityPool: Series[], popularPool: Series[]): Series | undefined {
   const qualified = qualityPool.filter((item) => (item.qualityScore ?? 0) >= HERO_MIN_QUALITY_SCORE);
   const pool = qualified.length ? qualified : popularPool;
   if (!pool.length) return undefined;

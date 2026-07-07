@@ -5,13 +5,18 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { CompassIcon } from "@/components/ui/icons";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 
-const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating"];
+const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality"];
 
 type SeriesPageSearchParams = {
   q?: string;
   genre?: string;
   status?: string;
   year?: string;
+  tag?: string;
+  provider?: string;
+  country?: string;
+  language?: string;
+  keyword?: string;
   sort?: string;
   page?: string;
 };
@@ -25,7 +30,19 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   const page = params.page ? Number(params.page) : 1;
 
   const [result, metadata] = await Promise.all([
-    searchSeries({ q: params.q, genre: params.genre, status: params.status, year, sort, page }),
+    searchSeries({
+      q: params.q,
+      genre: params.genre,
+      status: params.status,
+      year,
+      tag: params.tag,
+      provider: params.provider,
+      country: params.country,
+      language: params.language,
+      keyword: params.keyword,
+      sort,
+      page
+    }),
     getCatalogFilterMetadata()
   ]);
 
@@ -45,7 +62,18 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
           .
         </p>
       </div>
-      <Filters query={params.q} genre={params.genre} status={params.status} year={params.year} sort={sort} metadata={metadata} />
+      <Filters
+        query={params.q}
+        genre={params.genre}
+        status={params.status}
+        year={params.year}
+        tag={params.tag}
+        provider={params.provider}
+        country={params.country}
+        language={params.language}
+        sort={sort}
+        metadata={metadata}
+      />
       {result.items.length ? (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

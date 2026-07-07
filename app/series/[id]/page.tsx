@@ -12,7 +12,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { BackdropImage, PosterImage } from "@/components/media/poster-image";
 import { Carousel, CarouselItem } from "@/components/media/carousel";
 import { SeriesPosterCard } from "@/components/media/series-poster-card";
-import { CalendarIcon, FilmIcon, ListIcon, StarIcon } from "@/components/ui/icons";
+import { SeriesLogoOrTitle } from "@/components/media/series-logo";
+import { CollectionTagList } from "@/components/media/collection-tag-badge";
+import { ProviderList } from "@/components/media/provider-badge";
+import { CalendarIcon, FilmIcon, ListIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
@@ -78,6 +81,14 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   }));
 
   const totalEpisodes = hydratedSeasons.reduce((sum, item) => sum + item.episodeCount, 0);
+  const hasProductionDetails = Boolean(
+    series.createdBy.length ||
+      series.networks.length ||
+      series.productionCompanies.length ||
+      series.spokenLanguages.length ||
+      series.keywords.length ||
+      series.homepage
+  );
 
   return (
     <div className="space-y-6">
@@ -101,8 +112,19 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                   <StarIcon className="h-3 w-3 fill-current" /> {series.voteAverage.toFixed(1)}
                 </Badge>
               ) : null}
+              {typeof series.qualityScore === "number" ? (
+                <Badge variant="primary">
+                  <SparklesIcon className="h-3 w-3" /> Quality {Math.round(series.qualityScore)}
+                </Badge>
+              ) : null}
             </div>
-            <h1 className="max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-5xl">{series.title}</h1>
+            <SeriesLogoOrTitle
+              title={series.title}
+              logoUrl={series.logoUrl}
+              as="h1"
+              textClassName="max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-5xl"
+              logoClassName="h-16 max-w-[280px] sm:h-20"
+            />
             {series.originalTitle && series.originalTitle !== series.title ? (
               <p className="text-sm text-muted">{series.originalTitle}</p>
             ) : null}
@@ -114,6 +136,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                 </span>
               ))}
             </div>
+            <CollectionTagList tags={series.collectionTags} />
+            <ProviderList providers={series.watchProviders} />
             <div className="pt-1">
               <SeriesStatusActions seriesId={series.id} initialState={status?.state ?? null} authenticated={Boolean(user)} />
             </div>
@@ -130,6 +154,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
               <InfoRow label="Plataforma" value={series.platform || "Nao informado"} />
               <InfoRow label="Temporadas" value={String(hydratedSeasons.length)} />
               <InfoRow label="Episodios" value={String(totalEpisodes)} />
+              <InfoRow label="Tipo" value={series.type || "Nao informado"} />
+              <InfoRow label="Pais de origem" value={series.originCountry.length ? series.originCountry.join(", ") : "Nao informado"} />
             </dl>
             {user ? (
               <div className="space-y-2 border-t border-border pt-4">
@@ -169,6 +195,36 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
               <p className="text-sm text-muted">Serie sem episodios futuros.</p>
             )}
           </Card>
+
+          {hasProductionDetails ? (
+            <Card className="space-y-3">
+              <h2 className="text-lg font-semibold text-ink">Producao</h2>
+              <dl className="space-y-3 text-sm">
+                {series.createdBy.length ? <InfoRow label="Criadores" value={series.createdBy.join(", ")} /> : null}
+                {series.networks.length ? <InfoRow label="Networks" value={series.networks.join(", ")} /> : null}
+                {series.productionCompanies.length ? (
+                  <InfoRow label="Produtoras" value={series.productionCompanies.join(", ")} />
+                ) : null}
+                {series.spokenLanguages.length ? (
+                  <InfoRow label="Idiomas falados" value={series.spokenLanguages.join(", ")} />
+                ) : null}
+              </dl>
+              {series.keywords.length ? (
+                <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
+                  {series.keywords.slice(0, 8).map((keyword) => (
+                    <Link key={keyword} href={`/series?keyword=${encodeURIComponent(keyword)}`}>
+                      <Badge variant="outline">{keyword}</Badge>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+              {series.homepage ? (
+                <a href={series.homepage} target="_blank" rel="noreferrer" className="link-accent block text-sm">
+                  Site oficial
+                </a>
+              ) : null}
+            </Card>
+          ) : null}
         </div>
 
         <div className="space-y-4">

@@ -27,6 +27,9 @@ import { deriveCollectionTags } from "@/lib/catalog/collection-tags";
 import { resolvePreferredImageUrl } from "@/lib/catalog/image-resolution";
 import { computeCatalogStatistics } from "@/lib/catalog/statistics";
 import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
+import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
+import { pickHero } from "@/components/landing/landing-page";
+import type { Series } from "@/lib/types";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 
@@ -2134,16 +2137,16 @@ async function main() {
 
   // ---- Experiencia cinematografica: Hero, carrosseis, posters/backdrops reais, stills ----
   check(
-    "Landing possui Hero cinematografico (backdrop real da serie mais popular)",
-    /Em destaque: <span[^>]*>[^<]+<\/span>/.test(String(landingAnon.body)) &&
+    "Landing possui Hero cinematografico (backdrop real, Quality Score considerado na selecao)",
+    String(landingAnon.body).includes("Em destaque:") &&
       String(landingAnon.body).includes("dev-media") &&
       String(landingAnon.body).includes("backdrop.svg"),
     landingAnon.status
   );
   check(
-    "Landing possui multiplos carrosseis (Em Alta, Lancamentos, Mais Bem Avaliadas, Em Exibicao/Finalizadas)",
-    String(landingAnon.body).includes("Em Alta") &&
-      String(landingAnon.body).includes("Lancamentos") &&
+    "Landing usa Smart Lists reais (Mais Populares, Novidades, Mais Bem Avaliadas)",
+    String(landingAnon.body).includes("Mais Populares") &&
+      String(landingAnon.body).includes("Novidades") &&
       String(landingAnon.body).includes("Mais Bem Avaliadas"),
     landingAnon.status
   );
@@ -2175,6 +2178,133 @@ async function main() {
     "Watch Next usa poster grande (nao mais still dividido 50/50)",
     watchNextPosterCheck.status === 200 && String(watchNextPosterCheck.body).includes("poster.svg"),
     watchNextPosterCheck.status
+  );
+
+  // ---- Catalogo Inteligente (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01): metadados ----
+  // ---- enriquecidos (Quality Score, Collection Tags, Providers, Logos, Keywords) na UI ----
+  function buildSeriesFixture(overrides: Partial<Series> & { id: string }): Series {
+    return {
+      slug: overrides.id,
+      title: `Fixture ${overrides.id}`,
+      originalTitle: `Fixture ${overrides.id}`,
+      year: 2023,
+      status: "RETURNING",
+      overview: "Sinopse de teste.",
+      genres: [],
+      language: "PT-BR",
+      platform: "TMDb",
+      popularity: "0",
+      posterUrl: "",
+      backdropUrl: "",
+      seasons: [],
+      collectionTags: [],
+      watchProviders: [],
+      keywords: [],
+      originCountry: [],
+      spokenLanguages: [],
+      createdBy: [],
+      networks: [],
+      productionCompanies: [],
+      productionCountries: [],
+      ...overrides
+    };
+  }
+
+  const highQualityFixture = buildSeriesFixture({ id: "high", qualityScore: 90 });
+  const lowQualityFixture = buildSeriesFixture({ id: "low", qualityScore: 10 });
+  const noScoreFixture = buildSeriesFixture({ id: "none" });
+
+  check(
+    "Hero (Fase 2): Quality Score evita destacar serie de baixa qualidade quando ha opcao melhor no pool",
+    pickHero([lowQualityFixture, highQualityFixture], [lowQualityFixture])?.id === "high",
+    { picked: pickHero([lowQualityFixture, highQualityFixture], [lowQualityFixture])?.id }
+  );
+  check(
+    "Hero (Fase 2): sem nenhuma serie qualificada, cai para o pool de popularidade (nunca fica vazio)",
+    pickHero([lowQualityFixture], [lowQualityFixture, noScoreFixture]) !== undefined,
+    null
+  );
+  check("Hero (Fase 2): sem nenhuma serie disponivel, retorna undefined (nunca quebra)", pickHero([], []) === undefined, null);
+
+  const tagFilterResult = await searchSeries({ tag: "Maratona", pageSize: 20 });
+  check(
+    "Descoberta (Fase 8): filtro por Collection Tag retorna so series com aquela tag",
+    tagFilterResult.items.length > 0 && tagFilterResult.items.every((item) => item.collectionTags.includes("Maratona")),
+    tagFilterResult.items.map((item) => item.title)
+  );
+
+  const providerFilterResult = await searchSeries({ provider: "Netflix", pageSize: 20 });
+  check(
+    "Descoberta (Fase 8): filtro por provedor retorna so series disponiveis naquele provedor",
+    providerFilterResult.items.length > 0 && providerFilterResult.items.every((item) => item.watchProviders.includes("Netflix")),
+    providerFilterResult.items.map((item) => item.title)
+  );
+
+  const countryFilterResult = await searchSeries({ country: "BR", pageSize: 20 });
+  check(
+    "Descoberta (Fase 8): filtro por pais de origem retorna so series daquele pais",
+    countryFilterResult.items.length > 0 && countryFilterResult.items.every((item) => item.originCountry.includes("BR")),
+    countryFilterResult.items.map((item) => item.title)
+  );
+
+  const keywordFilterResult = await searchSeries({ keyword: "dystopia", pageSize: 20 });
+  check(
+    "Descoberta (Fase 8): filtro por keyword real do TMDb retorna so series sincronizadas com ela",
+    keywordFilterResult.items.length > 0 && keywordFilterResult.items.every((item) => item.keywords.includes("dystopia")),
+    keywordFilterResult.items.map((item) => item.title)
+  );
+
+  const qualitySortResult = await searchSeries({ sort: "quality", pageSize: 20 });
+  check(
+    "Descoberta (Fase 2/8/10): sort=quality ordena o catalogo por Quality Score decrescente",
+    qualitySortResult.items.every(
+      (item, index, all) => index === 0 || (all[index - 1].qualityScore ?? 0) >= (item.qualityScore ?? 0)
+    ),
+    qualitySortResult.items.map((item) => ({ title: item.title, score: item.qualityScore }))
+  );
+
+  const filterMetadata = await getCatalogFilterMetadata();
+  check(
+    "Descoberta (Fase 8): metadados de filtro expoem tags/provedores/paises/idiomas reais do catalogo",
+    filterMetadata.tags.length > 0 &&
+      filterMetadata.providers.length > 0 &&
+      filterMetadata.countries.length > 0 &&
+      filterMetadata.languages.length > 0,
+    filterMetadata
+  );
+
+  const catalogFilteredByTag = await request(jarShell, `/series?tag=${encodeURIComponent("Maratona")}`);
+  check("Catalogo (Fase 8): filtro por tag via querystring funciona (200)", catalogFilteredByTag.status === 200, catalogFilteredByTag.status);
+
+  const seriesUmDetail = await request(jarShell, "/series/serie-teste-um");
+  check(
+    "Pagina da serie (Fase 7): Quality Score, Collection Tags e Providers aparecem",
+    seriesUmDetail.status === 200 &&
+      String(seriesUmDetail.body).includes("Quality") &&
+      String(seriesUmDetail.body).includes("Netflix") &&
+      (String(seriesUmDetail.body).includes("Premiada") || String(seriesUmDetail.body).includes("Maratona")),
+    seriesUmDetail.status
+  );
+  check(
+    "Pagina da serie (Fase 6): logo oficial substitui o titulo em texto quando existe (span sr-only preserva acessibilidade)",
+    String(seriesUmDetail.body).includes("serie-teste-um-logo.svg") && String(seriesUmDetail.body).includes("sr-only"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 7): secao Producao mostra criadores/networks/produtoras",
+    String(seriesUmDetail.body).includes("Criadores") &&
+      String(seriesUmDetail.body).includes("Networks") &&
+      String(seriesUmDetail.body).includes("Produtoras"),
+    null
+  );
+
+  const seriesCincoDetail = await request(jarShell, "/series/serie-teste-cinco");
+  check(
+    "Pagina da serie (Fase 6): sem logo sincronizado, titulo em texto normal (fallback gracioso, nunca quebra)",
+    seriesCincoDetail.status === 200 &&
+      String(seriesCincoDetail.body).includes("Serie Teste Cinco") &&
+      !String(seriesCincoDetail.body).includes("serie-teste-cinco-logo"),
+    seriesCincoDetail.status
   );
 
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
