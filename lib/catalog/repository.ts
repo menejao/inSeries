@@ -156,6 +156,16 @@ function emptyUpsertCounts(): CatalogUpsertCounts {
  * rows were created vs. updated, so callers (sync runs) can report accurate counts.
  * Never touches UserSeriesStatus, UserEpisodeProgress, Review, List or Activity —
  * only catalog metadata tables, so user-generated data is always preserved.
+ *
+ * Fase 12 (INSERIES-TMDB-CATALOG-SCALE-01) — series+mapping and each season+its episodes
+ * are written inside their own scoped transaction (not the whole series in one giant
+ * transaction, which would hold locks far longer than necessary for a series with many
+ * seasons/episodes).
+ *
+ * Fase 6 — `series.seasons` may legitimately be empty even for an already-catalogued
+ * series (the "lightweight" discovery-sync path only re-fetches summary fields, not
+ * seasons/episodes) — in that case this function only refreshes series-level metadata
+ * and leaves existing seasons/episodes untouched.
  */
 export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalogSeries) {
   const counts = emptyUpsertCounts();
@@ -178,6 +188,9 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     ? await prisma.series.findUnique({ where: { id: existingMapping.seriesId }, select: { id: true } })
     : await prisma.series.findUnique({ where: { slug: series.slug }, select: { id: true } });
 
+  // Fields with `undefined` are skipped by Prisma's update (existing value preserved) —
+  // important for the lightweight discovery-sync path, which normalizes a plain list
+  // item and therefore never has tagline/homepage/networks/etc. to overwrite with.
   const seriesData = {
     slug: series.slug,
     title: series.title,
@@ -192,12 +205,49 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     status: mapStatusToPrisma(series.status),
     popularityScore: series.popularityScore ?? null,
     voteAverage: series.voteAverage ?? null,
-    voteCount: series.voteCount ?? null
+    voteCount: series.voteCount ?? null,
+    tagline: series.tagline,
+    homepage: series.homepage,
+    originCountry: series.originCountry,
+    spokenLanguages: series.spokenLanguages,
+    numberOfSeasons: series.numberOfSeasons,
+    numberOfEpisodes: series.numberOfEpisodes,
+    networks: series.networks,
+    productionCountries: series.productionCountries,
+    productionCompanies: series.productionCompanies,
+    createdBy: series.createdBy,
+    logoUrl: series.logoUrl,
+    keywords: series.keywords
   };
 
-  const baseSeries = existingSeries
-    ? await prisma.series.update({ where: { id: existingSeries.id }, data: seriesData })
-    : await prisma.series.create({ data: seriesData });
+  const [baseSeries] = await prisma.$transaction(async (tx) => {
+    const row = existingSeries
+      ? await tx.series.update({ where: { id: existingSeries.id }, data: seriesData })
+      : await tx.series.create({ data: seriesData });
+
+    await tx.externalSourceMapping.upsert({
+      where: {
+        source_entityType_externalId: {
+          source: ExternalSource.TMDB,
+          entityType: ExternalEntityType.SERIES,
+          externalId: series.external.externalId
+        }
+      },
+      update: {
+        seriesId: row.id,
+        lastSyncedAt: new Date()
+      },
+      create: {
+        source: ExternalSource.TMDB,
+        entityType: ExternalEntityType.SERIES,
+        externalId: series.external.externalId,
+        seriesId: row.id,
+        lastSyncedAt: new Date()
+      }
+    });
+
+    return [row];
+  });
 
   if (existingSeries) {
     counts.updatedSeriesCount += 1;
@@ -205,85 +255,76 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     counts.importedSeriesCount += 1;
   }
 
-  await prisma.externalSourceMapping.upsert({
-    where: {
-      source_entityType_externalId: {
-        source: ExternalSource.TMDB,
-        entityType: ExternalEntityType.SERIES,
-        externalId: series.external.externalId
-      }
-    },
-    update: {
-      seriesId: baseSeries.id,
-      lastSyncedAt: new Date()
-    },
-    create: {
-      source: ExternalSource.TMDB,
-      entityType: ExternalEntityType.SERIES,
-      externalId: series.external.externalId,
-      seriesId: baseSeries.id,
-      lastSyncedAt: new Date()
-    }
-  });
-
   for (const season of series.seasons) {
-    const existingSeason = await prisma.season.findUnique({
-      where: { seriesId_number: { seriesId: baseSeries.id, number: season.number } },
-      select: { id: true }
-    });
+    const seasonCounts = await prisma.$transaction(
+      async (tx) => {
+        const existingSeason = await tx.season.findUnique({
+          where: { seriesId_number: { seriesId: baseSeries.id, number: season.number } },
+          select: { id: true }
+        });
 
-    // Season has two unique constraints (seriesId+number, externalSource+externalId).
-    // Prisma's upsert() compiles to a Postgres INSERT ... ON CONFLICT that only
-    // targets one constraint, so a raw upsert can throw a unique violation on the
-    // other constraint when re-syncing. Branch explicitly instead.
-    const seasonData = {
-      title: season.title,
-      overview: season.overview || null,
-      posterUrl: season.posterUrl || null,
-      airYear: season.year || null,
-      episodeCount: season.episodeCount,
-      externalSource: season.external ? ExternalSource.TMDB : null,
-      externalId: season.external?.externalId ?? null
-    };
-    const baseSeason = existingSeason
-      ? await prisma.season.update({ where: { id: existingSeason.id }, data: seasonData })
-      : await prisma.season.create({ data: { seriesId: baseSeries.id, number: season.number, ...seasonData } });
+        // Season has two unique constraints (seriesId+number, externalSource+externalId).
+        // Prisma's upsert() compiles to a Postgres INSERT ... ON CONFLICT that only
+        // targets one constraint, so a raw upsert can throw a unique violation on the
+        // other constraint when re-syncing. Branch explicitly instead.
+        const seasonData = {
+          title: season.title,
+          overview: season.overview || null,
+          posterUrl: season.posterUrl || null,
+          airYear: season.year || null,
+          episodeCount: season.episodeCount,
+          externalSource: season.external ? ExternalSource.TMDB : null,
+          externalId: season.external?.externalId ?? null
+        };
+        const baseSeason = existingSeason
+          ? await tx.season.update({ where: { id: existingSeason.id }, data: seasonData })
+          : await tx.season.create({ data: { seriesId: baseSeries.id, number: season.number, ...seasonData } });
 
-    if (existingSeason) {
-      counts.updatedSeasonCount += 1;
-    } else {
+        let importedEpisodeCount = 0;
+        let updatedEpisodeCount = 0;
+
+        for (const episode of season.episodes) {
+          const existingEpisode = await tx.episode.findUnique({
+            where: { seasonId_number: { seasonId: baseSeason.id, number: episode.number } },
+            select: { id: true }
+          });
+
+          // Same rationale as Season above: Episode also has two unique constraints,
+          // so branch explicitly instead of relying on Prisma's upsert().
+          const episodeData = {
+            title: episode.title,
+            overview: episode.overview,
+            stillUrl: episode.stillUrl || null,
+            runtimeMinutes: episode.runtimeMinutes || null,
+            airedAt: episode.airedOn ? new Date(episode.airedOn) : null,
+            externalSource: episode.external ? ExternalSource.TMDB : null,
+            externalId: episode.external?.externalId ?? null
+          };
+          if (existingEpisode) {
+            await tx.episode.update({ where: { id: existingEpisode.id }, data: episodeData });
+          } else {
+            await tx.episode.create({ data: { seasonId: baseSeason.id, number: episode.number, ...episodeData } });
+          }
+
+          if (existingEpisode) {
+            updatedEpisodeCount += 1;
+          } else {
+            importedEpisodeCount += 1;
+          }
+        }
+
+        return { isNewSeason: !existingSeason, importedEpisodeCount, updatedEpisodeCount };
+      },
+      { timeout: 20_000 }
+    );
+
+    if (seasonCounts.isNewSeason) {
       counts.importedSeasonCount += 1;
+    } else {
+      counts.updatedSeasonCount += 1;
     }
-
-    for (const episode of season.episodes) {
-      const existingEpisode = await prisma.episode.findUnique({
-        where: { seasonId_number: { seasonId: baseSeason.id, number: episode.number } },
-        select: { id: true }
-      });
-
-      // Same rationale as Season above: Episode also has two unique constraints,
-      // so branch explicitly instead of relying on Prisma's upsert().
-      const episodeData = {
-        title: episode.title,
-        overview: episode.overview,
-        stillUrl: episode.stillUrl || null,
-        runtimeMinutes: episode.runtimeMinutes || null,
-        airedAt: episode.airedOn ? new Date(episode.airedOn) : null,
-        externalSource: episode.external ? ExternalSource.TMDB : null,
-        externalId: episode.external?.externalId ?? null
-      };
-      if (existingEpisode) {
-        await prisma.episode.update({ where: { id: existingEpisode.id }, data: episodeData });
-      } else {
-        await prisma.episode.create({ data: { seasonId: baseSeason.id, number: episode.number, ...episodeData } });
-      }
-
-      if (existingEpisode) {
-        counts.updatedEpisodeCount += 1;
-      } else {
-        counts.importedEpisodeCount += 1;
-      }
-    }
+    counts.importedEpisodeCount += seasonCounts.importedEpisodeCount;
+    counts.updatedEpisodeCount += seasonCounts.updatedEpisodeCount;
   }
 
   return { series: baseSeries, counts };

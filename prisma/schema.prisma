@@ -54,6 +54,12 @@ enum CatalogSyncType {
   SERIES_SEASONS
   SERIES_EPISODES
   FULL_REFRESH
+  TOP_RATED
+  ON_THE_AIR
+  AIRING_TODAY
+  DISCOVER
+  TRENDING
+  CATALOG_FULL
 }
 
 enum CatalogSyncStatus {
@@ -131,31 +137,47 @@ model User {
 }
 
 model Series {
-  id               String                  @id @default(cuid())
-  slug             String                  @unique
-  title            String
-  originalTitle    String?
-  overview         String?
-  posterUrl        String?
-  backdropUrl      String?
-  firstAirYear     Int?
-  language         String?
-  network          String?
-  genres           String[]
-  status           SeriesLifecycleStatus
-  popularityScore  Float?
-  voteAverage      Float?
-  voteCount        Int?
-  seasons          Season[]
-  reviews          Review[]
-  ratings          Rating[]
-  statuses         UserSeriesStatus[]
-  externalMappings ExternalSourceMapping[]
-  listItems        ListItem[]
-  activities       Activity[]
-  notifications    Notification[]
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  id                  String                  @id @default(cuid())
+  slug                String                  @unique
+  title               String
+  originalTitle       String?
+  overview            String?
+  posterUrl           String?
+  backdropUrl         String?
+  firstAirYear        Int?
+  language            String?
+  network             String?
+  genres              String[]
+  status              SeriesLifecycleStatus
+  popularityScore     Float?
+  voteAverage         Float?
+  voteCount           Int?
+  // Fase 9 (INSERIES-TMDB-CATALOG-SCALE-01) — richer catalog metadata, all sourced from the
+  // same single TMDb details call (network already existed; the rest just wasn't captured
+  // before). Nothing here is surfaced in the UI yet — this is data warehousing for future use,
+  // not a new user-facing feature.
+  tagline             String?
+  homepage            String?
+  originCountry       String[]                @default([])
+  spokenLanguages     String[]                @default([])
+  numberOfSeasons     Int?
+  numberOfEpisodes    Int?
+  networks            String[]                @default([])
+  productionCountries String[]                @default([])
+  productionCompanies String[]                @default([])
+  createdBy           String[]                @default([])
+  logoUrl             String?
+  keywords            String[]                @default([])
+  seasons             Season[]
+  reviews             Review[]
+  ratings             Rating[]
+  statuses            UserSeriesStatus[]
+  externalMappings    ExternalSourceMapping[]
+  listItems           ListItem[]
+  activities          Activity[]
+  notifications       Notification[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@index([status])
   @@index([firstAirYear])

@@ -16,6 +16,12 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "sync:popular": "tsx scripts/sync-popular.ts",
     "sync:series": "tsx scripts/sync-series.ts",
+    "sync:discover": "tsx scripts/sync-discover.ts",
+    "sync:top-rated": "tsx scripts/sync-top-rated.ts",
+    "sync:on-the-air": "tsx scripts/sync-on-the-air.ts",
+    "sync:airing-today": "tsx scripts/sync-airing-today.ts",
+    "sync:trending": "tsx scripts/sync-trending.ts",
+    "sync:catalog": "tsx scripts/sync-catalog.ts",
     "notifications:episodes": "tsx scripts/notify-new-episodes.ts",
     "smoke:test": "tsx scripts/smoke-test.ts"
   },

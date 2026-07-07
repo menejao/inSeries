@@ -1,4 +1,5 @@
 import { getTmdbBaseUrl, getTmdbCredentials, getTmdbLanguage } from "@/lib/config";
+import { withTmdbRateLimit } from "@/lib/tmdb/rate-limit";
 import type {
   TmdbEpisodeDetails,
   TmdbListSeriesItem,
@@ -34,7 +35,17 @@ function createHeaders() {
   return { headers, apiKey: credentials.apiKey };
 }
 
-async function tmdbFetch<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
+/** Rate-limit-eligible errors always retry; timeouts and 5xx are also worth retrying — auth/not-found/config errors are not. */
+function isRateLimitError(error: unknown) {
+  return error instanceof TmdbApiError && error.status === 429;
+}
+
+function isRetryableError(error: unknown) {
+  if (error instanceof TmdbTimeoutError) return true;
+  return error instanceof TmdbApiError && error.status >= 500;
+}
+
+async function tmdbFetchOnce<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
   const { headers, apiKey } = createHeaders();
   const preferredLanguage = getTmdbLanguage();
   const baseUrl = getTmdbBaseUrl();
@@ -86,6 +97,14 @@ async function tmdbFetch<T>(path: string, searchParams?: URLSearchParams): Promi
   return response.json() as Promise<T>;
 }
 
+/** Every real HTTP call to TMDb goes through here: concurrency queue, pacing, retry/backoff (Fase 7). */
+function tmdbFetch<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
+  return withTmdbRateLimit(() => tmdbFetchOnce<T>(path, searchParams), {
+    isRateLimit: isRateLimitError,
+    isRetryable: isRetryableError
+  });
+}
+
 async function withLanguageFallback<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
   try {
     return await tmdbFetch<T>(path, searchParams);
@@ -105,6 +124,59 @@ export async function fetchPopularTmdbSeries(page = 1) {
   return payload.results;
 }
 
+export async function fetchTopRatedTmdbSeries(page = 1) {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>("tv/top_rated", new URLSearchParams({ page: String(page) }));
+  return payload.results;
+}
+
+export async function fetchOnTheAirTmdbSeries(page = 1) {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>("tv/on_the_air", new URLSearchParams({ page: String(page) }));
+  return payload.results;
+}
+
+export async function fetchAiringTodayTmdbSeries(page = 1) {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>("tv/airing_today", new URLSearchParams({ page: String(page) }));
+  return payload.results;
+}
+
+/** `window` matches TMDb's own `trending/tv/{day|week}` path segment. */
+export async function fetchTrendingTmdbSeries(page = 1, window: "day" | "week" = "week") {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>(
+    `trending/tv/${window}`,
+    new URLSearchParams({ page: String(page) })
+  );
+  return payload.results;
+}
+
+export type DiscoverTmdbSeriesOptions = {
+  page?: number;
+  /** TMDb sort_by value, e.g. "popularity.desc", "vote_average.desc", "first_air_date.desc". */
+  sortBy?: string;
+  voteCountGte?: number;
+  firstAirDateGte?: string;
+  firstAirDateLte?: string;
+  withStatus?: string;
+  withOriginalLanguage?: string;
+  withOriginCountry?: string;
+  withGenres?: string;
+};
+
+/** Fase 4 — the flexible Discover TV endpoint, for filters `tv/popular` etc. don't expose (min votes, date range, genre, status, language, country). */
+export async function fetchDiscoverTmdbSeries(options: DiscoverTmdbSeriesOptions = {}) {
+  const params = new URLSearchParams({ page: String(options.page ?? 1) });
+  if (options.sortBy) params.set("sort_by", options.sortBy);
+  if (options.voteCountGte !== undefined) params.set("vote_count.gte", String(options.voteCountGte));
+  if (options.firstAirDateGte) params.set("first_air_date.gte", options.firstAirDateGte);
+  if (options.firstAirDateLte) params.set("first_air_date.lte", options.firstAirDateLte);
+  if (options.withStatus) params.set("with_status", options.withStatus);
+  if (options.withOriginalLanguage) params.set("with_original_language", options.withOriginalLanguage);
+  if (options.withOriginCountry) params.set("with_origin_country", options.withOriginCountry);
+  if (options.withGenres) params.set("with_genres", options.withGenres);
+
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>("discover/tv", params);
+  return payload.results;
+}
+
 export async function searchTmdbSeries(query: string, page = 1) {
   const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>(
     "search/tv",
@@ -114,7 +186,9 @@ export async function searchTmdbSeries(query: string, page = 1) {
 }
 
 export async function fetchTmdbSeriesDetails(seriesId: string | number) {
-  return withLanguageFallback<TmdbSeriesDetails>(`tv/${seriesId}`);
+  // append_to_response piggybacks keywords+images (logos) onto the same request —
+  // Fase 9's "logos"/"keywords" without any extra HTTP call.
+  return withLanguageFallback<TmdbSeriesDetails>(`tv/${seriesId}`, new URLSearchParams({ append_to_response: "keywords,images" }));
 }
 
 export async function fetchTmdbSeasonDetails(seriesId: string | number, seasonNumber: string | number) {

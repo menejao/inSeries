@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
-import { syncExistingSeriesDetails } from "@/lib/catalog/sync";
+import { syncDiscoverSeries } from "@/lib/catalog/sync";
 import { isUnconfiguredFailure, printSyncSummary } from "@/scripts/_shared/print-sync-summary";
 
 async function main() {
@@ -10,14 +10,17 @@ async function main() {
     return;
   }
 
-  const summary = await syncExistingSeriesDetails();
+  const pagesArg = Number(process.argv[2]);
+  const pages = Number.isFinite(pagesArg) && pagesArg > 0 ? pagesArg : undefined;
+
+  const summary = await syncDiscoverSeries({ pages });
 
   if (isUnconfiguredFailure(summary)) {
     process.exitCode = 1;
     return;
   }
 
-  printSyncSummary("Sync de detalhes de series existentes concluido.", summary);
+  printSyncSummary("Sync via Discover TV concluido.", summary);
 
   if (summary.status === "FAILED") {
     process.exitCode = 1;
@@ -26,7 +29,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error("Falha inesperada no sync de series existentes.");
+    console.error("Falha inesperada no sync via Discover TV.");
     console.error(error);
     process.exitCode = 1;
   })

@@ -1,23 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { syncPopularSeries } from "@/lib/catalog/sync";
-
-function printSummary(label: string, summary: Awaited<ReturnType<typeof syncPopularSeries>>) {
-  console.log(`\n${label}`);
-  console.log(`  status: ${summary.status}`);
-  console.log(`  duracao: ${summary.durationMs}ms`);
-  console.log(`  series importadas: ${summary.importedSeriesCount} | atualizadas: ${summary.updatedSeriesCount}`);
-  console.log(`  temporadas importadas: ${summary.importedSeasonCount} | atualizadas: ${summary.updatedSeasonCount}`);
-  console.log(`  episodios importados: ${summary.importedEpisodeCount} | atualizados: ${summary.updatedEpisodeCount}`);
-  if (summary.errors.length) {
-    console.log(`  erros (${summary.errors.length}):`);
-    summary.errors.slice(0, 10).forEach((error) => console.log(`    - ${error.series}: ${error.message}`));
-    if (summary.errors.length > 10) {
-      console.log(`    ... e mais ${summary.errors.length - 10} erro(s)`);
-    }
-  }
-  console.log(`  run id: ${summary.runId}`);
-}
+import { isUnconfiguredFailure, printSyncSummary } from "@/scripts/_shared/print-sync-summary";
 
 async function main() {
   if (!(await canUseDatabase())) {
@@ -27,18 +11,16 @@ async function main() {
   }
 
   const pagesArg = Number(process.argv[2]);
-  const pages = Number.isFinite(pagesArg) && pagesArg > 0 ? pagesArg : 1;
+  const pages = Number.isFinite(pagesArg) && pagesArg > 0 ? pagesArg : undefined;
 
   const summary = await syncPopularSeries({ pages });
 
-  if (summary.status === "FAILED" && summary.errorMessage?.includes("TMDb nao configurado")) {
-    console.error(`Sync abortado: ${summary.errorMessage}`);
-    console.error("Configure TMDB_API_KEY ou TMDB_ACCESS_TOKEN no .env para sincronizar o catalogo real.");
+  if (isUnconfiguredFailure(summary)) {
     process.exitCode = 1;
     return;
   }
 
-  printSummary("Sync de series populares concluido.", summary);
+  printSyncSummary("Sync de series populares concluido.", summary);
 
   if (summary.status === "FAILED") {
     process.exitCode = 1;

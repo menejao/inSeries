@@ -23,6 +23,13 @@ const envSchema = z.object({
   TMDB_ACCESS_TOKEN: optionalNonEmpty(),
   TMDB_BASE_URL: optionalUrl(),
   TMDB_LANGUAGE: optionalNonEmpty(),
+  TMDB_POPULAR_PAGES: optionalNonEmpty(),
+  TMDB_DISCOVER_PAGES: optionalNonEmpty(),
+  TMDB_MAX_CONCURRENT_REQUESTS: optionalNonEmpty(),
+  TMDB_REQUEST_DELAY_MS: optionalNonEmpty(),
+  TMDB_MIN_VOTE_COUNT: optionalNonEmpty(),
+  TMDB_MIN_YEAR: optionalNonEmpty(),
+  TMDB_MAX_YEAR: optionalNonEmpty(),
   NEXT_PUBLIC_APP_URL: optionalUrl(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
   RATE_LIMIT_ENABLED: optionalNonEmpty(),
@@ -66,6 +73,13 @@ function parseNumberFlag(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+/** Like parseNumberFlag, but has no fallback number — an unset/invalid value means "no filter". */
+function parseOptionalNumberFlag(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 const nodeEnv = rawEnv.NODE_ENV ?? "development";
 const tmdbApiKey = rawEnv.TMDB_API_KEY?.trim();
 const tmdbAccessToken = rawEnv.TMDB_ACCESS_TOKEN?.trim();
@@ -94,6 +108,22 @@ export const config = {
     baseUrl: rawEnv.TMDB_BASE_URL ?? "https://api.themoviedb.org/3",
     language: rawEnv.TMDB_LANGUAGE ?? "pt-BR",
     isConfigured: Boolean(tmdbApiKey || tmdbAccessToken)
+  },
+  /**
+   * Fase 2/3/7 (INSERIES-TMDB-CATALOG-SCALE-01) — every knob the catalog sync pipeline
+   * needs, all here (never a magic number inside lib/catalog/sync.ts or lib/tmdb/service.ts)
+   * so tuning how much of the catalog gets pulled, how fast, and how strict the quality
+   * bar is, never means hunting through the sync code itself.
+   */
+  catalogSync: {
+    // ~20 series/page on TMDb's list endpoints, so pages=25 ~= 500 series (the ticket's own example).
+    popularPages: parseNumberFlag(rawEnv.TMDB_POPULAR_PAGES, 1),
+    discoverPages: parseNumberFlag(rawEnv.TMDB_DISCOVER_PAGES, 1),
+    maxConcurrentRequests: Math.max(1, parseNumberFlag(rawEnv.TMDB_MAX_CONCURRENT_REQUESTS, 4)),
+    requestDelayMs: parseNumberFlag(rawEnv.TMDB_REQUEST_DELAY_MS, 250),
+    minVoteCount: parseNumberFlag(rawEnv.TMDB_MIN_VOTE_COUNT, 0),
+    minYear: parseOptionalNumberFlag(rawEnv.TMDB_MIN_YEAR),
+    maxYear: parseOptionalNumberFlag(rawEnv.TMDB_MAX_YEAR)
   },
   pagination: {
     defaultPageSize: 12,

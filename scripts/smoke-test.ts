@@ -1,4 +1,15 @@
 import { generateNewEpisodeAvailableNotifications } from "@/lib/notifications/episode-availability";
+import { config } from "@/lib/config";
+import {
+  syncAiringTodaySeries,
+  syncDiscoverSeries,
+  syncFullCatalog,
+  syncOnTheAirSeries,
+  syncPopularSeries,
+  syncTopRatedSeries,
+  syncTrendingSeries
+} from "@/lib/catalog/sync";
+import { getTmdbCallStats, resetTmdbCallStats, withTmdbRateLimit } from "@/lib/tmdb/rate-limit";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 
@@ -1377,6 +1388,109 @@ async function main() {
       String(adminLogsPage.body).includes("RESTORE_LIST") &&
       String(adminLogsPage.body).includes("START_SYNC"),
     adminLogsPage.status
+  );
+
+  // ---- Sincronizacao de catalogo em escala: fontes, filtros, rate limit/retry, config ----
+  check(
+    "config.catalogSync expoe defaults sensatos (paginas, concorrencia, atraso, filtros)",
+    config.catalogSync.popularPages === 1 &&
+      config.catalogSync.discoverPages === 1 &&
+      config.catalogSync.maxConcurrentRequests >= 1 &&
+      config.catalogSync.requestDelayMs >= 0 &&
+      config.catalogSync.minVoteCount === 0 &&
+      config.catalogSync.minYear === undefined &&
+      config.catalogSync.maxYear === undefined,
+    config.catalogSync
+  );
+
+  const discoverySyncs: Array<{ label: string; run: () => Promise<{ status: string; errorMessage: string | null }> }> = [
+    { label: "Popular", run: () => syncPopularSeries({ pages: 1 }) },
+    { label: "Discover", run: () => syncDiscoverSeries({ pages: 1 }) },
+    { label: "Top Rated", run: () => syncTopRatedSeries({ pages: 1 }) },
+    { label: "On The Air", run: () => syncOnTheAirSeries({ pages: 1 }) },
+    { label: "Airing Today", run: () => syncAiringTodaySeries({ pages: 1 }) },
+    { label: "Trending", run: () => syncTrendingSeries({ pages: 1 }) }
+  ];
+
+  for (const source of discoverySyncs) {
+    const summary = await source.run();
+    check(
+      `sync de ${source.label} roda isoladamente e aborta com erro amigavel sem TMDB key (nao quebra)`,
+      summary.status === "FAILED" && Boolean(summary.errorMessage?.includes("TMDb nao configurado")),
+      summary
+    );
+  }
+
+  const fullCatalogSummary = await syncFullCatalog();
+  check(
+    "sync:catalog (orquestrador) aborta com erro amigavel sem TMDB key e nao cria sub-execucoes a toa",
+    fullCatalogSummary.status === "FAILED" && fullCatalogSummary.sources.length === 0,
+    fullCatalogSummary
+  );
+
+  // Rate limiter/retry validated in isolation (no network): concurrency cap, retry+backoff on
+  // retryable errors, rate-limit errors counted separately, non-retryable errors never retried.
+  resetTmdbCallStats();
+  let concurrentActive = 0;
+  let concurrentMax = 0;
+  await Promise.all(
+    Array.from({ length: 10 }, () =>
+      withTmdbRateLimit(async () => {
+        concurrentActive += 1;
+        concurrentMax = Math.max(concurrentMax, concurrentActive);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        concurrentActive -= 1;
+      })
+    )
+  );
+  check(
+    "fila de concorrencia do TMDb nunca excede TMDB_MAX_CONCURRENT_REQUESTS",
+    concurrentMax > 0 && concurrentMax <= config.catalogSync.maxConcurrentRequests,
+    { concurrentMax, limit: config.catalogSync.maxConcurrentRequests }
+  );
+
+  resetTmdbCallStats();
+  let retryAttempts = 0;
+  const retryResult = await withTmdbRateLimit(
+    async () => {
+      retryAttempts += 1;
+      if (retryAttempts < 3) throw new Error("transient");
+      return "ok";
+    },
+    { isRetryable: () => true }
+  );
+  check(
+    "retry com backoff eventualmente resolve um erro transitorio",
+    retryResult === "ok" && retryAttempts === 3 && getTmdbCallStats().retryCount === 2,
+    { retryAttempts, stats: getTmdbCallStats() }
+  );
+
+  resetTmdbCallStats();
+  let rateLimitAttempts = 0;
+  await withTmdbRateLimit(
+    async () => {
+      rateLimitAttempts += 1;
+      if (rateLimitAttempts < 2) throw new Error("429");
+      return "ok";
+    },
+    { isRateLimit: (error) => error instanceof Error && error.message === "429" }
+  );
+  check(
+    "erro de rate limit e retentado e contado separadamente (rateLimitHitCount)",
+    getTmdbCallStats().rateLimitHitCount === 1 && getTmdbCallStats().retryCount === 1,
+    getTmdbCallStats()
+  );
+
+  resetTmdbCallStats();
+  let nonRetryableAttempts = 0;
+  const nonRetryableResult = await withTmdbRateLimit(async () => {
+    nonRetryableAttempts += 1;
+    throw new Error("fatal");
+  }).catch((error) => error);
+  check(
+    "erro nao-retentavel (401/404/config) nunca tenta de novo",
+    nonRetryableAttempts === 1 && nonRetryableResult instanceof Error && getTmdbCallStats().retryCount === 0,
+    { nonRetryableAttempts, stats: getTmdbCallStats() }
   );
 
   // ---- Observabilidade: config central, feature flags, health/ready, request id, metricas, erros ----

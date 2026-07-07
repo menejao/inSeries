@@ -48,45 +48,140 @@ O Postgres sobe com `user: inseries`, `password: inseries`, `database: inseries`
 - `/series`: descoberta e busca real do catalogo (ver secao Descoberta e busca abaixo); usa fallback mock apenas quando o banco estiver indisponivel
 - `/series/[id]`: mostra serie, temporadas, episodios, progresso do usuario autenticado e reviews da comunidade
 
-## Sincronizacao do catalogo (TMDb)
+## Sincronizacao do catalogo (TMDb) — escala e atualizacao inteligente
 
-O catalogo cresce e se mantem atualizado via sincronizacao controlada com o TMDb, isolada em `lib/catalog/sync.ts`. Nenhuma pagina ou rota chama o TMDb diretamente: tudo passa por essa camada, que registra cada execucao e nunca toca dados criados por usuarios.
+O catalogo cresce e se mantem atualizado via sincronizacao controlada com o TMDb, isolada em `lib/catalog/sync.ts` + `lib/tmdb/service.ts`. Nenhuma pagina ou rota chama o TMDb diretamente: tudo passa por essa camada, que registra cada execucao e nunca toca dados criados por usuarios.
+
+**INSERIES-TMDB-CATALOG-SCALE-01** levou essa camada de "importa uma amostra pequena de series populares" para "constroi um catalogo amplo, incremental e configuravel": paginacao configuravel (nao mais uma constante fixa no codigo), o endpoint Discover TV com filtros, mais 4 fontes de descoberta (Top Rated, On The Air, Airing Today, Trending), atualizacao inteligente (evita rebaixar tudo de novo para series ja catalogadas), fila de concorrencia + retry com backoff para o rate limit do TMDb, observabilidade por execucao, e um catalogo bem mais rico de metadados — tudo sem alterar nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou navegacao (a mudanca fica inteiramente dentro do pipeline de sync).
+
+### Auditoria (Fase 1) — o que existia antes desta sprint
+
+- `lib/catalog/sync.ts` tinha uma constante fixa `MAX_POPULAR_PAGES = 5` — o numero de paginas era sempre passado por parametro de funcao ou por argumento de CLI, nunca por variavel de ambiente
+- So existia um endpoint de descoberta: `tv/popular`. Sem Discover, Top Rated, On The Air, Airing Today ou Trending
+- `syncOneSeries` sempre fazia o fetch completo (detalhes + todas as temporadas + todos os episodios) para **toda** serie de uma pagina de resultados, mesmo quando a serie ja estava catalogada havia tempo e nada tinha mudado — isso e um custo de N+1 (1 chamada de detalhes + 1 chamada por temporada) que crescia a cada nova execucao do mesmo sync, sem necessidade
+- Nao havia fila de concorrencia, atraso entre requisicoes nem retry — uma resposta 429 (rate limit) do TMDb simplesmente virava um erro reportado para aquela serie, sem nova tentativa
+- Persistencia (`lib/catalog/repository.ts`) ja fazia upsert correto por id externo do TMDb (nunca duplicava), mas nao envolvia as escritas em transacoes, e so gravava um subconjunto pequeno de campos (poster, backdrop, overview, generos, nota, popularidade, rede — so a primeira rede, nunca a lista completa)
+- `scripts/seed-catalog.ts` (script legado, distinto do pipeline de sync) so importa a primeira pagina de populares uma vez — mantido como estava, fora do escopo desta sprint
 
 ### Variaveis de ambiente
 
-- `TMDB_API_KEY` ou `TMDB_ACCESS_TOKEN` (pelo menos uma): credenciais do TMDb. Sem nenhuma delas, todo sync (script ou seed de catalogo) aborta com mensagem clara e sem derrubar o restante da aplicacao
+- `TMDB_API_KEY` ou `TMDB_ACCESS_TOKEN` (pelo menos uma): credenciais do TMDb. Sem nenhuma delas, todo sync (script, orquestrador ou seed de catalogo) aborta com mensagem clara e sem derrubar o restante da aplicacao
 - `TMDB_BASE_URL`: base da API (padrao `https://api.themoviedb.org/3`)
 - `TMDB_LANGUAGE`: idioma preferido (padrao `pt-BR`, com fallback automatico para `en-US` quando a TMDb nao tem tradução)
+- `TMDB_POPULAR_PAGES` (padrao `1`): paginas buscadas por `sync:popular` quando nenhum argumento de CLI e passado. ~20 series/pagina — `TMDB_POPULAR_PAGES=25` ~= 500 series, o exemplo literal do ticket
+- `TMDB_DISCOVER_PAGES` (padrao `1`): o mesmo, para `sync:discover`
+- `TMDB_MAX_CONCURRENT_REQUESTS` (padrao `4`): quantas chamadas ao TMDb podem estar em voo ao mesmo tempo
+- `TMDB_REQUEST_DELAY_MS` (padrao `250`): espacamento minimo entre o **inicio** de requisicoes sucessivas, mesmo dentro do limite de concorrencia
+- `TMDB_MIN_VOTE_COUNT` (padrao `0`, sem filtro): series com `vote_count` abaixo disso sao ignoradas (nao contam nem como novas nem como atualizadas) em **qualquer** fonte de descoberta, nao so Discover
+- `TMDB_MIN_YEAR` / `TMDB_MAX_YEAR` (sem padrao, sem filtro): restringe pelo ano de estreia (`first_air_date`); no Discover viram `first_air_date.gte`/`first_air_date.lte` nativos (o TMDb ja filtra do lado dele); nas demais fontes, o filtro e aplicado no lado do inSeries apos a resposta, ja que essas fontes nao aceitam essas datas como parametro
+
+Todas centralizadas em `config.catalogSync` (`lib/config/index.ts`) — nenhum numero magico dentro de `lib/catalog/sync.ts` ou `lib/tmdb/service.ts`.
 
 ### Diferenca entre seed dev, seed catalog e sync
 
 - `npm run seed:dev`: dados **fixos locais**, sem TMDb, para desenvolvimento e testes (calendario, descoberta, progresso)
-- `npm run seed:catalog`: importacao **unica** de series populares do TMDb (primeira pagina), pensada para popular o catalogo uma vez
-- `npm run sync:popular` / `npm run sync:series`: sincronizacao **rastreavel e repetivel** — cada execucao vira uma linha em `CatalogSyncRun`, idempotente, pensada para rodar periodicamente (manual ou, no futuro, agendada)
+- `npm run seed:catalog`: importacao **unica** de series populares do TMDb (primeira pagina), script legado mantido como estava, pensado para popular o catalogo uma vez
+- `npm run sync:*`: sincronizacao **rastreavel, repetivel e configuravel** — cada execucao vira uma linha em `CatalogSyncRun`, idempotente, pensada para rodar periodicamente (manual ou, no futuro, agendada)
 
-### Rodando a sincronizacao
+### Fontes de descoberta (Fase 10) — cada uma roda separadamente
 
-- `npm run sync:popular [paginas]`: descobre e importa/atualiza series populares do TMDb (1 pagina por padrao, ate 5); cada serie fica isolada — uma falha em uma serie vira um erro reportado, nao aborta as demais
-- `npm run sync:series`: refaz o fetch de detalhes/temporadas/episodios de todas as series ja catalogadas (via `ExternalSourceMapping`), sem redescobrir a lista de populares
-- Sem `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN`, ambos abortam com mensagem clara, saem com codigo de erro e ainda assim registram um `CatalogSyncRun` com status `FAILED` (auditavel mesmo quando mal configurado)
-- Ao final, o terminal mostra um resumo: status (`SUCCESS`/`PARTIAL`/`FAILED`), duracao, quantidade importada/atualizada de series/temporadas/episodios, principais erros e o id do `CatalogSyncRun`
-- Nenhum segredo (API key/token) e logado em nenhum momento, inclusive em erros de rede
+| Fonte | Endpoint TMDb | Comando | `CatalogSyncType` |
+|---|---|---|---|
+| Populares | `tv/popular` | `npm run sync:popular [paginas]` | `POPULAR_SERIES` |
+| Discover TV | `discover/tv` | `npm run sync:discover [paginas]` | `DISCOVER` |
+| Mais bem avaliadas | `tv/top_rated` | `npm run sync:top-rated [paginas]` | `TOP_RATED` |
+| Em exibicao | `tv/on_the_air` | `npm run sync:on-the-air [paginas]` | `ON_THE_AIR` |
+| No ar hoje | `tv/airing_today` | `npm run sync:airing-today [paginas]` | `AIRING_TODAY` |
+| Em alta (trending) | `trending/tv/{day\|week}` | `npm run sync:trending [paginas] [day\|week]` | `TRENDING` |
+| Detalhes de series existentes | `tv/{id}` (+ temporadas/episodios) | `npm run sync:series` | `SERIES_DETAILS` |
+| **Tudo, na ordem correta** | todas as 6 fontes de descoberta acima | `npm run sync:catalog` | `CATALOG_FULL` (agrega, mais uma linha por fonte) |
+
+`sync:catalog` roda Populares → Discover → Top Rated → On The Air → Airing Today → Trending nessa ordem, agrega os totais num `CatalogSyncRun` do tipo `CATALOG_FULL` e imprime o resumo de cada fonte individualmente. Sem TMDb configurado, aborta imediatamente (nao cria uma linha por fonte a toa).
+
+### Discover TV (Fase 4)
+
+`fetchDiscoverTmdbSeries` (`lib/tmdb/service.ts`) aceita: `sortBy` (`popularity.desc`, `vote_average.desc`, `first_air_date.desc`, etc.), `voteCountGte`, `firstAirDateGte`/`firstAirDateLte`, `withStatus`, `withOriginalLanguage`, `withOriginCountry`, `withGenres` — mapeados 1:1 para os parametros `sort_by`, `vote_count.gte`, `first_air_date.gte`/`.lte`, `with_status`, `with_original_language`, `with_origin_country`, `with_genres` do endpoint real. `syncDiscoverSeries` ja preenche `voteCountGte`/`firstAirDateGte`/`firstAirDateLte` a partir de `TMDB_MIN_VOTE_COUNT`/`TMDB_MIN_YEAR`/`TMDB_MAX_YEAR` automaticamente; os demais filtros (genero, status, idioma, pais) sao passados por quem chama a funcao programaticamente (nao ha flags de CLI para eles ainda — se precisar, use `syncDiscoverSeries({ withGenres: "18", withOriginalLanguage: "pt" })` diretamente).
+
+### Atualizacao inteligente (Fase 5/6) — o que muda de verdade em escala
+
+Esta e a mudanca de maior impacto em performance: **toda fonte de descoberta agora distingue series novas de series ja catalogadas antes de decidir quanto buscar no TMDb.**
+
+- **Serie nova** (sem `ExternalSourceMapping` ainda): recebe o tratamento completo — detalhes + todas as temporadas + todos os episodios (`fetchFullSeriesFromTmdb`). Inevitavel na primeira vez; sem isso a serie entraria no catalogo sem nenhum episodio.
+- **Serie ja catalogada**: e atualizada a partir dos proprios campos do item de lista que a descoberta ja tem em maos (poster, backdrop, overview, nota, popularidade, generos) — **zero chamadas extras ao TMDb**. Nenhuma temporada ou episodio e tocado.
+- Refresh completo de temporadas/episodios para series ja catalogadas continua sendo o unico trabalho de `npm run sync:series` (`syncExistingSeriesDetails`) — inalterado, existe exatamente para isso.
+
+Na pratica: rodar `sync:popular` (ou qualquer fonte) uma segunda vez sobre um catalogo de 500 series onde 480 ja existem faz so ~25 chamadas de lista (uma por pagina) mais o fetch completo das ~20 series genuinamente novas — nao mais `1 + numero_de_temporadas` chamadas por serie *ja catalogada*, que e o que o codigo antigo fazia. Isso e o que a Fase 12 pede quando fala em "evitar N+1" e "escalar de forma eficiente".
+
+### Rate limit e retry (Fase 7)
+
+`lib/tmdb/rate-limit.ts` — toda chamada real ao TMDb (`lib/tmdb/service.ts`) passa por `withTmdbRateLimit`:
+
+- **Fila de concorrencia**: no maximo `TMDB_MAX_CONCURRENT_REQUESTS` chamadas em voo ao mesmo tempo; o restante espera a vez
+- **Espacamento**: `TMDB_REQUEST_DELAY_MS` entre o inicio de requisicoes sucessivas
+- **Retry com backoff exponencial** (ate 3 tentativas, `500ms * 2^tentativa`): sempre para 429 (rate limit do TMDb) e para timeout/5xx; nunca para 401 (credenciais invalidas), 404 (nao encontrado) ou erro de configuracao — retentar esses nao resolveria nada
+- Contadores acumulados (`requestCount`, `retryCount`, `rateLimitHitCount`, `totalRequestMs`) ficam em memoria (`globalThis`, mesmo padrao de `lib/metrics/service.ts`) e sao "diffados" antes/depois de cada sync para virar as estatisticas daquela execucao especifica
+- Validado isoladamente (sem depender de rede real): concorrencia nunca excede o limite configurado; uma falha transitoria e retentada e eventualmente resolve; um 429 e retentado e contado separadamente de outros retries; um erro nao-retentavel nunca tenta de novo; apos esgotar as tentativas, o erro original e propagado (a serie daquela iteracao vira um erro isolado no resumo, nao derruba a sincronizacao inteira)
+
+### Observabilidade (Fase 8)
+
+Cada `CatalogSyncSummary` agora carrega um bloco `observability`: `pagesProcessed`, `requestCount`, `averageRequestMs`, `retryCount`, `rateLimitHitCount`, `lightweightUpdateCount` (quantas series ja catalogadas foram atualizadas sem nenhuma chamada extra) e `skippedCount` (quantas foram ignoradas pelos filtros de qualidade). Fica gravado em `CatalogSyncRun.metadata` (junto dos erros por serie) e no log estruturado existente (`logger.info("catalog_sync_finished", ...)`, `lib/logger`) — nenhum logger novo foi criado. Todo `npm run sync:*` imprime esse bloco no terminal ao final (`scripts/_shared/print-sync-summary.ts`, usado por todos os 8 scripts de sync para nao duplicar a formatacao 8 vezes).
+
+### Catalogo rico (Fase 9)
+
+Alem dos campos que ja existiam (poster, backdrop, still de episodio, generos, nota, contagem de votos, popularidade, status, rede — so a primeira), `Series` ganhou: `tagline`, `homepage`, `originCountry`, `spokenLanguages`, `numberOfSeasons`, `numberOfEpisodes`, `networks` (lista completa, a coluna singular `network` que a UI ja usa continua existindo e sendo preenchida do mesmo jeito), `productionCountries`, `productionCompanies`, `createdBy`, `logoUrl` e `keywords`. Tudo isso vem da **mesma** chamada de detalhes que ja era feita (`tv/{id}`) — `logoUrl`/`keywords` usam `append_to_response=keywords,images`, um parametro a mais na mesma requisicao, nao uma chamada extra. Nenhum desses campos e exibido em nenhuma tela ainda — e armazenamento de dados para uso futuro, deliberadamente fora do escopo desta sprint (que e sobre o pipeline de sync, nao sobre UI).
+
+### Performance (Fase 12)
+
+- **Sem N+1 redundante**: ver "Atualizacao inteligente" acima — o ganho real de escala vem dali, nao de paralelismo
+- **Sem escrita duplicada**: idempotencia por id externo do TMDb (inalterada desta sprint, ja existia)
+- **Transacoes**: `upsertNormalizedSeriesWithCounts` agora grava serie+`ExternalSourceMapping` numa transacao curta, e cada temporada+seus episodios em **outra** transacao propria (nao a serie inteira num unico escopo gigante — uma serie com muitas temporadas seguraria locks por tempo desnecessario; o corte por temporada mantem cada transacao pequena e previsivel, com timeout generoso de 20s so nessa por precaucao)
+
+### Cookbook — importando o catalogo em diferentes escalas
+
+```bash
+# ~20 series (1 pagina, o padrao caso nenhuma variavel seja definida)
+npm run sync:popular
+
+# ~100 series
+TMDB_POPULAR_PAGES=5 npm run sync:popular
+# ou, sem mexer no .env, so para essa execucao:
+npm run sync:popular -- 5
+
+# ~500 series (o exemplo do proprio ticket)
+TMDB_POPULAR_PAGES=25 npm run sync:popular
+
+# ~1000 series, combinando popular + discover (evita repetir muito a mesma lista)
+TMDB_POPULAR_PAGES=25 npm run sync:popular
+TMDB_DISCOVER_PAGES=25 npm run sync:discover
+
+# Tudo de uma vez, todas as fontes, na ordem correta
+TMDB_POPULAR_PAGES=10 TMDB_DISCOVER_PAGES=10 npm run sync:catalog
+
+# So atualizar quem ja esta catalogado (temporadas/episodios inclusos), sem descobrir nada novo
+npm run sync:series
+
+# Com filtro de qualidade (evita catalogar series com poucos votos ou fora de um intervalo de anos)
+TMDB_MIN_VOTE_COUNT=50 TMDB_MIN_YEAR=2015 TMDB_MAX_YEAR=2026 npm run sync:discover
+
+# Sync mais gentil com o rate limit do TMDb (menos paralelismo, mais espacamento)
+TMDB_MAX_CONCURRENT_REQUESTS=2 TMDB_REQUEST_DELAY_MS=500 npm run sync:popular
+```
 
 ### Modelo `CatalogSyncRun`
 
-Registra toda execucao de sync: `source`, `type` (`POPULAR_SERIES`, `SERIES_DETAILS`, `SERIES_SEASONS`, `SERIES_EPISODES`, `FULL_REFRESH`), `status` (`RUNNING`, `SUCCESS`, `FAILED`, `PARTIAL`), `startedAt`/`finishedAt`, contadores de importado/atualizado por serie/temporada/episodio, `errorMessage` e `metadata` (lista de erros por serie, quando houver).
+Registra toda execucao de sync: `source`, `type` (`POPULAR_SERIES`, `SERIES_DETAILS`, `SERIES_SEASONS`, `SERIES_EPISODES`, `FULL_REFRESH`, `TOP_RATED`, `ON_THE_AIR`, `AIRING_TODAY`, `DISCOVER`, `TRENDING`, `CATALOG_FULL`), `status` (`RUNNING`, `SUCCESS`, `FAILED`, `PARTIAL`), `startedAt`/`finishedAt`, contadores de importado/atualizado por serie/temporada/episodio, `errorMessage` e `metadata` (erros por serie + o bloco `observability`, quando houver). `/admin/sync` lista as execucoes recentes de qualquer tipo sem nenhuma mudanca de codigo — a tabela ja renderiza `run.type` como texto livre.
 
 ### Idempotencia
 
 - Series sao casadas pelo id externo do TMDb (`ExternalSourceMapping`), nao pelo slug: se o titulo mudar no TMDb (e o slug junto), a sincronizacao **atualiza** a serie existente em vez de criar uma duplicata
 - Temporadas e episodios tem duas chaves unicas cada (`seriesId+number` / `seasonId+number` e `externalSource+externalId`); o upsert verifica existencia explicitamente antes de criar/atualizar, evitando a violacao de unicidade que uma chamada ingenua de `upsert()` do Prisma causaria ao re-sincronizar a mesma temporada/episodio duas vezes
-- Rodar `sync:popular` ou `sync:series` varias vezes seguidas nunca duplica series, temporadas ou episodios — apenas atualiza metadados quando mudam
+- Rodar qualquer `sync:*` varias vezes seguidas nunca duplica series, temporadas ou episodios — apenas atualiza metadados quando mudam
 - O sync so escreve em `Series`, `Season`, `Episode` e `ExternalSourceMapping`; nunca cria, atualiza ou apaga `UserSeriesStatus`, `UserEpisodeProgress`, `Review`, `List`, `ListItem` ou `Activity` — progresso, reviews, listas e atividades do usuario sao sempre preservados
 - Erros em uma serie especifica (404, temporada sem episodios, imagem ausente, série sem data) ficam isolados: a execucao continua para as demais e o run final fica `PARTIAL` em vez de `FAILED`
 
 ### Tratamento de erros
 
-`lib/tmdb/service.ts` trata timeout (10s, via `AbortController`), 401 (credenciais invalidas), 404 (recurso inexistente), 429 (rate limit) e falhas de rede genericas, sempre com mensagens seguras (sem vazar a URL com a API key). `lib/catalog/sync.ts` isola cada serie individualmente: uma falha vira uma entrada em `errors` no resumo, sem interromper as demais.
+`lib/tmdb/service.ts` trata timeout (10s, via `AbortController`), 401 (credenciais invalidas), 404 (recurso inexistente), 429 (rate limit, agora com retry automatico — ver "Rate limit e retry" acima) e falhas de rede genericas, sempre com mensagens seguras (sem vazar a URL com a API key). `lib/catalog/sync.ts` isola cada serie individualmente: uma falha vira uma entrada em `errors` no resumo, sem interromper as demais.
 
 ### Impacto no calendario e na busca
 
@@ -99,6 +194,16 @@ Nenhuma fonte paralela: `/calendar`, `/api/search` e `/series` sempre leem `Seri
 - `daily-popular-series-sync` (diario): `syncPopularSeries({ pages: 2 })`
 - `daily-upcoming-episodes-sync` (diario): atualiza detalhes das series que usuarios estao assistindo/querem assistir
 - `weekly-full-metadata-refresh` (semanal): `syncFullRefresh({ pages: 3 })`, cobrindo populares + todo o catalogo existente
+- `weekly-full-catalog-sync` (semanal, novo candidato desta sprint): `syncFullCatalog()`, cobrindo todas as 6 fontes de descoberta numa unica execucao agregada
+
+### Limitacoes atuais
+
+- Sem UI para os novos campos ricos (tagline, homepage, networks completos, production companies, keywords, etc.) — dados capturados e persistidos, exibicao fica para uma sprint futura de UI/catalogo
+- Sem UI/CLI para os filtros de genero/status/idioma/pais do Discover alem dos globais (`TMDB_MIN_VOTE_COUNT`/`TMDB_MIN_YEAR`/`TMDB_MAX_YEAR`) — quem quiser `withGenres`/`withStatus`/`withOriginalLanguage`/`withOriginCountry` chama `syncDiscoverSeries(...)` programaticamente
+- `/api/admin/sync/[type]` (o gatilho manual no workspace administrativo) continua expondo so `popular` e `existing` — as novas fontes so tem CLI por enquanto, propositalmente, ja que o ticket pediu comandos de CLI e nao mudanca de navegacao/UI administrativa
+- Sem cron/scheduler real — `sync:*` continua sendo disparado manualmente (ou pelo gatilho administrativo existente), com a agenda futura so documentada em `lib/jobs/registry.ts`
+- Testado neste ambiente sem acesso de rede ao TMDb (sandbox sem credenciais/rede real): toda a logica de paginacao, filtros, concorrencia, retry/backoff e o caminho "TMDb nao configurado" foram validados (isoladamente, com chamadas simuladas, e via os 8 scripts de CLI abortando corretamente); o comportamento contra a API real do TMDb nao pode ser validado ponta a ponta aqui e depende de uma execucao com `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN` configuradas
+- Nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou estrutura de navegacao foi alterada — a sprint e estritamente o pipeline de sincronizacao do catalogo
 
 ## Descoberta e busca
 

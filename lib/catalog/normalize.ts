@@ -25,6 +25,16 @@ export type TmdbSeriesDetails = TmdbListSeriesItem & {
   networks?: Array<{ id: number; name: string }>;
   status?: string;
   seasons?: TmdbSeasonDetails[];
+  // Fase 9 (INSERIES-TMDB-CATALOG-SCALE-01) — all returned by the same `tv/{id}` details
+  // call already being made (images/keywords via append_to_response, see lib/tmdb/service.ts).
+  tagline?: string;
+  homepage?: string;
+  spoken_languages?: Array<{ english_name?: string; name?: string; iso_639_1?: string }>;
+  production_countries?: Array<{ iso_3166_1?: string; name: string }>;
+  production_companies?: Array<{ id: number; name: string }>;
+  created_by?: Array<{ id: number; name: string }>;
+  images?: { logos?: Array<{ file_path?: string | null }> };
+  keywords?: { results?: Array<{ id: number; name: string }> };
 };
 
 export type TmdbSeasonDetails = {
@@ -58,6 +68,21 @@ export type NormalizedCatalogSeries = Series & {
   popularityScore?: number;
   voteAverage?: number;
   voteCount?: number;
+  // Fase 9 — richer catalog metadata, persisted (lib/catalog/repository.ts) but not yet
+  // surfaced by the shared `Series` view type/UI. Kept off `Series` itself on purpose,
+  // to keep this sprint scoped to the sync pipeline (per the ticket's own restriction).
+  tagline?: string;
+  homepage?: string;
+  originCountry?: string[];
+  spokenLanguages?: string[];
+  numberOfSeasons?: number;
+  numberOfEpisodes?: number;
+  networks?: string[];
+  productionCountries?: string[];
+  productionCompanies?: string[];
+  createdBy?: string[];
+  logoUrl?: string;
+  keywords?: string[];
 };
 
 export type NormalizedCatalogSeason = Season & {
@@ -147,6 +172,18 @@ export function normalizeTmdbSeries(payload: TmdbSeriesDetails): NormalizedCatal
     popularityScore: payload.popularity,
     voteAverage: payload.vote_average,
     voteCount: payload.vote_count,
+    tagline: payload.tagline || undefined,
+    homepage: payload.homepage || undefined,
+    originCountry: payload.origin_country,
+    spokenLanguages: payload.spoken_languages?.map((language) => language.english_name || language.name || language.iso_639_1 || "").filter(Boolean),
+    numberOfSeasons: payload.number_of_seasons,
+    numberOfEpisodes: payload.number_of_episodes,
+    networks: payload.networks?.map((network) => network.name),
+    productionCountries: payload.production_countries?.map((country) => country.name),
+    productionCompanies: payload.production_companies?.map((company) => company.name),
+    createdBy: payload.created_by?.map((creator) => creator.name),
+    logoUrl: toImageUrl(payload.images?.logos?.[0]?.file_path, "w300") || undefined,
+    keywords: payload.keywords?.results?.map((keyword) => keyword.name),
     external: {
       source: "TMDB",
       entityType: "SERIES",
