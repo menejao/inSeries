@@ -19,6 +19,14 @@ import { collectCandidates, type SourceDefinition } from "@/lib/catalog/aggregat
 import { createSyncCache } from "@/lib/catalog/sync-cache";
 import { getUpdateIntervalMs, isDueForUpdate } from "@/lib/catalog/update-policy";
 import { getTmdbCallStats, resetTmdbCallStats, withTmdbRateLimit } from "@/lib/tmdb/rate-limit";
+import { findSeriesByKeyword, upsertNormalizedSeriesWithCounts } from "@/lib/catalog/repository";
+import type { NormalizedCatalogSeries } from "@/lib/catalog/normalize";
+import { computeQualityScore } from "@/lib/catalog/quality-score";
+import { CurationRejectedError, passesDetailCuration, passesListItemCuration } from "@/lib/catalog/curation";
+import { deriveCollectionTags } from "@/lib/catalog/collection-tags";
+import { resolvePreferredImageUrl } from "@/lib/catalog/image-resolution";
+import { computeCatalogStatistics } from "@/lib/catalog/statistics";
+import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 
@@ -1739,6 +1747,232 @@ async function main() {
     updateDueAbort.status === "FAILED" && Boolean(updateDueAbort.errorMessage?.includes("TMDb nao configurado")),
     updateDueAbort
   );
+
+  // ---- Catalogo editorial de qualidade (INSERIES-TMDB-CATALOG-QUALITY-01): score, curadoria, ----
+  // ---- providers, logos/keywords, collection tags, estatisticas e listas inteligentes ----
+  const qualityFixtureId = Date.now();
+  function buildNormalizedSeries(externalId: string, overrides: Partial<NormalizedCatalogSeries> = {}): NormalizedCatalogSeries {
+    return {
+      id: `tmdb-${externalId}`,
+      slug: `smoketest-quality-${externalId}`,
+      title: `Smoke Quality ${externalId}`,
+      originalTitle: `Smoke Quality ${externalId}`,
+      year: 2023,
+      status: "Returning",
+      overview: "Uma sinopse completa para teste de qualidade.",
+      genres: ["Drama"],
+      language: "PT",
+      platform: "TMDb",
+      popularity: "10",
+      posterUrl: "https://image.tmdb.org/t/p/w500/poster.jpg",
+      backdropUrl: "https://image.tmdb.org/t/p/original/backdrop.jpg",
+      seasons: [
+        {
+          id: `season-${externalId}`,
+          number: 1,
+          title: "Temporada 1",
+          year: 2023,
+          episodeCount: 10,
+          posterUrl: "",
+          overview: "",
+          episodes: Array.from({ length: 10 }, (_, index) => ({
+            id: `episode-${externalId}-${index + 1}`,
+            number: index + 1,
+            title: `Episodio ${index + 1}`,
+            overview: "Sinopse do episodio.",
+            runtimeMinutes: 40,
+            airedOn: "2023-01-01",
+            watched: false,
+            external: { source: "TMDB" as const, entityType: "EPISODE" as const, externalId: `episode-${externalId}-${index + 1}` }
+          })),
+          external: { source: "TMDB" as const, entityType: "SEASON" as const, externalId: `season-${externalId}` }
+        }
+      ],
+      popularityScore: 10,
+      voteAverage: 7,
+      voteCount: 100,
+      numberOfSeasons: 1,
+      numberOfEpisodes: 10,
+      external: { source: "TMDB", entityType: "SERIES", externalId: `smoketest-quality-${externalId}-${qualityFixtureId}` },
+      ...overrides
+    };
+  }
+
+  const richScore = computeQualityScore({
+    popularity: 150,
+    voteAverage: 9,
+    voteCount: 5000,
+    firstAirYear: new Date().getFullYear(),
+    status: "RETURNING",
+    numberOfSeasons: 5,
+    numberOfEpisodes: 100,
+    posterUrl: "x",
+    backdropUrl: "x",
+    overview: "x",
+    logoUrl: "x",
+    watchProviders: ["Netflix"],
+    originCountry: ["US"],
+    language: "en"
+  });
+  const poorScore = computeQualityScore({
+    popularity: 0,
+    voteAverage: 0,
+    voteCount: 0,
+    firstAirYear: 1980,
+    status: "CANCELED",
+    numberOfSeasons: 0,
+    numberOfEpisodes: 0,
+    posterUrl: null,
+    backdropUrl: null,
+    overview: null,
+    logoUrl: null,
+    watchProviders: [],
+    originCountry: [],
+    language: null
+  });
+  check(
+    "Quality Score (Fase 2): serie completa pontua mais que serie vazia, ambas dentro de 0-100",
+    richScore > poorScore && richScore <= 100 && poorScore >= 0,
+    { richScore, poorScore }
+  );
+
+  const verdictNoImages = passesDetailCuration(buildNormalizedSeries("no-images", { posterUrl: "", backdropUrl: "" }));
+  check(
+    "curadoria (Fase 3): serie nova sem poster e sem backdrop e reprovada (TMDB_CURATION_REQUIRE_IMAGE=true por padrao)",
+    verdictNoImages.passes === false,
+    verdictNoImages
+  );
+
+  const verdictNoOverview = passesDetailCuration(buildNormalizedSeries("no-overview", { overview: "" }));
+  check(
+    "curadoria (Fase 3): serie nova sem sinopse e reprovada (TMDB_CURATION_REQUIRE_OVERVIEW=true por padrao)",
+    verdictNoOverview.passes === false,
+    verdictNoOverview
+  );
+
+  const pilotReferenceNow = new Date();
+  const verdictAbandonedPilot = passesDetailCuration(
+    buildNormalizedSeries("abandoned-pilot", { status: "Pilot", year: pilotReferenceNow.getFullYear() - 2 }),
+    pilotReferenceNow
+  );
+  check(
+    "curadoria (Fase 3): piloto ha mais de TMDB_CURATION_MAX_PILOT_AGE_DAYS dias e reprovado (piloto abandonado)",
+    verdictAbandonedPilot.passes === false,
+    verdictAbandonedPilot
+  );
+
+  const verdictEmptyContent = passesDetailCuration(
+    buildNormalizedSeries("empty-content", { seasons: [], numberOfSeasons: 0, numberOfEpisodes: 0 })
+  );
+  check(
+    "curadoria (Fase 3): serie nova sem nenhum episodio e reprovada (conteudo vazio)",
+    verdictEmptyContent.passes === false,
+    verdictEmptyContent
+  );
+
+  const verdictGood = passesDetailCuration(buildNormalizedSeries("good"));
+  check("curadoria (Fase 3): serie completa (imagens, sinopse, episodios) e aprovada", verdictGood.passes === true, verdictGood);
+
+  check(
+    "curadoria (Fase 3) item de lista: com o filtro desligado (TMDB_MIN_VOTE_AVERAGE=0 por padrao), tudo passa",
+    passesListItemCuration({ id: 1, name: "x", vote_average: 0 }).passes === true,
+    config.catalogQuality.curation
+  );
+
+  const rejectedSeries = buildNormalizedSeries("rejected-upsert", { posterUrl: "", backdropUrl: "", overview: "" });
+  let rejectedByUpsert = false;
+  try {
+    await upsertNormalizedSeriesWithCounts(rejectedSeries);
+  } catch (error) {
+    rejectedByUpsert = error instanceof CurationRejectedError;
+  }
+  const rejectedSeriesRow = await prisma.series.findUnique({ where: { slug: rejectedSeries.slug } });
+  check(
+    "curadoria (Fase 3): upsertNormalizedSeriesWithCounts rejeita uma serie nova reprovada e nao a persiste",
+    rejectedByUpsert && rejectedSeriesRow === null,
+    { rejectedByUpsert, rejectedSeriesRow }
+  );
+
+  const acceptedSeries = buildNormalizedSeries("accepted-upsert", {
+    type: "Miniseries",
+    status: "Ended",
+    numberOfSeasons: 1,
+    numberOfEpisodes: 8,
+    keywords: ["based on novel or book"],
+    watchProviders: ["Netflix"],
+    originCountry: ["US"]
+  });
+  const acceptedResult = await upsertNormalizedSeriesWithCounts(acceptedSeries);
+  const acceptedRow = await prisma.series.findUnique({ where: { slug: acceptedSeries.slug } });
+  check(
+    "Quality Score (Fase 2) + providers/type (Fase 4/8) persistidos no upsert de uma serie nova aprovada",
+    acceptedResult.quality.qualityScore > 0 &&
+      acceptedRow?.qualityScore === acceptedResult.quality.qualityScore &&
+      acceptedRow?.type === "Miniseries" &&
+      (acceptedRow?.watchProviders ?? []).includes("Netflix"),
+    { quality: acceptedResult.quality, row: acceptedRow }
+  );
+  check(
+    "Collection Tags (Fase 7): Minissérie (via type=Miniseries) e Baseada em Livro (via keyword) persistidas",
+    (acceptedRow?.collectionTags ?? []).includes("Minissérie") && (acceptedRow?.collectionTags ?? []).includes("Baseada em Livro"),
+    acceptedRow?.collectionTags
+  );
+
+  const derivedTagsMaratona = deriveCollectionTags({
+    genres: ["Animação"],
+    type: undefined,
+    keywords: [],
+    originCountry: ["JP"],
+    numberOfSeasons: 3,
+    numberOfEpisodes: 150,
+    status: "RETURNING",
+    popularity: 60,
+    voteAverage: 8.5,
+    voteCount: 2000
+  });
+  check(
+    "Collection Tags (Fase 7): Maratona/Em Alta/Premiada/Anime derivadas corretamente dos limiares configurados",
+    derivedTagsMaratona.includes("Maratona") &&
+      derivedTagsMaratona.includes("Em Alta") &&
+      derivedTagsMaratona.includes("Premiada") &&
+      derivedTagsMaratona.includes("Anime"),
+    derivedTagsMaratona
+  );
+
+  check(
+    "Logos (Fase 5): resolvePreferredImageUrl prefere logo, depois poster, depois backdrop",
+    resolvePreferredImageUrl({ logoUrl: "logo.png", posterUrl: "poster.png", backdropUrl: "backdrop.png" }) === "logo.png" &&
+      resolvePreferredImageUrl({ logoUrl: null, posterUrl: "poster.png", backdropUrl: "backdrop.png" }) === "poster.png" &&
+      resolvePreferredImageUrl({ logoUrl: null, posterUrl: null, backdropUrl: "backdrop.png" }) === "backdrop.png" &&
+      resolvePreferredImageUrl({ logoUrl: null, posterUrl: null, backdropUrl: null }) === null,
+    null
+  );
+
+  const keywordMatches = await findSeriesByKeyword("based on novel or book");
+  check(
+    "Keywords (Fase 6): findSeriesByKeyword encontra a serie sincronizada com a keyword real do TMDb",
+    keywordMatches.some((series) => series.id === acceptedRow?.id),
+    keywordMatches.map((series) => series.id)
+  );
+
+  const catalogStatistics = await computeCatalogStatistics();
+  check(
+    "Estatisticas (Fase 9): computeCatalogStatistics reflete a serie recem-persistida (genero/pais/provedor/status)",
+    catalogStatistics.totalSeries > 0 &&
+      (catalogStatistics.byCountry.US ?? 0) > 0 &&
+      (catalogStatistics.byProvider.Netflix ?? 0) > 0 &&
+      (catalogStatistics.byStatus.ENDED ?? 0) > 0,
+    catalogStatistics
+  );
+
+  const smartListCounts = await computeSmartListCounts();
+  check(
+    "Catalogo inteligente (Fase 10): listas derivadas (Minisséries/Mais Bem Avaliadas) contam a serie recem-persistida",
+    smartListCounts.MINISSERIES > 0 && smartListCounts.MAIS_BEM_AVALIADAS > 0,
+    smartListCounts
+  );
+
+  await prisma.series.deleteMany({ where: { slug: { in: [acceptedSeries.slug, rejectedSeries.slug] } } });
 
   // ---- Observabilidade: config central, feature flags, health/ready, request id, metricas, erros ----
   const healthCheck = await request({ value: "" }, "/api/health");

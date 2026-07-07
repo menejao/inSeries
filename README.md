@@ -359,6 +359,128 @@ npm run sync:stats
 - `PILOT` recebeu cadencia diaria por interpretacao (o ticket so especifica `RETURNING`/`IN_PRODUCTION`/`ENDED`/`CANCELED`) — documentado acima
 - Nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou estrutura de navegacao foi alterada — a sprint e estritamente uma camada adicional sobre o pipeline de sincronizacao do catalogo
 
+### Catalogo editorial de qualidade (INSERIES-TMDB-CATALOG-QUALITY-01)
+
+As duas sprints anteriores resolveram "trazer muitas series" (SCALE-01) e "trazer de forma consolidada, priorizada e continua" (COVERAGE-01). **QUALITY-01** muda o objetivo de quantidade para qualidade: toda serie que passa pelo pipeline agora recebe um score editorial, passa por um filtro de curadoria antes de entrar no catalogo pela primeira vez, e sai com tags, provedores de streaming e metadados mais completos — tudo sem tocar autenticacao, navegacao ou qualquer funcionalidade existente do usuario.
+
+#### Auditoria (Fase 1) — o que esta sprint encontrou
+
+- `type` (TMDb: `Scripted`, `Reality`, `Miniseries`, `Documentary`, etc.) nunca era capturado, apesar de vir na mesma chamada de detalhes ja feita — um sinal forte para identificar minisseries que a sprint anterior nao aproveitava
+- Streaming providers (`watch/providers`) nunca eram sincronizados — nenhum campo, nenhuma chamada
+- Nao havia nenhum score agregado de qualidade nem curadoria: uma serie com `vote_count` baixo, sem imagens ou sem sinopse entrava no catalogo do mesmo jeito que qualquer outra, contanto que passasse pelo filtro de `TMDB_MIN_VOTE_COUNT`/`TMDB_MIN_YEAR` ja existente
+- `logoUrl`/`keywords`/`networks` ja eram persistidos (sprint SCALE-01) mas nunca usados para nada alem de armazenamento — nenhuma derivacao, nenhuma consulta
+- O pipeline de coverage (`continueCoverageRun`) nem sequer aplicava o filtro basico de qualidade (`passesQualityFilters`) que os syncs individuais (`sync:popular`, `sync:discover`, etc.) ja aplicavam — uma lacuna real entre os dois caminhos, corrigida nesta sprint
+
+#### Quality Score (Fase 2) — `lib/catalog/quality-score.ts`
+
+`Series.qualityScore` (0-100, persistido, recalculado a cada upsert) e a soma ponderada de 14 sinais normalizados para 0-1 (popularidade, nota, contagem de votos, recencia, status, numero de temporadas, numero de episodios, presenca de backdrop/poster/overview/logo, disponibilidade de provedores, pais de origem, idioma) dividida pela soma dos pesos usados — mesmo formato de score ja usado pela priorizacao (`lib/catalog/aggregator.ts`) e pelo motor de recomendacoes (`lib/recommendations/scoring.ts`). Cada peso e uma variavel de ambiente (`TMDB_QUALITY_WEIGHT_*`, ver tabela abaixo); os caps que normalizam popularidade/vote_count/temporadas/episodios para 0-1 sao constantes documentadas no proprio arquivo (mesmo tratamento que `SAFETY_MAX_PAGES`/`genreMap` em sprints anteriores — nao todo numero vira variavel de ambiente).
+
+Uma atualizacao leve (lightweight, sem novo fetch de temporadas/episodios) so tem os campos do item de lista em maos — o score e calculado a partir do **valor efetivo** de cada sinal (o novo valor quando presente, senao o que ja estava persistido), nunca zerando um sinal so porque aquele payload especifico nao o carregava.
+
+#### Curadoria automatica (Fase 3) — `lib/catalog/curation.ts`
+
+Dois pontos de checagem, os dois controlados por `TMDB_CURATION_ENABLED` (liga/desliga tudo) e só valem para uma **serie nova** entrando pela primeira vez — nunca para uma ja catalogada (descartar retroativamente o que ja esta no catalogo seria uma purga destrutiva, fora do escopo do ticket):
+
+1. **Nivel item de lista** (`passesListItemCuration`, antes de qualquer fetch completo): `TMDB_MIN_VOTE_AVERAGE` — nota abaixo do minimo nunca chega a gastar uma chamada de detalhes
+2. **Nivel detalhe** (`passesDetailCuration`, apos o fetch completo, antes do primeiro upsert): `TMDB_CURATION_REQUIRE_IMAGE` (sem poster e sem backdrop), `TMDB_CURATION_REQUIRE_OVERVIEW` (sem sinopse), piloto abandonado (`status=PILOT` ha mais de `TMDB_CURATION_MAX_PILOT_AGE_DAYS` dias) e conteudo vazio (nenhum episodio retornado)
+
+Uma serie reprovada nunca vira um erro no relatorio — `CurationRejectedError` e contada em `Descartadas (curadoria)`/`observability.curatedOutCount`, separada de erros de rede/API.
+
+#### Streaming providers (Fase 4)
+
+`fetchTmdbSeriesDetails` agora usa `append_to_response=keywords,images,watch/providers` (era so `keywords,images`) — **zero chamadas extras**, o provedor vem na mesma resposta que ja buscava logo/keywords. `Series.watchProviders` guarda a uniao de `flatrate`+`free`+`ads` (streaming/assinatura/gratuito-com-anuncio; `rent`/`buy` — transacional, nao "streaming" — sao deliberadamente ignorados) para a regiao configurada em `TMDB_WATCH_PROVIDERS_REGION` (padrao `BR`). So persiste quando existem provedores para aquela regiao (`[]` caso contrario, nunca `null`) — funciona para qualquer provedor que o TMDb retornar (Netflix, Prime Video, Disney+, Max, Apple TV+, Paramount+, Globoplay, Crunchyroll, Peacock, Hulu e qualquer outro).
+
+#### Logos e keywords (Fase 5/6)
+
+- `lib/catalog/image-resolution.ts` (`resolvePreferredImageUrl`): logo > poster > backdrop, a ordem de preferencia que o ticket pede para "componentes compativeis" — pronta para uso futuro, ainda nao chamada por nenhum componente (sem mudanca de UI/navegacao nesta sprint)
+- `lib/catalog/repository.ts` (`findSeriesByKeyword`): consulta o catalogo por uma keyword real do TMDb (`Series.keywords`, sincronizado desde SCALE-01) — funcao pronta, ainda nao ligada a nenhuma rota; busca via `keywords: { has }` (sem indice GIN dedicado — no volume atual do catalogo um scan sequencial é suficiente; ver limitacoes)
+
+#### Collection tags editoriais (Fase 7) — `lib/catalog/collection-tags.ts`
+
+Tags 100% derivadas de metadados existentes, nunca uma regra manual por titulo — a mesma funcao roda para toda serie que passa pelo pipeline:
+
+| Tag | Regra |
+|---|---|
+| Maratona | `numberOfEpisodes >= TMDB_TAG_MARATONA_MIN_EPISODES` (padrao 100) |
+| Minissérie | `type === "Miniseries"` (TMDb) OU (1 temporada, ate `TMDB_TAG_MINISSERIE_MAX_EPISODES` episodios, status `ENDED`) |
+| Baseada em Livro | keyword do TMDb contendo "based on novel/book/comic" |
+| Premiada | `vote_average >= TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE` **e** `vote_count >= TMDB_TAG_PREMIADA_MIN_VOTE_COUNT` — proxy de "aclamada pela critica", nao uma alegacao de premio real (TMDb nao expoe premios) |
+| Em Alta | `popularity >= TMDB_TAG_EM_ALTA_MIN_POPULARITY` |
+| Longa Duração | `numberOfSeasons >= TMDB_TAG_LONGA_DURACAO_MIN_SEASONS` (padrao 5) |
+| Sci-Fi / Drama / Mistério / Crime | genero (`genres`) correspondente, em pt-BR ou en-US |
+| Anime | genero Animação **e** `originCountry` inclui `JP` |
+
+#### Cobertura internacional (Fase 8)
+
+`origin_country`, `spoken_languages`, `production_countries`, `production_companies`, `created_by`, `networks`, `status`, `homepage` e `tagline` ja vinham da sprint SCALE-01 — o unico campo que faltava, `type` (Scripted/Reality/Miniseries/Documentary/Talk Show/News/Video), foi adicionado nesta sprint (mesma chamada de detalhes, sem custo extra) e alimenta diretamente a tag "Minissérie" acima.
+
+#### Estatisticas (Fase 9) — `lib/catalog/statistics.ts`
+
+`computeCatalogStatistics()` — uma unica consulta (`findMany` com apenas os campos escalares/array necessarios) seguida de uma reducao em memoria (genero/pais/provedor sao colunas array — o `groupBy` do Prisma nao "explode" arrays, entao uma consulta + reduce e a unica forma de fazer isso em uma so consulta) — devolve contagem por genero, pais, idioma, status, provedor, decada de estreia e o quality score medio do catalogo inteiro. Chamada ao final de toda execucao de coverage e por `sync:stats`.
+
+#### Catalogo inteligente (Fase 10) — `lib/catalog/smart-lists.ts`
+
+Onze listas nomeadas, cada uma uma consulta Prisma direta (where/orderBy) sobre os campos ja persistidos — nenhuma tabela nova, nenhuma regra duplicada:
+
+Mais Populares, Mais Bem Avaliadas, Novidades, Minisséries, Maratonas, Em Exibição, Finalizadas, Longa Duração, Curtas, Em Alta, Mais Comentadas.
+
+Cada uma e uma funcao exportada (`listMaisPopulares()`, `listMinisseries()`, etc.) e `computeSmartListCounts()` devolve quantas series qualificam para cada uma (via `count()`, nunca buscando as linhas inteiras so para contar). Nenhuma rota nova foi criada — prontas para uma futura pagina de descoberta usar.
+
+#### Performance (Fase 11)
+
+- **Sem chamada duplicada**: providers/logos/keywords vem todos da mesma chamada de detalhes (`append_to_response`); o score/tags sao computados a partir de dados ja em maos (o `existingSeries` que o upsert ja buscava, so com mais colunas selecionadas — zero consultas novas por serie)
+- **Cache reaproveitado**: a chamada de detalhes cacheada (Fase 7 da sprint COVERAGE-01) ja cobre o payload de providers, sem cache adicional necessario
+- **Concorrencia e rate limiter**: inalterados desta sprint
+- **Sem N+1**: `computeCatalogStatistics`/`computeSmartListCounts` rodam **uma vez por execucao** (nao uma vez por serie) — uma consulta agregada e onze `count()`, nunca proporcional ao tamanho do catalogo sincronizado nesta execucao
+
+#### Observabilidade (Fase 12)
+
+O relatorio de `sync:coverage`/`sync:resume` ganhou: `Descartadas (curadoria)`, `Economia de chamadas`, `Tempo medio/serie`, `Quality Score medio`, `Providers encontrados`, `Logos encontrados`, `Keywords sincronizadas`, `Tags geradas` — todos escopados as series tocadas **nesta execucao** — mais um resumo do catalogo inteiro (quality score medio geral, total de series, por status/decada/provedor) e a contagem de cada lista inteligente. `sync:stats` mostra a mesma visao de estatisticas/listas fora do contexto de uma execucao.
+
+#### Variaveis de ambiente desta sprint
+
+| Variavel | Padrao | Uso |
+|---|---|---|
+| `TMDB_QUALITY_WEIGHT_POPULARITY` | 1 | Peso do sinal de popularidade no Quality Score |
+| `TMDB_QUALITY_WEIGHT_VOTE_AVERAGE` | 1.5 | Peso da nota media |
+| `TMDB_QUALITY_WEIGHT_VOTE_COUNT` | 1 | Peso da contagem de votos |
+| `TMDB_QUALITY_WEIGHT_RECENCY` | 1 | Peso da recencia |
+| `TMDB_QUALITY_WEIGHT_STATUS` | 0.75 | Peso da relevancia do status |
+| `TMDB_QUALITY_WEIGHT_SEASONS` | 0.5 | Peso do numero de temporadas |
+| `TMDB_QUALITY_WEIGHT_EPISODES` | 0.5 | Peso do numero de episodios |
+| `TMDB_QUALITY_WEIGHT_BACKDROP` | 0.5 | Peso da presenca de backdrop |
+| `TMDB_QUALITY_WEIGHT_POSTER` | 0.5 | Peso da presenca de poster |
+| `TMDB_QUALITY_WEIGHT_OVERVIEW` | 0.5 | Peso da presenca de sinopse |
+| `TMDB_QUALITY_WEIGHT_LOGO` | 0.25 | Peso da presenca de logo |
+| `TMDB_QUALITY_WEIGHT_PROVIDERS` | 0.75 | Peso da disponibilidade de provedores |
+| `TMDB_QUALITY_WEIGHT_ORIGIN_COUNTRY` | 0.25 | Peso da presenca de pais de origem |
+| `TMDB_QUALITY_WEIGHT_LANGUAGE` | 0.25 | Peso da presenca de idioma |
+| `TMDB_CURATION_ENABLED` | true | Liga/desliga toda a curadoria automatica (Fase 3) |
+| `TMDB_MIN_VOTE_AVERAGE` | 0 (sem filtro) | Nota minima para uma serie nova ser considerada |
+| `TMDB_CURATION_REQUIRE_IMAGE` | true | Exige poster ou backdrop numa serie nova |
+| `TMDB_CURATION_REQUIRE_OVERVIEW` | true | Exige sinopse numa serie nova |
+| `TMDB_CURATION_MAX_PILOT_AGE_DAYS` | 365 | Idade maxima (dias) para um `PILOT` nao ser considerado abandonado |
+| `TMDB_WATCH_PROVIDERS_REGION` | BR | Regiao do TMDb usada para `watch/providers` |
+| `TMDB_TAG_MARATONA_MIN_EPISODES` | 100 | Minimo de episodios para a tag "Maratona" |
+| `TMDB_TAG_MINISSERIE_MAX_EPISODES` | 8 | Maximo de episodios para a tag "Minissérie" (heuristica) e para a lista "Curtas" |
+| `TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE` | 8 | Nota minima para a tag "Premiada" |
+| `TMDB_TAG_PREMIADA_MIN_VOTE_COUNT` | 1000 | Votos minimos para a tag "Premiada" |
+| `TMDB_TAG_EM_ALTA_MIN_POPULARITY` | 50 | Popularidade minima para a tag "Em Alta" |
+| `TMDB_TAG_LONGA_DURACAO_MIN_SEASONS` | 5 | Temporadas minimas para a tag "Longa Duração" |
+
+#### Fluxo completo desta sprint
+
+`sync:coverage`/`sync:popular`/`sync:discover`/etc. → agrega/deduplica/prioriza (COVERAGE-01) → decide novo vs. existente (SCALE-01) → **serie nova**: curadoria por item de lista → fetch completo → curadoria por detalhe → se aprovada, calcula Quality Score + Collection Tags + persiste providers/type → upsert. **Serie existente devida**: atualizacao leve → recalcula Quality Score + Collection Tags com os valores efetivos (novo + o que ja estava persistido) → upsert. Ao final: estatisticas do catalogo + contagem das listas inteligentes, ambas no relatorio.
+
+#### Limitacoes atuais (QUALITY-01)
+
+- Mesma limitacao de ambiente de toda sprint anterior: sandbox sem acesso de rede real ao TMDb — a curadoria por item de lista, o Quality Score, as Collection Tags, as estatisticas e as listas inteligentes foram validados diretamente (dados sinteticos + fixtures reais no banco local); o caminho de curadoria por detalhe (que depende do fetch completo) foi validado quanto a logica pura (`passesDetailCuration` chamada diretamente com series normalizadas sinteticas), nao contra a API real
+- "Premiada" e um proxy de nota+votos, nao uma fonte real de premios (o TMDb basico nao expoe isso)
+- Nenhuma UI nova: `resolvePreferredImageUrl`, `findSeriesByKeyword` e as 11 listas de `smart-lists.ts` sao funcoes prontas, ainda sem nenhuma rota/pagina/componente consumindo — respeitando a restricao de nao alterar navegacao
+- `keywords`/`collectionTags`/`watchProviders` sao colunas array consultadas com `has` (scan sequencial) — sem indice GIN dedicado; aceitavel no volume atual, documentado como proximo passo se o catalogo crescer muito
+- Curadoria so gate a entrada de series novas — nunca remove retroativamente series ja catalogadas, mesmo que elas reprovariam nos criterios atuais
+- Nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou estrutura de navegacao foi alterada — a sprint e estritamente uma camada editorial sobre o pipeline de sincronizacao do catalogo
+
 ## Descoberta e busca
 
 Camada isolada em `lib/discovery/search.ts`, reutilizavel por catalogo, calendario, listas, perfil e uma futura busca dedicada — nenhuma logica de filtro/ordenacao/paginacao fica na pagina.

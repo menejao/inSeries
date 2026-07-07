@@ -1,5 +1,5 @@
 import { config } from "@/lib/config";
-import type { NormalizedCatalogSeries, TmdbListSeriesItem } from "@/lib/catalog/normalize";
+import { mapStatusToPrisma, type NormalizedCatalogSeries, type TmdbListSeriesItem } from "@/lib/catalog/normalize";
 
 /**
  * Fase 3 (INSERIES-TMDB-CATALOG-QUALITY-01) — automatic curation, entirely config-driven
@@ -52,7 +52,7 @@ export function passesDetailCuration(series: NormalizedCatalogSeries, now: Date 
     return { passes: false, reason: "sem overview" };
   }
 
-  if (series.status === "PILOT" && series.year) {
+  if (mapStatusToPrisma(series.status) === "PILOT" && series.year) {
     const firstAirDate = new Date(series.year, 0, 1);
     const ageDays = (now.getTime() - firstAirDate.getTime()) / DAY_MS;
     if (ageDays > curation.maxPilotAgeDays) {

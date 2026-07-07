@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { getLatestCoverageRun, getRecentSyncRuns } from "@/lib/catalog/sync";
+import { computeCatalogStatistics } from "@/lib/catalog/statistics";
+import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 
 function printRun(run: Awaited<ReturnType<typeof getRecentSyncRuns>>[number]) {
   const durationMs = run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null;
@@ -27,6 +29,20 @@ async function main() {
   const recentRuns = await getRecentSyncRuns(10);
   console.log(`\nUltimas ${recentRuns.length} execucoes de sincronizacao (qualquer tipo):`);
   recentRuns.forEach(printRun);
+
+  const statistics = await computeCatalogStatistics();
+  console.log("\nEstatisticas do catalogo (Fase 9):");
+  console.log(`  total de series: ${statistics.totalSeries} | quality score medio: ${statistics.averageQualityScore}`);
+  console.log("  por genero:", statistics.byGenre);
+  console.log("  por pais:", statistics.byCountry);
+  console.log("  por idioma:", statistics.byLanguage);
+  console.log("  por status:", statistics.byStatus);
+  console.log("  por provedor:", statistics.byProvider);
+  console.log("  por decada:", statistics.byDecade);
+
+  const smartListCounts = await computeSmartListCounts();
+  console.log("\nCatalogo inteligente (Fase 10) — series por lista derivada:");
+  console.log(" ", smartListCounts);
   console.log("");
 }
 
