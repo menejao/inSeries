@@ -169,6 +169,14 @@ model Series {
   createdBy           String[]                @default([])
   logoUrl             String?
   keywords            String[]                @default([])
+  // Fase 2/4/7/8 (INSERIES-TMDB-CATALOG-QUALITY-01) — editorial quality layer on top of the
+  // raw metadata above. qualityScore/collectionTags are derived+persisted at upsert time
+  // (lib/catalog/quality-score.ts, lib/catalog/collection-tags.ts); watchProviders/type come
+  // straight from the same TMDb details call (append_to_response), no extra HTTP call.
+  qualityScore        Float?
+  watchProviders      String[]                @default([])
+  collectionTags      String[]                @default([])
+  type                String?
   seasons             Season[]
   reviews             Review[]
   ratings             Rating[]
@@ -184,6 +192,7 @@ model Series {
   @@index([firstAirYear])
   @@index([popularityScore])
   @@index([voteAverage])
+  @@index([qualityScore])
   @@index([title])
 }
 

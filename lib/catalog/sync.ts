@@ -11,6 +11,9 @@ import { upsertNormalizedSeriesWithCounts, type CatalogUpsertCounts } from "@/li
 import { collectCandidates, type AggregatedCandidate, type DiscoverySourceKey, type SourceDefinition } from "@/lib/catalog/aggregator";
 import { createSyncCache, type SyncCache } from "@/lib/catalog/sync-cache";
 import { isDueForUpdate } from "@/lib/catalog/update-policy";
+import { CurationRejectedError, passesListItemCuration } from "@/lib/catalog/curation";
+import { computeCatalogStatistics, type CatalogStatistics } from "@/lib/catalog/statistics";
+import { computeSmartListCounts, type SmartListKey } from "@/lib/catalog/smart-lists";
 import {
   fetchAiringTodayTmdbSeries,
   fetchDiscoverTmdbSeries,
@@ -39,7 +42,44 @@ export type CatalogSyncObservability = {
   averageRequestMs: number;
   lightweightUpdateCount: number;
   skippedCount: number;
+  // Fase 3/12 (INSERIES-TMDB-CATALOG-QUALITY-01) — curation + enrichment metrics for the
+  // series touched (imported or updated) by this run specifically.
+  curatedOutCount: number;
+  qualityScoreAverage: number;
+  providersFoundCount: number;
+  logosFoundCount: number;
+  keywordsSyncedCount: number;
+  tagsGeneratedCount: number;
 };
+
+type QualityAccumulator = {
+  scoreSum: number;
+  scoreCount: number;
+  providersFoundCount: number;
+  logosFoundCount: number;
+  keywordsSyncedCount: number;
+  tagsGeneratedCount: number;
+};
+
+function emptyQualityAccumulator(): QualityAccumulator {
+  return { scoreSum: 0, scoreCount: 0, providersFoundCount: 0, logosFoundCount: 0, keywordsSyncedCount: 0, tagsGeneratedCount: 0 };
+}
+
+function accumulateQuality(
+  acc: QualityAccumulator,
+  quality: { qualityScore: number; hasProviders: boolean; hasLogo: boolean; hasKeywords: boolean; tagsGenerated: number }
+) {
+  acc.scoreSum += quality.qualityScore;
+  acc.scoreCount += 1;
+  if (quality.hasProviders) acc.providersFoundCount += 1;
+  if (quality.hasLogo) acc.logosFoundCount += 1;
+  if (quality.hasKeywords) acc.keywordsSyncedCount += 1;
+  acc.tagsGeneratedCount += quality.tagsGenerated;
+}
+
+function qualityScoreAverage(acc: QualityAccumulator) {
+  return acc.scoreCount > 0 ? Math.round((acc.scoreSum / acc.scoreCount) * 100) / 100 : 0;
+}
 
 export type CatalogSyncSummary = CatalogUpsertCounts & {
   runId: string;
@@ -232,13 +272,30 @@ async function fetchFullSeriesFromTmdb(tmdbId: string | number, cache?: SyncCach
   return normalizeTmdbSeries({ ...details, seasons: fullSeasons });
 }
 
-/** Imports/updates one series (full details+seasons+episodes) by TMDb id; isolates a single series' failure from the rest of the run. */
-async function syncOneSeries(tmdbId: string | number, label: string, counts: CatalogUpsertCounts, errors: SyncItemError[]) {
+/**
+ * Imports/updates one series (full details+seasons+episodes) by TMDb id; isolates a single
+ * series' failure from the rest of the run. A `CurationRejectedError` (Fase 3 — a genuinely
+ * new series that fails detail-level curation) is expected behavior, not a sync error: it's
+ * counted separately (when the caller passes an accumulator) instead of landing in `errors`.
+ */
+async function syncOneSeries(
+  tmdbId: string | number,
+  label: string,
+  counts: CatalogUpsertCounts,
+  errors: SyncItemError[],
+  quality?: QualityAccumulator,
+  curatedOut?: { count: number }
+) {
   try {
     const normalized = await fetchFullSeriesFromTmdb(tmdbId);
-    const { counts: itemCounts } = await upsertNormalizedSeriesWithCounts(normalized);
+    const { counts: itemCounts, quality: itemQuality } = await upsertNormalizedSeriesWithCounts(normalized);
     addCounts(counts, itemCounts);
+    if (quality) accumulateQuality(quality, itemQuality);
   } catch (error) {
+    if (error instanceof CurationRejectedError) {
+      if (curatedOut) curatedOut.count += 1;
+      return;
+    }
     errors.push({ series: label, message: describeError(error) });
   }
 }
@@ -257,7 +314,9 @@ async function upsertDiscoveredItem(
   item: TmdbListSeriesItem,
   counts: CatalogUpsertCounts,
   errors: SyncItemError[],
-  lightweightUpdates: { count: number }
+  lightweightUpdates: { count: number },
+  quality: QualityAccumulator,
+  curatedOut: { count: number }
 ) {
   const label = item.name ?? String(item.id);
 
@@ -275,16 +334,22 @@ async function upsertDiscoveredItem(
 
     if (!existingMapping) {
       const normalized = await fetchFullSeriesFromTmdb(item.id);
-      const { counts: itemCounts } = await upsertNormalizedSeriesWithCounts(normalized);
+      const { counts: itemCounts, quality: itemQuality } = await upsertNormalizedSeriesWithCounts(normalized);
       addCounts(counts, itemCounts);
+      accumulateQuality(quality, itemQuality);
       return;
     }
 
     const [normalized] = normalizeTmdbSeriesList([item]);
-    const { counts: itemCounts } = await upsertNormalizedSeriesWithCounts(normalized);
+    const { counts: itemCounts, quality: itemQuality } = await upsertNormalizedSeriesWithCounts(normalized);
     addCounts(counts, itemCounts);
+    accumulateQuality(quality, itemQuality);
     lightweightUpdates.count += 1;
   } catch (error) {
+    if (error instanceof CurationRejectedError) {
+      curatedOut.count += 1;
+      return;
+    }
     errors.push({ series: label, message: describeError(error) });
   }
 }
@@ -312,6 +377,8 @@ async function runDiscoverySync(
   const counts = emptyCounts();
   const errors: SyncItemError[] = [];
   const lightweightUpdates = { count: 0 };
+  const curatedOut = { count: 0 };
+  const quality = emptyQualityAccumulator();
   let skippedCount = 0;
   let pagesProcessed = 0;
 
@@ -330,7 +397,12 @@ async function runDiscoverySync(
         skippedCount += 1;
         continue;
       }
-      await upsertDiscoveredItem(item, counts, errors, lightweightUpdates);
+      const curationVerdict = passesListItemCuration(item);
+      if (!curationVerdict.passes) {
+        curatedOut.count += 1;
+        continue;
+      }
+      await upsertDiscoveredItem(item, counts, errors, lightweightUpdates, quality, curatedOut);
     }
   }
 
@@ -343,7 +415,13 @@ async function runDiscoverySync(
     rateLimitHitCount: statsAfter.rateLimitHitCount - statsBefore.rateLimitHitCount,
     averageRequestMs: requestCount > 0 ? Math.round((statsAfter.totalRequestMs - statsBefore.totalRequestMs) / requestCount) : 0,
     lightweightUpdateCount: lightweightUpdates.count,
-    skippedCount
+    skippedCount,
+    curatedOutCount: curatedOut.count,
+    qualityScoreAverage: qualityScoreAverage(quality),
+    providersFoundCount: quality.providersFoundCount,
+    logosFoundCount: quality.logosFoundCount,
+    keywordsSyncedCount: quality.keywordsSyncedCount,
+    tagsGeneratedCount: quality.tagsGeneratedCount
   };
 
   const totalTouched = counts.importedSeriesCount + counts.updatedSeriesCount;
@@ -621,6 +699,10 @@ export type CoverageSummary = {
   skippedByCadenceCount: number;
   errors: SyncItemError[];
   observability: CoverageObservability;
+  /** Fase 9 — catalog-wide composition snapshot (not scoped to this run), taken right after it finishes. */
+  catalogStatistics: CatalogStatistics;
+  /** Fase 10 — how many series currently qualify for each smart list, same snapshot timing as catalogStatistics. */
+  smartListCounts: Record<SmartListKey, number>;
 };
 
 type CoverageResumeState = {
@@ -636,6 +718,16 @@ type CoverageResumeState = {
   errors: SyncItemError[];
   cacheHits: number;
   cacheMisses: number;
+  // Fase 3/12 (INSERIES-TMDB-CATALOG-QUALITY-01) — flat, JSON-serializable accumulator
+  // fields (same treatment as cacheHits/cacheMisses above) so curation/quality metrics
+  // survive a checkpoint/resume cycle exactly like every other counter in this state.
+  curatedOutCount: number;
+  qualityScoreSum: number;
+  qualityScoreCount: number;
+  providersFoundCount: number;
+  logosFoundCount: number;
+  keywordsSyncedCount: number;
+  tagsGeneratedCount: number;
 };
 
 function buildSourceDefinitions(options: CoverageOptions): SourceDefinition[] {
@@ -695,13 +787,19 @@ function emptyCoverageObservability(): CoverageObservability {
     averageRequestMs: 0,
     lightweightUpdateCount: 0,
     skippedCount: 0,
+    curatedOutCount: 0,
+    qualityScoreAverage: 0,
+    providersFoundCount: 0,
+    logosFoundCount: 0,
+    keywordsSyncedCount: 0,
+    tagsGeneratedCount: 0,
     cacheHits: 0,
     cacheMisses: 0,
     callsSaved: 0
   };
 }
 
-function toCoverageSummary(base: CatalogSyncSummary, resumed: boolean): CoverageSummary {
+async function toCoverageSummary(base: CatalogSyncSummary, resumed: boolean): Promise<CoverageSummary> {
   return {
     runId: base.runId,
     status: base.status,
@@ -723,7 +821,9 @@ function toCoverageSummary(base: CatalogSyncSummary, resumed: boolean): Coverage
     },
     skippedByCadenceCount: 0,
     errors: base.errors,
-    observability: emptyCoverageObservability()
+    observability: emptyCoverageObservability(),
+    catalogStatistics: await computeCatalogStatistics(),
+    smartListCounts: await computeSmartListCounts()
   };
 }
 
@@ -744,6 +844,13 @@ async function continueCoverageRun(
   const totals = { ...state.totals };
   let skippedByCadenceCount = state.skippedByCadenceCount;
   let processedCount = state.processedCount;
+  let curatedOutCount = state.curatedOutCount;
+  let qualityScoreSum = state.qualityScoreSum;
+  let qualityScoreCount = state.qualityScoreCount;
+  let providersFoundCount = state.providersFoundCount;
+  let logosFoundCount = state.logosFoundCount;
+  let keywordsSyncedCount = state.keywordsSyncedCount;
+  let tagsGeneratedCount = state.tagsGeneratedCount;
   const queue = state.remainingQueue;
   const batchSize = config.catalogSync.coverageBatchSize;
 
@@ -767,18 +874,39 @@ async function continueCoverageRun(
 
     try {
       if (!existingInfo) {
-        const normalized = await fetchFullSeriesFromTmdb(candidate.tmdbId, cache);
-        const { counts } = await upsertNormalizedSeriesWithCounts(normalized);
-        addCounts(totals, counts);
+        const curationVerdict = passesListItemCuration(candidate.item);
+        if (!curationVerdict.passes) {
+          curatedOutCount += 1;
+        } else {
+          const normalized = await fetchFullSeriesFromTmdb(candidate.tmdbId, cache);
+          const { counts, quality } = await upsertNormalizedSeriesWithCounts(normalized);
+          addCounts(totals, counts);
+          qualityScoreSum += quality.qualityScore;
+          qualityScoreCount += 1;
+          if (quality.hasProviders) providersFoundCount += 1;
+          if (quality.hasLogo) logosFoundCount += 1;
+          if (quality.hasKeywords) keywordsSyncedCount += 1;
+          tagsGeneratedCount += quality.tagsGenerated;
+        }
       } else if (isDueForUpdate(existingInfo.status, existingInfo.lastSyncedAt)) {
         const [normalized] = normalizeTmdbSeriesList([candidate.item]);
-        const { counts } = await upsertNormalizedSeriesWithCounts(normalized);
+        const { counts, quality } = await upsertNormalizedSeriesWithCounts(normalized);
         addCounts(totals, counts);
+        qualityScoreSum += quality.qualityScore;
+        qualityScoreCount += 1;
+        if (quality.hasProviders) providersFoundCount += 1;
+        if (quality.hasLogo) logosFoundCount += 1;
+        if (quality.hasKeywords) keywordsSyncedCount += 1;
+        tagsGeneratedCount += quality.tagsGenerated;
       } else {
         skippedByCadenceCount += 1;
       }
     } catch (error) {
-      errors.push({ series: label, message: describeError(error) });
+      if (error instanceof CurationRejectedError) {
+        curatedOutCount += 1;
+      } else {
+        errors.push({ series: label, message: describeError(error) });
+      }
     }
 
     processedCount += 1;
@@ -796,7 +924,14 @@ async function continueCoverageRun(
         skippedByCadenceCount,
         errors,
         cacheHits: state.cacheHits + cache.stats().hits,
-        cacheMisses: state.cacheMisses + cache.stats().misses
+        cacheMisses: state.cacheMisses + cache.stats().misses,
+        curatedOutCount,
+        qualityScoreSum,
+        qualityScoreCount,
+        providersFoundCount,
+        logosFoundCount,
+        keywordsSyncedCount,
+        tagsGeneratedCount
       });
     }
   }
@@ -815,6 +950,12 @@ async function continueCoverageRun(
     averageRequestMs: requestCount > 0 ? Math.round((statsAfter.totalRequestMs - statsBefore.totalRequestMs) / requestCount) : 0,
     lightweightUpdateCount: totals.updatedSeriesCount,
     skippedCount: skippedByCadenceCount,
+    curatedOutCount,
+    qualityScoreAverage: qualityScoreCount > 0 ? Math.round((qualityScoreSum / qualityScoreCount) * 100) / 100 : 0,
+    providersFoundCount,
+    logosFoundCount,
+    keywordsSyncedCount,
+    tagsGeneratedCount,
     cacheHits: totalCacheHits,
     cacheMisses: totalCacheMisses,
     callsSaved: state.duplicatesRemoved + skippedByCadenceCount + totalCacheHits
@@ -824,6 +965,8 @@ async function continueCoverageRun(
   const status: CatalogSyncStatus = errors.length === 0 ? "SUCCESS" : totalTouched > 0 ? "PARTIAL" : "FAILED";
 
   const summary = await finishRun(run.id, "COVERAGE", run.startedAt, status, totals, errors, observability);
+  const catalogStatistics = await computeCatalogStatistics();
+  const smartListCounts = await computeSmartListCounts();
 
   return {
     runId: summary.runId,
@@ -839,7 +982,9 @@ async function continueCoverageRun(
     totals,
     skippedByCadenceCount,
     errors,
-    observability
+    observability,
+    catalogStatistics,
+    smartListCounts
   };
 }
 
@@ -912,7 +1057,14 @@ export async function runCoverageWithSources(sourceDefs: SourceDefinition[]): Pr
     skippedByCadenceCount: 0,
     errors: aggregation.errors.map((error) => ({ series: error.source, message: error.message })),
     cacheHits: cache.stats().hits,
-    cacheMisses: cache.stats().misses
+    cacheMisses: cache.stats().misses,
+    curatedOutCount: 0,
+    qualityScoreSum: 0,
+    qualityScoreCount: 0,
+    providersFoundCount: 0,
+    logosFoundCount: 0,
+    keywordsSyncedCount: 0,
+    tagsGeneratedCount: 0
   };
 
   await persistResumeState(run.id, initialState);
@@ -944,6 +1096,7 @@ export async function syncUpdateDue(): Promise<CatalogSyncSummary> {
 
   const counts = emptyCounts();
   const errors: SyncItemError[] = [];
+  const quality = emptyQualityAccumulator();
   let skippedByCadenceCount = 0;
   const statsBefore = getTmdbCallStats();
 
@@ -952,7 +1105,7 @@ export async function syncUpdateDue(): Promise<CatalogSyncSummary> {
       skippedByCadenceCount += 1;
       continue;
     }
-    await syncOneSeries(mapping.externalId, mapping.series.title, counts, errors);
+    await syncOneSeries(mapping.externalId, mapping.series.title, counts, errors, quality);
   }
 
   const statsAfter = getTmdbCallStats();
@@ -964,7 +1117,13 @@ export async function syncUpdateDue(): Promise<CatalogSyncSummary> {
     rateLimitHitCount: statsAfter.rateLimitHitCount - statsBefore.rateLimitHitCount,
     averageRequestMs: requestCount > 0 ? Math.round((statsAfter.totalRequestMs - statsBefore.totalRequestMs) / requestCount) : 0,
     lightweightUpdateCount: 0,
-    skippedCount: skippedByCadenceCount
+    skippedCount: skippedByCadenceCount,
+    curatedOutCount: 0,
+    qualityScoreAverage: qualityScoreAverage(quality),
+    providersFoundCount: quality.providersFoundCount,
+    logosFoundCount: quality.logosFoundCount,
+    keywordsSyncedCount: quality.keywordsSyncedCount,
+    tagsGeneratedCount: quality.tagsGeneratedCount
   };
 
   const status: CatalogSyncStatus = errors.length === 0 ? "SUCCESS" : counts.updatedSeriesCount > 0 ? "PARTIAL" : "FAILED";

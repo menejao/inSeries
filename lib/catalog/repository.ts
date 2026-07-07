@@ -11,8 +11,11 @@ import { canUseDatabase, isMissingTableError } from "@/lib/db/health";
 import { prisma } from "@/lib/db/prisma";
 import type { Series } from "@/lib/types";
 import { fetchPopularTmdbSeries, fetchTmdbSeasonDetails, fetchTmdbSeriesDetails, searchTmdbSeries } from "@/lib/tmdb/service";
+import { CurationRejectedError, passesDetailCuration } from "@/lib/catalog/curation";
+import { computeQualityScore } from "@/lib/catalog/quality-score";
+import { deriveCollectionTags } from "@/lib/catalog/collection-tags";
 
-function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons: { include: { episodes: true } } } }>): Series {
+export function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons: { include: { episodes: true } } } }>): Series {
   return {
     id: model.id,
     slug: model.slug,
@@ -184,9 +187,83 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     select: { seriesId: true }
   });
 
+  // Selected consistently on both branches (matched-by-id and fallback-by-slug) so the
+  // scoring/tagging merge logic below can rely on a single shape either way.
+  const existingSeriesSelect = {
+    id: true,
+    posterUrl: true,
+    backdropUrl: true,
+    overview: true,
+    logoUrl: true,
+    numberOfSeasons: true,
+    numberOfEpisodes: true,
+    watchProviders: true,
+    originCountry: true,
+    language: true,
+    keywords: true,
+    type: true
+  } satisfies Prisma.SeriesSelect;
+
   const existingSeries = existingMapping
-    ? await prisma.series.findUnique({ where: { id: existingMapping.seriesId }, select: { id: true } })
-    : await prisma.series.findUnique({ where: { slug: series.slug }, select: { id: true } });
+    ? await prisma.series.findUnique({ where: { id: existingMapping.seriesId }, select: existingSeriesSelect })
+    : await prisma.series.findUnique({ where: { slug: series.slug }, select: existingSeriesSelect });
+
+  // Fase 3 (INSERIES-TMDB-CATALOG-QUALITY-01) — curation only gates first-time intake,
+  // never an already-catalogued series (that would be a destructive retroactive purge).
+  if (!existingSeries) {
+    const verdict = passesDetailCuration(series);
+    if (!verdict.passes) {
+      throw new CurationRejectedError(verdict.reason ?? "reprovado pela curadoria automatica");
+    }
+  }
+
+  // Fase 2/7 — quality score and collection tags are computed from the *effective* value
+  // of each signal (new value if present, otherwise whatever's already persisted) so a
+  // lightweight update (which only carries list-item fields) never drags an already-rich
+  // series' score/tags down just because this particular payload lacks e.g. numberOfSeasons.
+  const effective = {
+    posterUrl: series.posterUrl || existingSeries?.posterUrl || null,
+    backdropUrl: series.backdropUrl || existingSeries?.backdropUrl || null,
+    overview: series.overview ?? existingSeries?.overview ?? null,
+    logoUrl: series.logoUrl ?? existingSeries?.logoUrl ?? null,
+    numberOfSeasons: series.numberOfSeasons ?? existingSeries?.numberOfSeasons ?? null,
+    numberOfEpisodes: series.numberOfEpisodes ?? existingSeries?.numberOfEpisodes ?? null,
+    watchProviders: series.watchProviders ?? existingSeries?.watchProviders ?? [],
+    originCountry: series.originCountry ?? existingSeries?.originCountry ?? [],
+    language: series.language ?? existingSeries?.language ?? null,
+    keywords: series.keywords ?? existingSeries?.keywords ?? [],
+    type: series.type ?? existingSeries?.type ?? null
+  };
+
+  const qualityScore = computeQualityScore({
+    popularity: series.popularityScore,
+    voteAverage: series.voteAverage,
+    voteCount: series.voteCount,
+    firstAirYear: series.year || null,
+    status: mapStatusToPrisma(series.status),
+    numberOfSeasons: effective.numberOfSeasons,
+    numberOfEpisodes: effective.numberOfEpisodes,
+    posterUrl: effective.posterUrl,
+    backdropUrl: effective.backdropUrl,
+    overview: effective.overview,
+    logoUrl: effective.logoUrl,
+    watchProviders: effective.watchProviders,
+    originCountry: effective.originCountry,
+    language: effective.language
+  });
+
+  const collectionTags = deriveCollectionTags({
+    genres: series.genres,
+    type: effective.type,
+    keywords: effective.keywords,
+    originCountry: effective.originCountry,
+    numberOfSeasons: effective.numberOfSeasons,
+    numberOfEpisodes: effective.numberOfEpisodes,
+    status: mapStatusToPrisma(series.status),
+    popularity: series.popularityScore,
+    voteAverage: series.voteAverage,
+    voteCount: series.voteCount
+  });
 
   // Fields with `undefined` are skipped by Prisma's update (existing value preserved) —
   // important for the lightweight discovery-sync path, which normalizes a plain list
@@ -217,7 +294,11 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     productionCompanies: series.productionCompanies,
     createdBy: series.createdBy,
     logoUrl: series.logoUrl,
-    keywords: series.keywords
+    keywords: series.keywords,
+    type: series.type,
+    watchProviders: series.watchProviders,
+    qualityScore,
+    collectionTags
   };
 
   const [baseSeries] = await prisma.$transaction(async (tx) => {
@@ -327,7 +408,19 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     counts.updatedEpisodeCount += seasonCounts.updatedEpisodeCount;
   }
 
-  return { series: baseSeries, counts };
+  return {
+    series: baseSeries,
+    counts,
+    // Fase 12 — per-item enrichment signals, aggregated by callers (lib/catalog/sync.ts)
+    // into the run's "providers found"/"logos found"/"keywords synced"/"tags generated" metrics.
+    quality: {
+      qualityScore,
+      hasProviders: effective.watchProviders.length > 0,
+      hasLogo: Boolean(effective.logoUrl),
+      hasKeywords: effective.keywords.length > 0,
+      tagsGenerated: collectionTags.length
+    }
+  };
 }
 
 async function upsertNormalizedSeries(series: NormalizedCatalogSeries) {
@@ -396,4 +489,23 @@ export async function searchCatalogSeries(query?: string) {
 export async function searchExternalSeries(query: string) {
   const results = await searchTmdbSeries(query);
   return normalizeTmdbSeriesList(results);
+}
+
+/**
+ * Fase 6 (INSERIES-TMDB-CATALOG-QUALITY-01) — queries the catalog by a real TMDb keyword
+ * (e.g. "time travel", "anti-hero"), synced onto `Series.keywords` since SCALE-01. Not
+ * wired to any route/page yet (no navigation change this sprint) — prepared for a future
+ * keyword-based discovery/filter feature.
+ */
+export async function findSeriesByKeyword(keyword: string, limit = 20) {
+  if (!(await canUseDatabase())) return [];
+
+  const rows = await prisma.series.findMany({
+    where: { keywords: { has: keyword } },
+    include: { seasons: { include: { episodes: true } } },
+    orderBy: [{ qualityScore: "desc" }, { popularityScore: "desc" }],
+    take: limit
+  });
+
+  return rows.map(toSeriesView);
 }

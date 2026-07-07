@@ -1,4 +1,5 @@
 import type { ExternalEntityType, ExternalSource, SeriesLifecycleStatus } from "@prisma/client";
+import { config } from "@/lib/config";
 import type { Episode, Season, Series } from "@/lib/types";
 
 export type TmdbListSeriesItem = {
@@ -35,6 +36,17 @@ export type TmdbSeriesDetails = TmdbListSeriesItem & {
   created_by?: Array<{ id: number; name: string }>;
   images?: { logos?: Array<{ file_path?: string | null }> };
   keywords?: { results?: Array<{ id: number; name: string }> };
+  // Fase 4/8 (INSERIES-TMDB-CATALOG-QUALITY-01) — `type` (Scripted/Reality/Miniseries/...)
+  // and watch/providers both come from the same `tv/{id}` call (append_to_response), never
+  // an extra one. TMDb's key is literally "watch/providers" (with the slash).
+  type?: string;
+  "watch/providers"?: { results?: Record<string, TmdbWatchProviderCountry> };
+};
+
+export type TmdbWatchProviderCountry = {
+  flatrate?: Array<{ provider_name: string }>;
+  free?: Array<{ provider_name: string }>;
+  ads?: Array<{ provider_name: string }>;
 };
 
 export type TmdbSeasonDetails = {
@@ -83,6 +95,9 @@ export type NormalizedCatalogSeries = Series & {
   createdBy?: string[];
   logoUrl?: string;
   keywords?: string[];
+  // Fase 4/8 (INSERIES-TMDB-CATALOG-QUALITY-01)
+  type?: string;
+  watchProviders?: string[];
 };
 
 export type NormalizedCatalogSeason = Season & {
@@ -143,6 +158,18 @@ function mapStatus(status?: string): SeriesLifecycleStatus {
   }
 }
 
+/** Fase 4 — union of flatrate/free/ad-supported provider names for the configured region; rent/buy (transactional, not "streaming") are deliberately excluded. */
+function extractWatchProviders(payload: TmdbSeriesDetails): string[] | undefined {
+  const region = payload["watch/providers"]?.results?.[config.catalogQuality.watchProvidersRegion];
+  if (!region) return undefined;
+
+  const names = new Set<string>();
+  for (const entry of [...(region.flatrate ?? []), ...(region.free ?? []), ...(region.ads ?? [])]) {
+    if (entry.provider_name) names.add(entry.provider_name);
+  }
+  return names.size ? Array.from(names) : undefined;
+}
+
 function genresFromPayload(payload: TmdbListSeriesItem | TmdbSeriesDetails) {
   if (payload.genres?.length) {
     return payload.genres.map((genre) => genre.name);
@@ -184,6 +211,8 @@ export function normalizeTmdbSeries(payload: TmdbSeriesDetails): NormalizedCatal
     createdBy: payload.created_by?.map((creator) => creator.name),
     logoUrl: toImageUrl(payload.images?.logos?.[0]?.file_path, "w300") || undefined,
     keywords: payload.keywords?.results?.map((keyword) => keyword.name),
+    type: payload.type,
+    watchProviders: extractWatchProviders(payload),
     external: {
       source: "TMDB",
       entityType: "SERIES",

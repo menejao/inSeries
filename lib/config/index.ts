@@ -36,6 +36,32 @@ const envSchema = z.object({
   TMDB_PRIORITY_ON_AIR_BONUS: optionalNonEmpty(),
   TMDB_PRIORITY_NEW_EPISODE_BONUS: optionalNonEmpty(),
   TMDB_COVERAGE_BATCH_SIZE: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_POPULARITY: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_VOTE_AVERAGE: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_VOTE_COUNT: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_RECENCY: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_STATUS: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_SEASONS: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_EPISODES: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_BACKDROP: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_POSTER: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_OVERVIEW: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_LOGO: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_PROVIDERS: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_ORIGIN_COUNTRY: optionalNonEmpty(),
+  TMDB_QUALITY_WEIGHT_LANGUAGE: optionalNonEmpty(),
+  TMDB_CURATION_ENABLED: optionalNonEmpty(),
+  TMDB_MIN_VOTE_AVERAGE: optionalNonEmpty(),
+  TMDB_CURATION_REQUIRE_IMAGE: optionalNonEmpty(),
+  TMDB_CURATION_REQUIRE_OVERVIEW: optionalNonEmpty(),
+  TMDB_CURATION_MAX_PILOT_AGE_DAYS: optionalNonEmpty(),
+  TMDB_WATCH_PROVIDERS_REGION: optionalNonEmpty(),
+  TMDB_TAG_MARATONA_MIN_EPISODES: optionalNonEmpty(),
+  TMDB_TAG_MINISSERIE_MAX_EPISODES: optionalNonEmpty(),
+  TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE: optionalNonEmpty(),
+  TMDB_TAG_PREMIADA_MIN_VOTE_COUNT: optionalNonEmpty(),
+  TMDB_TAG_EM_ALTA_MIN_POPULARITY: optionalNonEmpty(),
+  TMDB_TAG_LONGA_DURACAO_MIN_SEASONS: optionalNonEmpty(),
   NEXT_PUBLIC_APP_URL: optionalUrl(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
   RATE_LIMIT_ENABLED: optionalNonEmpty(),
@@ -140,6 +166,47 @@ export const config = {
     priorityNewEpisodeBonus: parseNumberFlag(rawEnv.TMDB_PRIORITY_NEW_EPISODE_BONUS, 10),
     // How many queue items syncCoverage processes between progress checkpoints (Fase 8 resume).
     coverageBatchSize: Math.max(1, parseNumberFlag(rawEnv.TMDB_COVERAGE_BATCH_SIZE, 25))
+  },
+  /**
+   * INSERIES-TMDB-CATALOG-QUALITY-01 — the editorial-quality layer on top of the
+   * sync/coverage pipeline above: quality score weights (Fase 2), curation thresholds
+   * (Fase 3), which watch-providers region to persist (Fase 4), and collection-tag
+   * thresholds (Fase 7). Every weight/threshold lives here — never a magic number
+   * inside lib/catalog/quality-score.ts, curation.ts or collection-tags.ts.
+   */
+  catalogQuality: {
+    qualityWeights: {
+      popularity: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_POPULARITY, 1),
+      voteAverage: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_VOTE_AVERAGE, 1.5),
+      voteCount: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_VOTE_COUNT, 1),
+      recency: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_RECENCY, 1),
+      status: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_STATUS, 0.75),
+      seasons: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_SEASONS, 0.5),
+      episodes: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_EPISODES, 0.5),
+      backdrop: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_BACKDROP, 0.5),
+      poster: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_POSTER, 0.5),
+      overview: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_OVERVIEW, 0.5),
+      logo: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_LOGO, 0.25),
+      providers: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_PROVIDERS, 0.75),
+      originCountry: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_ORIGIN_COUNTRY, 0.25),
+      language: parseNumberFlag(rawEnv.TMDB_QUALITY_WEIGHT_LANGUAGE, 0.25)
+    },
+    curation: {
+      enabled: parseBooleanFlag(rawEnv.TMDB_CURATION_ENABLED, true),
+      minVoteAverage: parseNumberFlag(rawEnv.TMDB_MIN_VOTE_AVERAGE, 0),
+      requireImage: parseBooleanFlag(rawEnv.TMDB_CURATION_REQUIRE_IMAGE, true),
+      requireOverview: parseBooleanFlag(rawEnv.TMDB_CURATION_REQUIRE_OVERVIEW, true),
+      maxPilotAgeDays: Math.max(0, parseNumberFlag(rawEnv.TMDB_CURATION_MAX_PILOT_AGE_DAYS, 365))
+    },
+    watchProvidersRegion: rawEnv.TMDB_WATCH_PROVIDERS_REGION ?? "BR",
+    tags: {
+      maratonaMinEpisodes: parseNumberFlag(rawEnv.TMDB_TAG_MARATONA_MIN_EPISODES, 100),
+      minisserieMaxEpisodes: parseNumberFlag(rawEnv.TMDB_TAG_MINISSERIE_MAX_EPISODES, 8),
+      premiadaMinVoteAverage: parseNumberFlag(rawEnv.TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE, 8),
+      premiadaMinVoteCount: parseNumberFlag(rawEnv.TMDB_TAG_PREMIADA_MIN_VOTE_COUNT, 1000),
+      emAltaMinPopularity: parseNumberFlag(rawEnv.TMDB_TAG_EM_ALTA_MIN_POPULARITY, 50),
+      longaDuracaoMinSeasons: parseNumberFlag(rawEnv.TMDB_TAG_LONGA_DURACAO_MIN_SEASONS, 5)
+    }
   },
   pagination: {
     defaultPageSize: 12,

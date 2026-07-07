@@ -35,18 +35,37 @@ export function printCoverageReport(summary: CoverageSummary) {
   lines.push(padLine("Novas", String(summary.totals.importedSeriesCount)));
   lines.push(padLine("Atualizadas", String(summary.totals.updatedSeriesCount)));
   lines.push(padLine("Ignoradas (cadencia)", String(summary.skippedByCadenceCount)));
+  lines.push(padLine("Descartadas (curadoria)", String(summary.observability.curatedOutCount)));
   lines.push(padLine("Tempo", formatDuration(summary.durationMs)));
   lines.push(padLine("Requests", String(summary.observability.requestCount)));
   lines.push(padLine("Retries", String(summary.observability.retryCount)));
   lines.push(padLine("Rate Limits", String(summary.observability.rateLimitHitCount)));
   lines.push(padLine("Cache Hits", String(summary.observability.cacheHits)));
   lines.push(padLine("Cache Miss", String(summary.observability.cacheMisses)));
+  lines.push(padLine("Economia de chamadas", String(summary.observability.callsSaved)));
+
+  const totalTouched = summary.totals.importedSeriesCount + summary.totals.updatedSeriesCount;
+  const averageMsPerSeries = totalTouched > 0 ? Math.round(summary.durationMs / totalTouched) : 0;
+  lines.push(padLine("Tempo medio/serie", `${averageMsPerSeries}ms`));
+  lines.push(padLine("Quality Score medio", String(summary.observability.qualityScoreAverage)));
+  lines.push(padLine("Providers encontrados", String(summary.observability.providersFoundCount)));
+  lines.push(padLine("Logos encontrados", String(summary.observability.logosFoundCount)));
+  lines.push(padLine("Keywords sincronizadas", String(summary.observability.keywordsSyncedCount)));
+  lines.push(padLine("Tags geradas", String(summary.observability.tagsGeneratedCount)));
 
   console.log("");
   for (const line of lines) {
     console.log(line);
     console.log("");
   }
+
+  console.log("Catalogo — quality score medio geral:", summary.catalogStatistics.averageQualityScore);
+  console.log("Catalogo — total de series:", summary.catalogStatistics.totalSeries);
+  console.log("Catalogo — por status:", summary.catalogStatistics.byStatus);
+  console.log("Catalogo — por decada:", summary.catalogStatistics.byDecade);
+  console.log("Catalogo — por provedor:", summary.catalogStatistics.byProvider);
+  console.log("Listas inteligentes:", summary.smartListCounts);
+  console.log("");
 
   if (summary.errors.length) {
     console.log(`Erros (${summary.errors.length}):`);
