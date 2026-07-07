@@ -60,6 +60,7 @@ enum CatalogSyncType {
   DISCOVER
   TRENDING
   CATALOG_FULL
+  COVERAGE
 }
 
 enum CatalogSyncStatus {

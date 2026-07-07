@@ -1,12 +1,16 @@
-import type { CatalogSyncStatus, CatalogSyncType } from "@prisma/client";
+import type { CatalogSyncStatus, CatalogSyncType, SeriesLifecycleStatus } from "@prisma/client";
 import { ExternalEntityType, ExternalSource } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { config, getTmdbCredentials } from "@/lib/config";
 import { incrementSyncStarted } from "@/lib/metrics/service";
 import { logger } from "@/lib/logger";
 import { getTmdbCallStats, resetTmdbCallStats } from "@/lib/tmdb/rate-limit";
+import { describeTmdbError } from "@/lib/tmdb/errors";
 import { normalizeTmdbSeries, normalizeTmdbSeriesList, type TmdbListSeriesItem } from "@/lib/catalog/normalize";
 import { upsertNormalizedSeriesWithCounts, type CatalogUpsertCounts } from "@/lib/catalog/repository";
+import { collectCandidates, type AggregatedCandidate, type DiscoverySourceKey, type SourceDefinition } from "@/lib/catalog/aggregator";
+import { createSyncCache, type SyncCache } from "@/lib/catalog/sync-cache";
+import { isDueForUpdate } from "@/lib/catalog/update-policy";
 import {
   fetchAiringTodayTmdbSeries,
   fetchDiscoverTmdbSeries,
@@ -15,10 +19,7 @@ import {
   fetchTmdbSeasonDetails,
   fetchTmdbSeriesDetails,
   fetchTopRatedTmdbSeries,
-  fetchTrendingTmdbSeries,
-  TmdbApiError,
-  TmdbConfigurationError,
-  TmdbTimeoutError
+  fetchTrendingTmdbSeries
 } from "@/lib/tmdb/service";
 
 // TMDb's own list endpoints (popular/top_rated/discover/...) cap out around page 500 —
@@ -72,14 +73,7 @@ function addCounts(target: CatalogUpsertCounts, delta: CatalogUpsertCounts) {
   target.updatedEpisodeCount += delta.updatedEpisodeCount;
 }
 
-/** Never includes API keys/tokens — only safe, human-readable context. */
-function describeError(error: unknown): string {
-  if (error instanceof TmdbConfigurationError) return error.message;
-  if (error instanceof TmdbTimeoutError) return error.message;
-  if (error instanceof TmdbApiError) return `${error.message} (status ${error.status})`;
-  if (error instanceof Error) return error.message;
-  return "Erro desconhecido durante a sincronizacao.";
-}
+const describeError = describeTmdbError;
 
 async function createRun(type: CatalogSyncType) {
   const run = await prisma.catalogSyncRun.create({ data: { source: "TMDB", type, status: "RUNNING" } });
@@ -208,15 +202,23 @@ function passesQualityFilters(item: TmdbListSeriesItem): boolean {
  * A season TMDb fails to return episodes for is kept as an "announced" season
  * (zero episodes) instead of aborting the whole series import — matches the
  * existing calendar "future season" convention.
+ *
+ * Fase 7 (INSERIES-TMDB-CATALOG-COVERAGE-01) — an optional session cache memoizes the
+ * details/season calls; every existing caller keeps working unchanged (cache is opt-in).
  */
-async function fetchFullSeriesFromTmdb(tmdbId: string | number) {
-  const details = await fetchTmdbSeriesDetails(tmdbId);
+async function fetchFullSeriesFromTmdb(tmdbId: string | number, cache?: SyncCache) {
+  const details = cache
+    ? await cache.getOrFetchSeriesDetails(tmdbId, () => fetchTmdbSeriesDetails(tmdbId))
+    : await fetchTmdbSeriesDetails(tmdbId);
   const seasonCount = details.number_of_seasons ?? 0;
   const fullSeasons = [];
 
   for (const seasonNumber of Array.from({ length: seasonCount }, (_, index) => index + 1)) {
     try {
-      fullSeasons.push(await fetchTmdbSeasonDetails(tmdbId, seasonNumber));
+      const season = cache
+        ? await cache.getOrFetchSeasonDetails(tmdbId, seasonNumber, () => fetchTmdbSeasonDetails(tmdbId, seasonNumber))
+        : await fetchTmdbSeasonDetails(tmdbId, seasonNumber);
+      fullSeasons.push(season);
     } catch {
       fullSeasons.push({
         id: seasonNumber,
@@ -570,6 +572,404 @@ export async function getRecentSyncRuns(limit = 10) {
     orderBy: { startedAt: "desc" },
     take: limit
   });
+}
+
+export async function getLatestCoverageRun() {
+  return prisma.catalogSyncRun.findFirst({
+    where: { type: "COVERAGE" },
+    orderBy: { startedAt: "desc" }
+  });
+}
+
+// ============================================================================
+// Fase 2-9 (INSERIES-TMDB-CATALOG-COVERAGE-01) — the aggregated "coverage" pipeline:
+// consolidate all six discovery sources into one deduplicated, prioritized queue,
+// separate new from existing series, apply status-based update cadence to existing
+// ones, cache within the run, persist enough progress to resume if interrupted, and
+// report everything the ticket's Fase 11 template asks for.
+// ============================================================================
+
+export type CoverageOptions = {
+  popularPages?: number;
+  discoverPages?: number;
+  topRatedPages?: number;
+  onTheAirPages?: number;
+  airingTodayPages?: number;
+  trendingPages?: number;
+  trendingWindow?: "day" | "week";
+};
+
+export type CoverageObservability = CatalogSyncObservability & {
+  cacheHits: number;
+  cacheMisses: number;
+  /** duplicatesRemoved (Fase 3) + series skipped by cadence (Fase 6) + cache hits (Fase 7) — every TMDb call the pipeline avoided making. */
+  callsSaved: number;
+};
+
+export type CoverageSummary = {
+  runId: string;
+  status: CatalogSyncStatus;
+  startedAt: Date;
+  finishedAt: Date;
+  durationMs: number;
+  resumed: boolean;
+  perSourceCounts: Record<DiscoverySourceKey, number>;
+  totalCollected: number;
+  uniqueCount: number;
+  duplicatesRemoved: number;
+  totals: CatalogUpsertCounts;
+  skippedByCadenceCount: number;
+  errors: SyncItemError[];
+  observability: CoverageObservability;
+};
+
+type CoverageResumeState = {
+  remainingQueue: AggregatedCandidate[];
+  processedCount: number;
+  perSourceCounts: Record<DiscoverySourceKey, number>;
+  totalCollected: number;
+  uniqueCount: number;
+  duplicatesRemoved: number;
+  pagesProcessed: number;
+  totals: CatalogUpsertCounts;
+  skippedByCadenceCount: number;
+  errors: SyncItemError[];
+  cacheHits: number;
+  cacheMisses: number;
+};
+
+function buildSourceDefinitions(options: CoverageOptions): SourceDefinition[] {
+  const window = options.trendingWindow ?? "week";
+  const { minVoteCount, minYear, maxYear } = config.catalogSync;
+
+  return [
+    { key: "POPULAR_SERIES", pages: resolvePages(options.popularPages, config.catalogSync.popularPages), fetchPage: fetchPopularTmdbSeries },
+    {
+      key: "DISCOVER",
+      pages: resolvePages(options.discoverPages, config.catalogSync.discoverPages),
+      fetchPage: (page) =>
+        fetchDiscoverTmdbSeries({
+          page,
+          sortBy: "popularity.desc",
+          voteCountGte: minVoteCount > 0 ? minVoteCount : undefined,
+          firstAirDateGte: minYear !== undefined ? `${minYear}-01-01` : undefined,
+          firstAirDateLte: maxYear !== undefined ? `${maxYear}-12-31` : undefined
+        })
+    },
+    { key: "TOP_RATED", pages: resolvePages(options.topRatedPages, 1), fetchPage: fetchTopRatedTmdbSeries },
+    { key: "ON_THE_AIR", pages: resolvePages(options.onTheAirPages, 1), fetchPage: fetchOnTheAirTmdbSeries },
+    { key: "AIRING_TODAY", pages: resolvePages(options.airingTodayPages, 1), fetchPage: fetchAiringTodayTmdbSeries },
+    { key: "TRENDING", pages: resolvePages(options.trendingPages, 1), fetchPage: (page) => fetchTrendingTmdbSeries(page, window) }
+  ];
+}
+
+async function persistResumeState(runId: string, state: CoverageResumeState) {
+  await prisma.catalogSyncRun.update({
+    where: { id: runId },
+    data: {
+      ...state.totals,
+      metadata: { resumeState: state }
+    }
+  });
+}
+
+async function findLatestCoverageRun() {
+  return prisma.catalogSyncRun.findFirst({
+    where: { type: "COVERAGE", status: "RUNNING" },
+    orderBy: { startedAt: "desc" }
+  });
+}
+
+function extractResumeState(run: { metadata: unknown } | null | undefined): CoverageResumeState | null {
+  if (!run || !run.metadata || typeof run.metadata !== "object") return null;
+  const state = (run.metadata as { resumeState?: CoverageResumeState }).resumeState;
+  return state && Array.isArray(state.remainingQueue) ? state : null;
+}
+
+function emptyCoverageObservability(): CoverageObservability {
+  return {
+    pagesProcessed: 0,
+    requestCount: 0,
+    retryCount: 0,
+    rateLimitHitCount: 0,
+    averageRequestMs: 0,
+    lightweightUpdateCount: 0,
+    skippedCount: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    callsSaved: 0
+  };
+}
+
+function toCoverageSummary(base: CatalogSyncSummary, resumed: boolean): CoverageSummary {
+  return {
+    runId: base.runId,
+    status: base.status,
+    startedAt: base.startedAt,
+    finishedAt: base.finishedAt,
+    durationMs: base.durationMs,
+    resumed,
+    perSourceCounts: {} as Record<DiscoverySourceKey, number>,
+    totalCollected: 0,
+    uniqueCount: 0,
+    duplicatesRemoved: 0,
+    totals: {
+      importedSeriesCount: base.importedSeriesCount,
+      updatedSeriesCount: base.updatedSeriesCount,
+      importedSeasonCount: base.importedSeasonCount,
+      updatedSeasonCount: base.updatedSeasonCount,
+      importedEpisodeCount: base.importedEpisodeCount,
+      updatedEpisodeCount: base.updatedEpisodeCount
+    },
+    skippedByCadenceCount: 0,
+    errors: base.errors,
+    observability: emptyCoverageObservability()
+  };
+}
+
+/**
+ * Fase 8 — processes (or continues processing) a candidate queue, checkpointing progress
+ * to `CatalogSyncRun.metadata` every `TMDB_COVERAGE_BATCH_SIZE` items so an interruption
+ * never loses more than one batch of work. A single batched existence/cadence lookup
+ * (Fase 12 — no N+1) decides, for every candidate up front, whether it's new, due for a
+ * lightweight update, or not due yet (skipped).
+ */
+async function continueCoverageRun(
+  run: { id: string; startedAt: Date },
+  state: CoverageResumeState,
+  resumed: boolean,
+  cache: SyncCache
+): Promise<CoverageSummary> {
+  const errors = [...state.errors];
+  const totals = { ...state.totals };
+  let skippedByCadenceCount = state.skippedByCadenceCount;
+  let processedCount = state.processedCount;
+  const queue = state.remainingQueue;
+  const batchSize = config.catalogSync.coverageBatchSize;
+
+  const idsToCheck = queue.map((candidate) => candidate.tmdbId);
+  const existingMappings = idsToCheck.length
+    ? await prisma.externalSourceMapping.findMany({
+        where: { source: ExternalSource.TMDB, entityType: ExternalEntityType.SERIES, externalId: { in: idsToCheck } },
+        select: { externalId: true, lastSyncedAt: true, series: { select: { status: true } } }
+      })
+    : [];
+  const existingByTmdbId = new Map<string, { lastSyncedAt: Date | null; status: SeriesLifecycleStatus }>(
+    existingMappings.map((mapping) => [mapping.externalId, { lastSyncedAt: mapping.lastSyncedAt, status: mapping.series.status }])
+  );
+
+  const statsBefore = getTmdbCallStats();
+
+  while (queue.length > 0) {
+    const candidate = queue.shift() as AggregatedCandidate;
+    const existingInfo = existingByTmdbId.get(candidate.tmdbId) ?? null;
+    const label = candidate.item.name ?? candidate.tmdbId;
+
+    try {
+      if (!existingInfo) {
+        const normalized = await fetchFullSeriesFromTmdb(candidate.tmdbId, cache);
+        const { counts } = await upsertNormalizedSeriesWithCounts(normalized);
+        addCounts(totals, counts);
+      } else if (isDueForUpdate(existingInfo.status, existingInfo.lastSyncedAt)) {
+        const [normalized] = normalizeTmdbSeriesList([candidate.item]);
+        const { counts } = await upsertNormalizedSeriesWithCounts(normalized);
+        addCounts(totals, counts);
+      } else {
+        skippedByCadenceCount += 1;
+      }
+    } catch (error) {
+      errors.push({ series: label, message: describeError(error) });
+    }
+
+    processedCount += 1;
+
+    if (processedCount % batchSize === 0 || queue.length === 0) {
+      await persistResumeState(run.id, {
+        remainingQueue: queue,
+        processedCount,
+        perSourceCounts: state.perSourceCounts,
+        totalCollected: state.totalCollected,
+        uniqueCount: state.uniqueCount,
+        duplicatesRemoved: state.duplicatesRemoved,
+        pagesProcessed: state.pagesProcessed,
+        totals,
+        skippedByCadenceCount,
+        errors,
+        cacheHits: state.cacheHits + cache.stats().hits,
+        cacheMisses: state.cacheMisses + cache.stats().misses
+      });
+    }
+  }
+
+  const statsAfter = getTmdbCallStats();
+  const requestCount = statsAfter.requestCount - statsBefore.requestCount;
+  const cacheStats = cache.stats();
+  const totalCacheHits = state.cacheHits + cacheStats.hits;
+  const totalCacheMisses = state.cacheMisses + cacheStats.misses;
+
+  const observability: CoverageObservability = {
+    pagesProcessed: state.pagesProcessed,
+    requestCount,
+    retryCount: statsAfter.retryCount - statsBefore.retryCount,
+    rateLimitHitCount: statsAfter.rateLimitHitCount - statsBefore.rateLimitHitCount,
+    averageRequestMs: requestCount > 0 ? Math.round((statsAfter.totalRequestMs - statsBefore.totalRequestMs) / requestCount) : 0,
+    lightweightUpdateCount: totals.updatedSeriesCount,
+    skippedCount: skippedByCadenceCount,
+    cacheHits: totalCacheHits,
+    cacheMisses: totalCacheMisses,
+    callsSaved: state.duplicatesRemoved + skippedByCadenceCount + totalCacheHits
+  };
+
+  const totalTouched = totals.importedSeriesCount + totals.updatedSeriesCount;
+  const status: CatalogSyncStatus = errors.length === 0 ? "SUCCESS" : totalTouched > 0 ? "PARTIAL" : "FAILED";
+
+  const summary = await finishRun(run.id, "COVERAGE", run.startedAt, status, totals, errors, observability);
+
+  return {
+    runId: summary.runId,
+    status: summary.status,
+    startedAt: summary.startedAt,
+    finishedAt: summary.finishedAt,
+    durationMs: summary.durationMs,
+    resumed,
+    perSourceCounts: state.perSourceCounts,
+    totalCollected: state.totalCollected,
+    uniqueCount: state.uniqueCount,
+    duplicatesRemoved: state.duplicatesRemoved,
+    totals,
+    skippedByCadenceCount,
+    errors,
+    observability
+  };
+}
+
+export type ResumeCoverageResult = { resumed: boolean; summary?: CoverageSummary };
+
+/**
+ * Fase 8 — resumes the most recent interrupted COVERAGE run, if one exists with a
+ * non-empty remaining queue. Never starts new work — that's `syncCoverage`'s job.
+ * `npm run sync:resume` calls this directly; `syncCoverage` also calls it first so a
+ * plain `npm run sync:coverage` continues unfinished work instead of racing it.
+ */
+export async function resumeCoverage(): Promise<ResumeCoverageResult> {
+  const existingRun = await findLatestCoverageRun();
+  const resumeState = extractResumeState(existingRun);
+
+  if (!existingRun || !resumeState || resumeState.remainingQueue.length === 0) {
+    return { resumed: false };
+  }
+
+  const summary = await continueCoverageRun(existingRun, resumeState, true, createSyncCache());
+  return { resumed: true, summary };
+}
+
+/**
+ * Fase 2-9 — the full aggregated coverage sync. Consolidates all six discovery sources
+ * (Fase 2), deduplicates by TMDb id (Fase 3), prioritizes (Fase 4), separates new from
+ * existing series and applies status-based update cadence to existing ones (Fase 5/6),
+ * caches within the run (Fase 7), checkpoints for resumability (Fase 8), and returns
+ * every metric Fase 9/11 asks for.
+ */
+export async function syncCoverage(options: CoverageOptions = {}): Promise<CoverageSummary> {
+  const resumeResult = await resumeCoverage();
+  if (resumeResult.resumed && resumeResult.summary) {
+    return resumeResult.summary;
+  }
+
+  const staleRunningRun = await findLatestCoverageRun();
+  if (staleRunningRun) {
+    return toCoverageSummary(alreadyRunningSummary(staleRunningRun, "COVERAGE"), false);
+  }
+
+  if (!getTmdbCredentials().isConfigured) {
+    const run = await createRun("COVERAGE");
+    return toCoverageSummary(await abortRunUnconfigured(run.id, "COVERAGE", run.startedAt), false);
+  }
+
+  return runCoverageWithSources(buildSourceDefinitions(options));
+}
+
+/**
+ * The actual aggregate→dedupe→prioritize→process pipeline, parameterized over which
+ * source definitions to use. `syncCoverage` calls this with the real TMDb fetchers;
+ * tests call it directly with synthetic `fetchPage` functions to exercise dedup/
+ * priority/cadence/resume against the real database without any network access.
+ */
+export async function runCoverageWithSources(sourceDefs: SourceDefinition[]): Promise<CoverageSummary> {
+  const run = await createRun("COVERAGE");
+  const cache = createSyncCache();
+  const aggregation = await collectCandidates(sourceDefs, cache);
+
+  const initialState: CoverageResumeState = {
+    remainingQueue: aggregation.candidates,
+    processedCount: 0,
+    perSourceCounts: aggregation.perSourceCounts,
+    totalCollected: aggregation.totalCollected,
+    uniqueCount: aggregation.uniqueCount,
+    duplicatesRemoved: aggregation.duplicatesRemoved,
+    pagesProcessed: aggregation.pagesProcessed,
+    totals: emptyCounts(),
+    skippedByCadenceCount: 0,
+    errors: aggregation.errors.map((error) => ({ series: error.source, message: error.message })),
+    cacheHits: cache.stats().hits,
+    cacheMisses: cache.stats().misses
+  };
+
+  await persistResumeState(run.id, initialState);
+
+  return continueCoverageRun(run, initialState, false, cache);
+}
+
+/**
+ * Fase 6 standalone (`npm run sync:update`) — refreshes only the already-catalogued
+ * series that are actually due per their status-based cadence; no new discovery. Unlike
+ * `syncExistingSeriesDetails` (`sync:series`, unchanged), which always fully refreshes
+ * every mapped series, this is the "don't do it if it was just done" smart version.
+ */
+export async function syncUpdateDue(): Promise<CatalogSyncSummary> {
+  const type: CatalogSyncType = "SERIES_DETAILS";
+  const runningRun = await findRunningRun(type);
+  if (runningRun) return alreadyRunningSummary(runningRun, type);
+
+  const run = await createRun(type);
+
+  if (!getTmdbCredentials().isConfigured) {
+    return abortRunUnconfigured(run.id, type, run.startedAt);
+  }
+
+  const mappings = await prisma.externalSourceMapping.findMany({
+    where: { source: "TMDB", entityType: "SERIES" },
+    select: { externalId: true, lastSyncedAt: true, series: { select: { title: true, status: true } } }
+  });
+
+  const counts = emptyCounts();
+  const errors: SyncItemError[] = [];
+  let skippedByCadenceCount = 0;
+  const statsBefore = getTmdbCallStats();
+
+  for (const mapping of mappings) {
+    if (!isDueForUpdate(mapping.series.status, mapping.lastSyncedAt)) {
+      skippedByCadenceCount += 1;
+      continue;
+    }
+    await syncOneSeries(mapping.externalId, mapping.series.title, counts, errors);
+  }
+
+  const statsAfter = getTmdbCallStats();
+  const requestCount = statsAfter.requestCount - statsBefore.requestCount;
+  const observability: CatalogSyncObservability = {
+    pagesProcessed: 0,
+    requestCount,
+    retryCount: statsAfter.retryCount - statsBefore.retryCount,
+    rateLimitHitCount: statsAfter.rateLimitHitCount - statsBefore.rateLimitHitCount,
+    averageRequestMs: requestCount > 0 ? Math.round((statsAfter.totalRequestMs - statsBefore.totalRequestMs) / requestCount) : 0,
+    lightweightUpdateCount: 0,
+    skippedCount: skippedByCadenceCount
+  };
+
+  const status: CatalogSyncStatus = errors.length === 0 ? "SUCCESS" : counts.updatedSeriesCount > 0 ? "PARTIAL" : "FAILED";
+
+  return finishRun(run.id, type, run.startedAt, status, counts, errors, observability);
 }
 
 export { resetTmdbCallStats };

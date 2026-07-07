@@ -30,6 +30,12 @@ const envSchema = z.object({
   TMDB_MIN_VOTE_COUNT: optionalNonEmpty(),
   TMDB_MIN_YEAR: optionalNonEmpty(),
   TMDB_MAX_YEAR: optionalNonEmpty(),
+  TMDB_PRIORITY_WEIGHT_POPULARITY: optionalNonEmpty(),
+  TMDB_PRIORITY_WEIGHT_VOTE_COUNT: optionalNonEmpty(),
+  TMDB_PRIORITY_WEIGHT_VOTE_AVERAGE: optionalNonEmpty(),
+  TMDB_PRIORITY_ON_AIR_BONUS: optionalNonEmpty(),
+  TMDB_PRIORITY_NEW_EPISODE_BONUS: optionalNonEmpty(),
+  TMDB_COVERAGE_BATCH_SIZE: optionalNonEmpty(),
   NEXT_PUBLIC_APP_URL: optionalUrl(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).optional(),
   RATE_LIMIT_ENABLED: optionalNonEmpty(),
@@ -123,7 +129,17 @@ export const config = {
     requestDelayMs: parseNumberFlag(rawEnv.TMDB_REQUEST_DELAY_MS, 250),
     minVoteCount: parseNumberFlag(rawEnv.TMDB_MIN_VOTE_COUNT, 0),
     minYear: parseOptionalNumberFlag(rawEnv.TMDB_MIN_YEAR),
-    maxYear: parseOptionalNumberFlag(rawEnv.TMDB_MAX_YEAR)
+    maxYear: parseOptionalNumberFlag(rawEnv.TMDB_MAX_YEAR),
+    // Fase 4 (INSERIES-TMDB-CATALOG-COVERAGE-01) — priority score = popularity*w + vote_count*w +
+    // vote_average*w + bonuses. Bonuses come from which source(s) a candidate was found in (On The
+    // Air/Airing Today already mean "currently airing"/"has an episode today"), never an extra TMDb call.
+    priorityWeightPopularity: parseNumberFlag(rawEnv.TMDB_PRIORITY_WEIGHT_POPULARITY, 1),
+    priorityWeightVoteCount: parseNumberFlag(rawEnv.TMDB_PRIORITY_WEIGHT_VOTE_COUNT, 0.01),
+    priorityWeightVoteAverage: parseNumberFlag(rawEnv.TMDB_PRIORITY_WEIGHT_VOTE_AVERAGE, 5),
+    priorityOnAirBonus: parseNumberFlag(rawEnv.TMDB_PRIORITY_ON_AIR_BONUS, 20),
+    priorityNewEpisodeBonus: parseNumberFlag(rawEnv.TMDB_PRIORITY_NEW_EPISODE_BONUS, 10),
+    // How many queue items syncCoverage processes between progress checkpoints (Fase 8 resume).
+    coverageBatchSize: Math.max(1, parseNumberFlag(rawEnv.TMDB_COVERAGE_BATCH_SIZE, 25))
   },
   pagination: {
     defaultPageSize: 12,
