@@ -26,7 +26,7 @@ import {
   listNovidades,
   listPremiadas
 } from "@/lib/catalog/smart-lists";
-import { HERO_POOL_SIZE } from "@/lib/catalog/hero-selection";
+import { HERO_MIN_DISCOVERY_SCORE, HERO_POOL_SIZE } from "@/lib/catalog/hero-selection";
 import type { Series } from "@/lib/types";
 import {
   BellIcon,
@@ -186,7 +186,7 @@ function shuffle<T>(items: T[]): T[] {
 export async function LandingPage() {
   const [
     stats,
-    heroQualityPool,
+    heroDiscoveryPool,
     heroPopularFallback,
     maisPopulares,
     maisBemAvaliadas,
@@ -208,7 +208,11 @@ export async function LandingPage() {
     animacao
   ] = await Promise.all([
     getCatalogStats(),
-    searchSeries({ sort: "quality", page: 1, pageSize: HERO_POOL_SIZE }),
+    // Fase 10 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — the Hero now ranks by Discovery
+    // Score (trending-weighted relevance), not Quality Score, so it never spotlights an
+    // obscure-but-complete series. Fallback pool stays plain popularity for catalogs the
+    // Discovery Engine hasn't scored yet.
+    searchSeries({ sort: "discovery", page: 1, pageSize: HERO_POOL_SIZE }),
     searchSeries({ sort: "popular", page: 1, pageSize: HERO_POOL_SIZE }),
     listMaisPopulares(12),
     listMaisBemAvaliadas(12),
@@ -230,8 +234,12 @@ export async function LandingPage() {
     searchSeries({ genre: "Animation", sort: "quality", pageSize: 1 })
   ]);
 
+  // Fase 10 — only series that actually clear the Discovery Score bar qualify; a small or
+  // freshly-scored catalog (fewer than 4 qualifying series) falls back to plain popularity
+  // rather than padding the pool with low-relevance series.
+  const heroQualified = heroDiscoveryPool.items.filter((item) => (item.discoveryScore ?? 0) >= HERO_MIN_DISCOVERY_SCORE);
   // Fase 3 — a fresh shuffle every request/reload; the pool itself never repeats a series.
-  const heroPool = shuffle(heroQualityPool.items.length >= 4 ? heroQualityPool.items : heroPopularFallback.items);
+  const heroPool = shuffle(heroQualified.length >= 4 ? heroQualified : heroPopularFallback.items);
 
   // Typed directly on the literal (not on the .filter() result below) so each object's
   // `variant`/`large` literal types narrow correctly instead of widening to `string`/`boolean`.

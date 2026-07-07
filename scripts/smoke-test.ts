@@ -29,6 +29,10 @@ import { computeCatalogStatistics } from "@/lib/catalog/statistics";
 import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
 import { pickHero } from "@/lib/catalog/hero-selection";
+import { runDiscoveryEngine } from "@/lib/discovery/engine";
+import { computeDiscoveryScore } from "@/lib/discovery/discovery-score";
+import { computeSourceWeightScore, computeStreamingPriorityScore } from "@/lib/discovery/source-weight";
+import { passesDetailBlacklist, passesListItemBlacklist } from "@/lib/discovery/blacklist";
 import type { Series } from "@/lib/types";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
@@ -1286,6 +1290,18 @@ async function main() {
 
   const adminSyncPage = await request(jarAdmin, "/admin/sync");
   check("admin acessa /admin/sync", adminSyncPage.status === 200, adminSyncPage.status);
+  check(
+    "admin (Fase 7) pode disparar o Discovery Engine a partir de /admin/sync",
+    String(adminSyncPage.body).includes("Rodar Discovery Engine"),
+    adminSyncPage.status
+  );
+
+  const adminTriggersDiscovery = await request(jarAdmin, "/api/admin/sync/discovery", { method: "POST" });
+  check(
+    "admin dispara o Discovery Engine; sem TMDB key retorna erro amigavel (nao quebra)",
+    adminTriggersDiscovery.status === 200 && Boolean(adminTriggersDiscovery.body?.summary),
+    adminTriggersDiscovery.body
+  );
 
   const userTriesTriggerSync = await request(jarA, "/api/admin/sync/popular", { method: "POST" });
   check("usuario comum nao pode disparar sync (403)", userTriesTriggerSync.status === 403, userTriesTriggerSync.body);
@@ -1751,6 +1767,91 @@ async function main() {
     updateDueAbort
   );
 
+  // ---- Discovery Engine (INSERIES-TRENDING-DISCOVERY-ENGINE-01) ----
+  const discoveryEngineAbort = await runDiscoveryEngine();
+  const discoveryEngineAbortRun = await prisma.catalogSyncRun.findUnique({ where: { id: discoveryEngineAbort.runId } });
+  check(
+    "discovery:run aborta com erro amigavel sem TMDB key (nao quebra)",
+    discoveryEngineAbort.status === "FAILED" &&
+      discoveryEngineAbortRun?.type === "DISCOVERY_ENGINE" &&
+      Boolean(discoveryEngineAbortRun?.errorMessage?.includes("TMDb nao configurado")),
+    { discoveryEngineAbort, errorMessage: discoveryEngineAbortRun?.errorMessage }
+  );
+
+  const sourceWeightHighSignal = computeSourceWeightScore(
+    ["TRENDING", "ON_THE_AIR"],
+    [
+      { key: "TRENDING", pages: 1, weight: 0.4, fetchPage: async () => [] },
+      { key: "ON_THE_AIR", pages: 1, weight: 0.25, fetchPage: async () => [] },
+      { key: "POPULAR_SERIES", pages: 1, weight: 0.15, fetchPage: async () => [] },
+      { key: "TOP_RATED", pages: 1, weight: 0.1, fetchPage: async () => [] },
+      { key: "DISCOVER", pages: 1, weight: 0.1, fetchPage: async () => [] }
+    ]
+  );
+  const sourceWeightLowSignal = computeSourceWeightScore(
+    ["DISCOVER"],
+    [
+      { key: "TRENDING", pages: 1, weight: 0.4, fetchPage: async () => [] },
+      { key: "DISCOVER", pages: 1, weight: 0.1, fetchPage: async () => [] }
+    ]
+  );
+  check(
+    "Discovery Engine (Fase 2): serie em Trending+On The Air pontua mais que serie so em Discover, ambas 0-1",
+    sourceWeightHighSignal > sourceWeightLowSignal && sourceWeightHighSignal <= 1 && sourceWeightLowSignal <= 1,
+    { sourceWeightHighSignal, sourceWeightLowSignal }
+  );
+
+  check(
+    "Discovery Engine (Fase 4): streaming prioritario (Netflix) pontua 1, streaming fora da lista pontua 0",
+    computeStreamingPriorityScore(["Netflix"]) === 1 && computeStreamingPriorityScore(["Servico Obscuro XPTO"]) === 0,
+    { netflix: computeStreamingPriorityScore(["Netflix"]), obscuro: computeStreamingPriorityScore(["Servico Obscuro XPTO"]) }
+  );
+
+  const blacklistLowVotes = passesListItemBlacklist({ id: 1, name: "obscura", vote_count: 5, vote_average: 8 });
+  check(
+    "Discovery Engine (Fase 5): serie com poucos votos e barrada pela blacklist",
+    blacklistLowVotes.passes === false,
+    blacklistLowVotes
+  );
+  const blacklistGoodItem = passesListItemBlacklist({ id: 2, name: "relevante", vote_count: 5000, vote_average: 8 });
+  check("Discovery Engine (Fase 5): serie relevante (muitos votos, boa nota) passa na blacklist", blacklistGoodItem.passes === true, blacklistGoodItem);
+
+  const discoveryScoreHigh = computeDiscoveryScore({
+    sourceWeightScore: 1,
+    popularity: 180,
+    voteAverage: 9,
+    voteCount: 5000,
+    firstAirYear: new Date().getFullYear(),
+    status: "RETURNING",
+    watchProviders: ["Netflix"],
+    numberOfSeasons: 4,
+    numberOfEpisodes: 40,
+    posterUrl: "x",
+    backdropUrl: "x",
+    collectionTagsCount: 3,
+    qualityScore: 95
+  });
+  const discoveryScoreLow = computeDiscoveryScore({
+    sourceWeightScore: 0,
+    popularity: 0,
+    voteAverage: 0,
+    voteCount: 0,
+    firstAirYear: 1990,
+    status: "CANCELED",
+    watchProviders: [],
+    numberOfSeasons: 0,
+    numberOfEpisodes: 0,
+    posterUrl: null,
+    backdropUrl: null,
+    collectionTagsCount: 0,
+    qualityScore: 0
+  });
+  check(
+    "Discovery Score (Fase 3): serie trending/relevante pontua muito mais que serie irrelevante, ambas 0-100",
+    discoveryScoreHigh > discoveryScoreLow && discoveryScoreHigh <= 100 && discoveryScoreLow >= 0,
+    { discoveryScoreHigh, discoveryScoreLow }
+  );
+
   // ---- Catalogo editorial de qualidade (INSERIES-TMDB-CATALOG-QUALITY-01): score, curadoria, ----
   // ---- providers, logos/keywords, collection tags, estatisticas e listas inteligentes ----
   const qualityFixtureId = Date.now();
@@ -1885,6 +1986,13 @@ async function main() {
   const verdictGood = passesDetailCuration(buildNormalizedSeries("good"));
   check("curadoria (Fase 3): serie completa (imagens, sinopse, episodios) e aprovada", verdictGood.passes === true, verdictGood);
 
+  const blacklistNoBackdrop = passesDetailBlacklist(buildNormalizedSeries("blacklist-no-backdrop", { backdropUrl: "" }));
+  check(
+    "Discovery Engine (Fase 5): serie sem backdrop e barrada pela blacklist (detail level)",
+    blacklistNoBackdrop.passes === false,
+    blacklistNoBackdrop
+  );
+
   check(
     "curadoria (Fase 3) item de lista: com o filtro desligado (TMDB_MIN_VOTE_AVERAGE=0 por padrao), tudo passa",
     passesListItemCuration({ id: 1, name: "x", vote_average: 0 }).passes === true,
@@ -1981,6 +2089,11 @@ async function main() {
   check(
     "Catalogo inteligente (Fase 10): listas derivadas (Minisséries/Mais Bem Avaliadas) contam a serie recem-persistida",
     smartListCounts.MINISSERIES > 0 && smartListCounts.MAIS_BEM_AVALIADAS > 0,
+    smartListCounts
+  );
+  check(
+    "Trending Collections (Fase 6): Bombando Agora/Top 100/Top 250 contam series com Discovery Score persistido",
+    smartListCounts.BOMBANDO_AGORA > 0 && smartListCounts.TOP_100 > 0 && smartListCounts.TOP_250 > 0,
     smartListCounts
   );
 
@@ -2214,6 +2327,11 @@ async function main() {
   );
 
   check(
+    "Dashboard (Fase 9): secao Bombando Agora alimentada pelo Discovery Engine (nunca Popular diretamente)",
+    dashboardAuth.status === 200 && String(dashboardAuth.body).includes("Bombando Agora") && String(dashboardAuth.body).includes("sort=discovery"),
+    dashboardAuth.status
+  );
+  check(
     "Dashboard autenticado usa imagens reais do catalogo (posteres nos cards)",
     dashboardAuth.status === 200 && String(dashboardAuth.body).includes("poster.svg"),
     dashboardAuth.status
@@ -2260,8 +2378,17 @@ async function main() {
   const lowQualityFixture = buildSeriesFixture({ id: "low", qualityScore: 10 });
   const noScoreFixture = buildSeriesFixture({ id: "none" });
 
+  // INSERIES-TRENDING-DISCOVERY-ENGINE-01 — pickHero now gates on discoveryScore first.
+  const highDiscoveryFixture = buildSeriesFixture({ id: "high-discovery", discoveryScore: 90 });
+  const lowDiscoveryFixture = buildSeriesFixture({ id: "low-discovery", discoveryScore: 10 });
+
   check(
-    "Hero (Fase 2): Quality Score evita destacar serie de baixa qualidade quando ha opcao melhor no pool",
+    "Hero (Fase 10): Discovery Score evita destacar serie irrelevante quando ha opcao melhor no pool",
+    pickHero([lowDiscoveryFixture, highDiscoveryFixture], [lowDiscoveryFixture])?.id === "high-discovery",
+    { picked: pickHero([lowDiscoveryFixture, highDiscoveryFixture], [lowDiscoveryFixture])?.id }
+  );
+  check(
+    "Hero (Fase 10): sem discoveryScore em nenhuma serie, cai para Quality Score",
     pickHero([lowQualityFixture, highQualityFixture], [lowQualityFixture])?.id === "high",
     { picked: pickHero([lowQualityFixture, highQualityFixture], [lowQualityFixture])?.id }
   );

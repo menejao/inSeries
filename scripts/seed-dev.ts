@@ -3,6 +3,7 @@ import { canUseDatabase } from "@/lib/db/health";
 import { seedInitialSystemSettings } from "@/lib/system-settings/service";
 import { computeQualityScore } from "@/lib/catalog/quality-score";
 import { deriveCollectionTags } from "@/lib/catalog/collection-tags";
+import { computeDiscoveryScore } from "@/lib/discovery/discovery-score";
 
 type EpisodeSeed = {
   number: number;
@@ -57,6 +58,13 @@ type SeriesSeed = {
   productionCountries: string[];
   tagline: string | null;
   homepage: string | null;
+  // INSERIES-TRENDING-DISCOVERY-ENGINE-01 — stands in for the sourceWeightScore the real
+  // Discovery Engine (lib/discovery/engine.ts) would compute from which weighted TMDb
+  // sources (Trending/On The Air/...) actually surfaced this series. This local dev
+  // catalog is never processed by the real engine (no TMDb network access), so this is a
+  // hand-picked plausibility value — everything else about the score is the real formula
+  // (lib/discovery/discovery-score.ts), never a hand-picked discoveryScore itself.
+  sourceWeightScore: number;
 };
 
 function buildEpisodes(seasonNumber: number, stillUrl?: string): EpisodeSeed[] {
@@ -138,6 +146,7 @@ const seriesSeeds: SeriesSeed[] = [
     productionCountries: ["Estados Unidos"],
     tagline: "Todos tem um papel.",
     homepage: "https://example.com/serie-teste-um",
+    sourceWeightScore: 0.9,
     seasons: [
       {
         number: 1,
@@ -192,6 +201,7 @@ const seriesSeeds: SeriesSeed[] = [
     productionCountries: ["Brasil"],
     tagline: "Uma temporada, para sempre.",
     homepage: null,
+    sourceWeightScore: 0.3,
     seasons: [
       {
         number: 1,
@@ -238,6 +248,7 @@ const seriesSeeds: SeriesSeed[] = [
     productionCountries: ["Reino Unido"],
     tagline: null,
     homepage: null,
+    sourceWeightScore: 0,
     seasons: [
       {
         number: 1,
@@ -277,6 +288,7 @@ const seriesSeeds: SeriesSeed[] = [
     productionCountries: ["Estados Unidos"],
     tagline: null,
     homepage: null,
+    sourceWeightScore: 0.5,
     seasons: []
   },
   {
@@ -308,6 +320,7 @@ const seriesSeeds: SeriesSeed[] = [
     productionCountries: [],
     tagline: null,
     homepage: null,
+    sourceWeightScore: 0,
     seasons: []
   }
 ];
@@ -343,6 +356,24 @@ async function seedSeries(seed: SeriesSeed) {
     voteCount: seed.voteCount
   });
 
+  // INSERIES-TRENDING-DISCOVERY-ENGINE-01 — same real formula lib/discovery/engine.ts
+  // persists for TMDb-discovered series (see seed.sourceWeightScore's doc comment above).
+  const discoveryScore = computeDiscoveryScore({
+    sourceWeightScore: seed.sourceWeightScore,
+    popularity: seed.popularityScore,
+    voteAverage: seed.voteAverage,
+    voteCount: seed.voteCount,
+    firstAirYear: seed.firstAirYear,
+    status: seed.status,
+    watchProviders: seed.watchProviders,
+    numberOfSeasons: seed.numberOfSeasons,
+    numberOfEpisodes: seed.numberOfEpisodes,
+    posterUrl: seed.posterUrl,
+    backdropUrl: seed.backdropUrl,
+    collectionTagsCount: collectionTags.length,
+    qualityScore
+  });
+
   const enrichedFields = {
     voteCount: seed.voteCount,
     numberOfSeasons: seed.numberOfSeasons,
@@ -360,7 +391,8 @@ async function seedSeries(seed: SeriesSeed) {
     tagline: seed.tagline,
     homepage: seed.homepage,
     qualityScore,
-    collectionTags
+    collectionTags,
+    discoveryScore
   };
 
   const series = await prisma.series.upsert({

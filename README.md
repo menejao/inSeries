@@ -1571,6 +1571,248 @@ Ao mover a largura variavel do carrossel "Em Alta" (`large`) de uma classe Tailw
 - Sandbox sem acesso de rede real ao TMDb (como toda sprint anterior) — a validacao usa o catalogo local (`seed-dev.ts`) com Quality Score/Collection Tags calculados pelas funcoes reais do pipeline; o comportamento com o catalogo real de producao (milhares de series, mais diversidade de generos/tags) nao foi validado aqui
 - Nenhuma regra de negocio, autenticacao, fluxo de cadastro, sincronizacao TMDb, permissao ou schema foi alterada — a sprint e estritamente visual/experiencia sobre a Landing publica
 
+## Discovery Engine — descoberta editorial inteligente (INSERIES-TRENDING-DISCOVERY-ENGINE-01)
+
+Sprint focada em resolver um problema concreto: o catalogo importava qualquer serie que
+passasse por filtros fracos (ou nenhum filtro), fazendo com que series obscuras, com poucos
+votos ou irrelevantes competissem por espaco no mesmo nivel de titulos como The Last of Us
+ou Severance. Esta sprint nao adiciona mais fontes de importacao — adiciona um motor que
+**ranqueia e filtra** o que ja era coletado, decidindo o que realmente entra na fila e o
+quanto cada serie deve ser destacada. Nenhuma regra de negocio, autenticacao, usuario, lista,
+progresso ou pipeline existente foi alterada — toda a implementacao e aditiva.
+
+### Fase 1 — Auditoria do mecanismo de ranking atual
+
+Antes de qualquer codigo, o pipeline existente (`lib/catalog/aggregator.ts`,
+`lib/catalog/sync.ts`, `lib/catalog/curation.ts`, `lib/config/index.ts`) foi auditado:
+
+- **Por que series desconhecidas continuavam entrando**: `TMDB_MIN_VOTE_COUNT` (filtro de
+  qualidade do pipeline de descoberta) tem default **0** (desligado). `TMDB_MIN_VOTE_AVERAGE`
+  (usado pela curadoria automatica, `lib/catalog/curation.ts`) tambem tem default **0**
+  (desligado). A curadoria automatica so bloqueia series sem poster/backdrop/overview,
+  pilotos abandonados ha muito tempo ou com zero episodios — uma serie completa,
+  bem-formada, mas com 5 votos e nota irrelevante **passa por todos os filtros existentes**.
+- **Peso da popularidade**: `priorityScore` (`lib/catalog/aggregator.ts`) usa
+  `popularity * 1 + vote_count * 0.01 + vote_average * 5`, mais bonus de +20 se a serie
+  aparece em On The Air/Airing Today e +10 se aparece em Airing Today. Esse score, no
+  entanto, **so decide a ordem de processamento da fila** dentro de `syncCoverage` — nao
+  decide se a serie entra ou nao. Toda serie que passa pelo filtro fraco de qualidade acima
+  e importada, nao importa o quao baixo seja seu `priorityScore`.
+- **Peso do Trending**: nenhum. `TRENDING` era so mais uma das 6 fontes agregadas
+  igualmente por `collectCandidates` — nao contribuia sequer para os bonus de
+  `priorityScore` (so On The Air/Airing Today contribuiam). Uma serie realmente "bombando"
+  no TMDb Trending nao tinha nenhuma vantagem sobre uma serie obscura encontrada via
+  Discover.
+- **Peso dos Providers**: nenhum no ranking. Presenca de streaming providers so influenciava
+  o Quality Score editorial (`lib/catalog/quality-score.ts`, peso 0.75 de 14 sinais) — nunca
+  a decisao de quais series priorizar ou destacar.
+- **Peso do Discover**: o Discover ordena por `popularity.desc`, mas e a fonte com maior
+  superficie de catalogo (qualquer genero/status/idioma) sem nenhum filtro de relevancia
+  proprio alem dos filtros globais fracos acima — contribuia com o maior volume de series
+  de cauda longa.
+- **Conclusao da auditoria**: o catalogo nunca teve um mecanismo dedicado de **descoberta**
+  (o que e relevante agora) separado do mecanismo de **qualidade editorial** (o quao completo
+  e o metadado). Faltava (a) pesos por fonte, (b) um score proprio para relevancia de
+  descoberta, (c) prioridade real para streamings populares no ranking, e (d) uma blacklist
+  com defaults efetivamente restritivos.
+
+### Fase 2 — Discovery Engine (`lib/discovery/engine.ts`)
+
+Um motor unico e novo (nao substitui `syncCoverage`/`syncPopularSeries`/etc., que continuam
+existindo e funcionando exatamente como antes) responsavel por decidir **quais series entram
+na fila** e em que ordem:
+
+1. Coleta candidatos via `TmdbDiscoveryProvider` (`lib/discovery/providers/tmdb-provider.ts`),
+   que expõe 5 fontes ponderadas — reaproveita `collectCandidates`
+   (`lib/catalog/aggregator.ts`, inalterado) e o `SyncCache`/rate limiter existentes.
+2. Filtra pela blacklist em nivel de item de lista (`passesListItemBlacklist`, Fase 5).
+3. Calcula o `sourceWeightScore` de cada candidato (`computeSourceWeightScore`,
+   `lib/discovery/source-weight.ts`) — soma normalizada (0-1) dos pesos das fontes que
+   encontraram aquela serie.
+4. Reordena a fila por `sourceWeightScore` (desempate pelo `priorityScore` ja existente).
+5. Processa apenas o **top N** (`config.discoveryEngine.maxCandidatesPerRun`, default 100) —
+   "o objetivo nao e importar mais series, e importar as series certas".
+6. Para cada candidato processado: busca detalhes completos (reaproveita
+   `fetchFullSeriesFromTmdb`, exportado de `lib/catalog/sync.ts` sem nenhuma alteracao de
+   comportamento), aplica a blacklist em nivel de detalhe (Fase 5), faz upsert (reaproveita
+   `upsertNormalizedSeriesWithCounts`, `lib/catalog/repository.ts`, tambem inalterado) e
+   persiste o Discovery Score (Fase 3) numa chamada `update` dedicada e isolada — nunca
+   dentro do upsert compartilhado, para o pipeline antigo continuar 100% intacto.
+
+Pesos por fonte (Fase 2, `config.discoveryEngine.sourceWeights`, normalizados entre si):
+
+| Fonte | Peso padrao | Env var |
+|---|---|---|
+| Trending | 0.40 | `DISCOVERY_SOURCE_WEIGHT_TRENDING` |
+| On The Air | 0.25 | `DISCOVERY_SOURCE_WEIGHT_ON_THE_AIR` |
+| Popular | 0.15 | `DISCOVERY_SOURCE_WEIGHT_POPULAR` |
+| Top Rated | 0.10 | `DISCOVERY_SOURCE_WEIGHT_TOP_RATED` |
+| Discover | 0.10 | `DISCOVERY_SOURCE_WEIGHT_DISCOVER` |
+
+### Fase 3 — Premium Discovery Score (`lib/discovery/discovery-score.ts`)
+
+Um score 0-100 novo e persistido (`Series.discoveryScore`), distinto do `qualityScore`
+(mede completude editorial). O Discovery Score mede **relevancia de descoberta agora**:
+soma ponderada normalizada (mesmo formato do Quality Score) de: trending (sourceWeightScore),
+popularidade, vote_average, vote_count, recencia, status, presenca em streaming prioritario
+(Fase 4), temporadas, episodios, presenca de backdrop/poster, quantidade de Collection Tags
+e o proprio Quality Score (como mais um sinal, nunca reaproveitado sozinho — pedido explicito
+do ticket). Pesos em `config.discoveryEngine.scoreWeights`, todos configuraveis via env
+(`DISCOVERY_SCORE_WEIGHT_*`). `discoveryScore` fica `null` para series nunca processadas pelo
+Discovery Engine (ex.: catalogo seedado localmente antes da primeira execucao).
+
+### Fase 4 — Streamings prioritarios
+
+`config.discoveryEngine.streamingPriorityList` (env `DISCOVERY_STREAMING_PRIORITY_LIST`,
+lista separada por virgulas) define quais streamings dao bonus no Discovery Score:
+Netflix, Max, Prime Video, Disney+, Apple TV+, Paramount+, Hulu, Peacock, Crunchyroll,
+Globoplay (default). `computeStreamingPriorityScore` (`lib/discovery/source-weight.ts`)
+retorna 1 se a serie estiver disponivel em qualquer streaming da lista, 0 caso contrario —
+alimenta o sinal `providers` do Discovery Score.
+
+### Fase 5 — Blacklist inteligente (`lib/discovery/blacklist.ts`)
+
+Filtros dedicados e config-driven do proprio Discovery Engine, deliberadamente separados de
+`lib/catalog/curation.ts` (que continua gating `syncPopularSeries`/`syncCoverage`/etc. do
+jeito que sempre gatingou — "nao alterar pipeline ja existente"). Defaults desta blacklist
+sao propositalmente restritivos (diferente dos defaults de `catalogQuality.curation`, que sao
+0/desligados) — e o ponto central desta sprint:
+
+| Filtro | Default | Env var |
+|---|---|---|
+| Habilitado | `true` | `DISCOVERY_BLACKLIST_ENABLED` |
+| Votos minimos | 100 | `DISCOVERY_BLACKLIST_MIN_VOTE_COUNT` |
+| Nota minima | 5.5 | `DISCOVERY_BLACKLIST_MIN_VOTE_AVERAGE` |
+| Exige poster | `true` | `DISCOVERY_BLACKLIST_REQUIRE_POSTER` |
+| Exige backdrop | `true` | `DISCOVERY_BLACKLIST_REQUIRE_BACKDROP` |
+| Exige overview | `true` | `DISCOVERY_BLACKLIST_REQUIRE_OVERVIEW` |
+| Exige episodios | `true` | `DISCOVERY_BLACKLIST_REQUIRE_EPISODES` |
+| Idade maxima de piloto abandonado | 365 dias | `DISCOVERY_BLACKLIST_MAX_PILOT_AGE_DAYS` |
+
+Dois niveis, mesmo formato de `curation.ts`: `passesListItemBlacklist` (campos baratos do
+item de lista, antes de qualquer fetch completo) e `passesDetailBlacklist` (serie normalizada
+completa, antes do upsert).
+
+### Fase 6 — Trending Collections (`lib/catalog/smart-lists.ts`)
+
+Novas listas editoriais, todas derivadas de `discoveryScore` (nunca de popularidade bruta
+diretamente):
+
+| Lista | Funcao | Criterio |
+|---|---|---|
+| Bombando Agora | `listBombandoAgora` | `discoveryScore` desc |
+| Mais Assistidas | `listMaisAssistidas` | popularidade desc, entre as com Discovery Score >= 40 |
+| Mais Comentadas | `listMaisComentadas` (reaproveitada) | vote_count desc |
+| Em Alta nos Streamings | `listEmAltaNosStreamings` | streaming prioritario + `discoveryScore` desc |
+| Lancamentos | `listLancamentos` | ultimo ano + `discoveryScore` desc |
+| Premiadas | `listPremiadas` (reaproveitada) | tag "Premiada" |
+| Imperdiveis | `listImperdiveis` | `discoveryScore` >= 70 **e** `qualityScore` >= 70 |
+| Maratonas | `listMaratonas` (reaproveitada) | tag "Maratona" |
+| Top 100 / Top 250 | `listTop100` / `listTop250` | `discoveryScore` desc, limite 100/250 |
+
+`LANCAMENTOS` usa uma janela relativa ao ano atual (`where` como funcao, avaliada a cada
+chamada — nunca congelada no carregamento do modulo).
+
+### Fase 7 — Atualizacao frequente, sem reprocessar o catalogo inteiro
+
+`npm run discovery:run` (`scripts/discovery-run.ts`) roda **so** o Discovery Engine —
+nao entra em `syncFullCatalog`/`syncCoverage`. Pensado para rodar diariamente (cron externo)
+sem reprocessar o catalogo inteiro: o `maxCandidatesPerRun` (default 100) mantem cada
+execucao bounded, e a blacklist/ranking evitam refazer trabalho em series irrelevantes.
+Tambem disponivel no workspace admin (`/admin/sync`, botao "Rodar Discovery Engine") via
+`POST /api/admin/sync/discovery`.
+
+### Fase 8 — Preparacao para Trakt (sem implementar Trakt)
+
+`lib/discovery/providers/types.ts` define a interface `DiscoveryProvider`
+(`buildWeightedSources`) que qualquer backend de descoberta deve satisfazer.
+`TmdbDiscoveryProvider` (`lib/discovery/providers/tmdb-provider.ts`) e a unica
+implementacao desta sprint. Um futuro `TraktDiscoveryProvider` buscaria das listas
+trending/popular/anticipated do Trakt, normalizaria para o mesmo formato de candidato
+(`TmdbListSeriesItem`-like) e se conectaria aqui sem o Discovery Engine
+(`lib/discovery/engine.ts`) mudar nada — `runDiscoveryEngine({ provider })` ja aceita
+qualquer implementacao da interface. Nenhuma integracao real com Trakt foi feita, como
+pedido explicitamente pelo ticket.
+
+### Fase 9 — Dashboard: "🔥 Bombando Agora"
+
+Novo card em `components/dashboard/dashboard-home.tsx`, alimentado exclusivamente por
+`listBombandoAgora` (Discovery Score) — nunca por `listMaisPopulares` ou qualquer lista de
+popularidade bruta. Link "Ver tudo" leva a `/series?sort=discovery` (novo `SeriesSortOption`
+em `lib/discovery/search.ts`, aditivo).
+
+### Fase 10 — Landing: Hero usa Discovery Score
+
+`lib/catalog/hero-selection.ts`: `pickHero` agora prioriza `discoveryScore` (bar
+`HERO_MIN_DISCOVERY_SCORE = 55`) em vez de `qualityScore`. Fallback em dois niveis: se
+nenhuma serie do pool tem `discoveryScore` (Discovery Engine nunca rodou), cai para o
+criterio antigo de `qualityScore`; se nenhuma qualifica por nenhum dos dois, cai para
+popularidade pura — o Hero nunca fica vazio. `components/landing/landing-page.tsx` busca o
+pool via `searchSeries({ sort: "discovery", ... })` e so usa esse pool se pelo menos 4
+series realmente cruzarem a barra do Discovery Score; caso contrario usa o fallback de
+popularidade inteiro (nunca mistura series abaixo da barra so para completar 4).
+
+### Fase 11 — Observabilidade
+
+`runDiscoveryEngine` retorna e persiste em `CatalogSyncRun.metadata.observability`:
+quantidade de candidatos coletados/ranqueados, quantos foram descartados e por qual motivo
+(`discardReasons`, um mapa motivo→contagem), quantos ficaram de fora so por ranking
+(`skippedByRankCount`), Discovery Score medio e Trending Score medio dos processados,
+quantas series tinham providers encontrados, e as chamadas TMDb/retries/rate-limit-hits do
+run. `scripts/_shared/print-discovery-report.ts` imprime tudo isso no CLI (`discovery:run`),
+incluindo um snapshot de `computeCatalogStatistics()` (top status/streamings/categorias/
+paises/idiomas) — reaproveitado sem alteracao. Como toda `CatalogSyncRun`, aparece
+automaticamente em `/admin/sync` e em `npm run sync:stats` (ambos genericos por `type`, sem
+qualquer alteracao de codigo).
+
+### Fase 12 — Performance preservada
+
+Nenhum arquivo do pipeline existente foi reescrito. `lib/catalog/sync.ts` teve apenas uma
+palavra `export` adicionada (para reaproveitar `fetchFullSeriesFromTmdb` sem duplicar
+logica) — zero mudanca de comportamento. `lib/catalog/aggregator.ts`, `curation.ts`,
+`update-policy.ts`, `sync-cache.ts` e `quality-score.ts` nao foram tocados. O Discovery
+Engine reaproveita o mesmo `SyncCache`/rate limiter/retry — nenhum mecanismo novo de rede.
+O update de `discoveryScore` e uma chamada extra por serie processada, sempre limitada por
+`maxCandidatesPerRun` (nunca proporcional ao tamanho do catalogo) — sem N+1.
+
+### Decisoes arquiteturais
+
+- **Discovery Score nunca substitui Quality Score.** Sao dois scores 0-100 persistidos
+  separadamente, com formulas e pesos distintos, medindo coisas diferentes (relevancia de
+  descoberta vs. completude editorial). O ticket foi explicito: "Nao reutilizar apenas o
+  Quality Score."
+- **Blacklist do Discovery Engine e separada da curadoria existente** (`curation.ts`).
+  A curadoria continua gating a importacao no pipeline antigo exatamente como antes; a
+  blacklist so afeta o que o Discovery Engine processa/destaca. Isso significa que uma
+  serie pode existir no catalogo (importada pelo `sync:coverage` antigo) sem nunca aparecer
+  em Bombando Agora/Hero/Top 100 se nunca passar pelo Discovery Engine ou nao atingir a
+  blacklist dele.
+- **`discoveryScore` persistido via `update` isolado, nunca dentro do upsert
+  compartilhado** (`upsertNormalizedSeriesWithCounts`). Preserva 100% o comportamento do
+  pipeline antigo (que nunca soube de `discoveryScore`) e mantem o "blast radius" da mudanca
+  restrito ao codigo novo.
+- **`maxCandidatesPerRun` (default 100) e o mecanismo central que resolve "importar as
+  series certas, nao mais series".** Sem esse cap, ranquear e filtrar nao teriam efeito
+  pratico sobre volume.
+- **Seed local (`seed:dev`) passou a computar `discoveryScore` com a formula real**
+  (`computeDiscoveryScore`), usando um `sourceWeightScore` hipotetico por serie fixa (nunca
+  um `discoveryScore` inventado a dedo) — mesma disciplina ja usada para `qualityScore`/
+  `collectionTags` desde a sprint QUALITY-01, necessaria porque este sandbox nao tem acesso
+  de rede ao TMDb para rodar o Discovery Engine de verdade.
+
+### Limitacoes atuais
+
+- Sem acesso de rede real ao TMDb neste sandbox, o Discovery Engine nunca rodou contra a
+  API real — validado via testes unitarios das funcoes puras (`computeSourceWeightScore`,
+  `computeStreamingPriorityScore`, `computeDiscoveryScore`, blacklist) e via o fluxo de
+  abort amigavel ("TMDb nao configurado"), no mesmo padrao ja estabelecido para
+  `sync:coverage`/`sync:update`.
+  - Se quiser rodar em producao com Trakt no futuro, a Fase 8 ja deixou a interface
+  `DiscoveryProvider` pronta — falta so implementar `TraktDiscoveryProvider` e passa-lo a
+  `runDiscoveryEngine({ provider })`.
+- `maxCandidatesPerRun`, os pesos de fonte/score e a lista de streamings prioritarios sao
+  constantes/env vars documentadas, nao uma tela de configuracao dinamica no admin.
+
 ## Comandos
 
 - `npm install`: instala dependencias
@@ -1582,6 +1824,7 @@ Ao mover a largura variavel do carrossel "Em Alta" (`large`) de uma classe Tailw
 - `npm run seed:catalog`: executa seed do catalogo real via TMDb (opcional)
 - `npm run sync:popular [paginas]`: sincroniza series populares do TMDb (idempotente, registra `CatalogSyncRun`)
 - `npm run sync:series`: sincroniza detalhes/temporadas/episodios das series ja catalogadas
+- `npm run discovery:run`: roda o Discovery Engine (Trending/On The Air/Popular/Top Rated/Discover, ponderados, com blacklist e ranking) — ver secao "Discovery Engine" abaixo
 - `npm run notifications:episodes`: gera notificacoes `NEW_EPISODE_AVAILABLE` para quem acompanha series com episodios ja lancados (idempotente, nao ha cron real ainda)
 - `npm run dev`: sobe ambiente local
 - `npm run smoke:test`: roda o smoke test HTTP do fluxo principal

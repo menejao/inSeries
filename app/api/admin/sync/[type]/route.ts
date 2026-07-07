@@ -2,12 +2,17 @@ import { NextResponse } from "next/server";
 import { getAdminApiUser } from "@/lib/admin/rbac";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { syncExistingSeriesDetails, syncPopularSeries } from "@/lib/catalog/sync";
+import { runDiscoveryEngine } from "@/lib/discovery/engine";
 import { withApiObservability } from "@/lib/http/api-handler";
 import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 
 const SYNC_HANDLERS = {
   popular: () => syncPopularSeries({ pages: 1 }),
-  existing: () => syncExistingSeriesDetails()
+  existing: () => syncExistingSeriesDetails(),
+  // Fase 7/11 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — lets an admin trigger the Discovery
+  // Engine on demand (or via an external cron hitting this same route), without touching
+  // the two handlers above.
+  discovery: () => runDiscoveryEngine()
 } as const;
 
 type SyncTypeParam = keyof typeof SYNC_HANDLERS;

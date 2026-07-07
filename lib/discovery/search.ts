@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { mockSeries } from "@/lib/catalog/mock-data";
 import type { Series } from "@/lib/types";
 
-export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality";
+export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality" | "discovery";
 
 /**
  * Fase 8 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — tag/provider/country/language
@@ -80,6 +80,7 @@ export function toSeriesSummary(model: {
   popularityScore: number | null;
   voteAverage: number | null;
   qualityScore: number | null;
+  discoveryScore: number | null;
   collectionTags: string[];
   watchProviders: string[];
   keywords: string[];
@@ -112,6 +113,7 @@ export function toSeriesSummary(model: {
     backdropUrl: model.backdropUrl ?? "",
     voteAverage: model.voteAverage,
     qualityScore: model.qualityScore,
+    discoveryScore: model.discoveryScore,
     collectionTags: model.collectionTags,
     watchProviders: model.watchProviders,
     keywords: model.keywords,
@@ -141,6 +143,9 @@ function buildOrderBy(sort?: SeriesSortOption): Prisma.SeriesOrderByWithRelation
       return [{ voteAverage: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     case "quality":
       return [{ qualityScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
+    // Fase 9/10 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — "Ver tudo" from Bombando Agora/Hero.
+    case "discovery":
+      return [{ discoveryScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     case "popular":
     default:
       return [{ popularityScore: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }];

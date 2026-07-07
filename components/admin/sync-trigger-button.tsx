@@ -6,7 +6,15 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
-export function SyncTriggerButton({ type, label, confirmMessage }: { type: "popular" | "existing"; label: string; confirmMessage: string }) {
+export function SyncTriggerButton({
+  type,
+  label,
+  confirmMessage
+}: {
+  type: "popular" | "existing" | "discovery";
+  label: string;
+  confirmMessage: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);

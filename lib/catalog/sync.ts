@@ -246,7 +246,8 @@ function passesQualityFilters(item: TmdbListSeriesItem): boolean {
  * Fase 7 (INSERIES-TMDB-CATALOG-COVERAGE-01) — an optional session cache memoizes the
  * details/season calls; every existing caller keeps working unchanged (cache is opt-in).
  */
-async function fetchFullSeriesFromTmdb(tmdbId: string | number, cache?: SyncCache) {
+/** Exported for lib/discovery/engine.ts (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — reused as-is, never duplicated. */
+export async function fetchFullSeriesFromTmdb(tmdbId: string | number, cache?: SyncCache) {
   const details = cache
     ? await cache.getOrFetchSeriesDetails(tmdbId, () => fetchTmdbSeriesDetails(tmdbId))
     : await fetchTmdbSeriesDetails(tmdbId);

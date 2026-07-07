@@ -29,6 +29,11 @@ export default async function AdminSyncPage() {
           label="Sincronizar series existentes"
           confirmMessage="Iniciar atualizacao das series ja catalogadas agora?"
         />
+        <SyncTriggerButton
+          type="discovery"
+          label="Rodar Discovery Engine"
+          confirmMessage="Rodar o Discovery Engine agora? Ranqueia e importa apenas as series mais relevantes (Trending/On The Air/Popular/Top Rated/Discover, com blacklist e limite por execucao)."
+        />
       </Card>
 
       {runs.length === 0 ? (

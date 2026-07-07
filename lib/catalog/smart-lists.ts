@@ -19,6 +19,16 @@ import type { Series } from "@/lib/types";
 const DEFAULT_LIMIT = 20;
 const MIN_VOTES_FOR_RATED = 20;
 
+// Fase 6 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — thresholds for the new Discovery-Score-
+// powered collections, same "local documented constant, not a magic number" treatment as
+// MIN_VOTES_FOR_RATED above (these are judgment calls specific to this sprint's editorial
+// framing, not knobs an operator needs to retune — unlike config.discoveryEngine.*, which
+// controls the score/blacklist computation itself).
+const MIN_DISCOVERY_FOR_ASSISTIDAS = 40;
+const MIN_DISCOVERY_FOR_IMPERDIVEIS = 70;
+const MIN_QUALITY_FOR_IMPERDIVEIS = 70;
+const LANCAMENTOS_WINDOW_YEARS = 1;
+
 export type SmartListKey =
   | "MAIS_POPULARES"
   | "MAIS_BEM_AVALIADAS"
@@ -32,12 +42,24 @@ export type SmartListKey =
   | "EM_ALTA"
   | "MAIS_COMENTADAS"
   | "BASEADAS_EM_LIVROS"
-  | "PREMIADAS";
+  | "PREMIADAS"
+  | "BOMBANDO_AGORA"
+  | "MAIS_ASSISTIDAS"
+  | "EM_ALTA_NOS_STREAMINGS"
+  | "LANCAMENTOS"
+  | "IMPERDIVEIS"
+  | "TOP_100"
+  | "TOP_250";
 
 type SmartListDefinition = {
-  where?: Prisma.SeriesWhereInput;
+  /** A function instead of a plain object when the filter depends on "now" (e.g. LANCAMENTOS' rolling year window) — evaluated fresh on every call, never frozen at module load. */
+  where?: Prisma.SeriesWhereInput | (() => Prisma.SeriesWhereInput);
   orderBy: Prisma.SeriesOrderByWithRelationInput | Prisma.SeriesOrderByWithRelationInput[];
 };
+
+function resolveWhere(definition: SmartListDefinition): Prisma.SeriesWhereInput | undefined {
+  return typeof definition.where === "function" ? definition.where() : definition.where;
+}
 
 const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
   MAIS_POPULARES: { orderBy: { popularityScore: "desc" } },
@@ -55,11 +77,35 @@ const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
   EM_ALTA: { where: { collectionTags: { has: "Em Alta" } }, orderBy: { popularityScore: "desc" } },
   MAIS_COMENTADAS: { orderBy: { voteCount: "desc" } },
   BASEADAS_EM_LIVROS: { where: { collectionTags: { has: "Baseada em Livro" } }, orderBy: { qualityScore: "desc" } },
-  PREMIADAS: { where: { collectionTags: { has: "Premiada" } }, orderBy: { voteAverage: "desc" } }
+  PREMIADAS: { where: { collectionTags: { has: "Premiada" } }, orderBy: { voteAverage: "desc" } },
+  // Fase 6 — Trending Collections, all derived from `discoveryScore` (persisted by
+  // lib/discovery/engine.ts), never from Popular directly (Fase 9's own requirement).
+  // A series with discoveryScore null was never processed by the Discovery Engine yet
+  // (e.g. seeded/imported only by the old pipeline) and is excluded from every list here.
+  BOMBANDO_AGORA: { where: { discoveryScore: { not: null } }, orderBy: { discoveryScore: "desc" } },
+  MAIS_ASSISTIDAS: {
+    where: { discoveryScore: { gte: MIN_DISCOVERY_FOR_ASSISTIDAS } },
+    orderBy: [{ popularityScore: "desc" }, { discoveryScore: "desc" }]
+  },
+  EM_ALTA_NOS_STREAMINGS: {
+    where: { discoveryScore: { not: null }, watchProviders: { hasSome: config.discoveryEngine.streamingPriorityList } },
+    orderBy: { discoveryScore: "desc" }
+  },
+  LANCAMENTOS: {
+    where: () => ({ discoveryScore: { not: null }, firstAirYear: { gte: new Date().getFullYear() - LANCAMENTOS_WINDOW_YEARS } }),
+    orderBy: [{ firstAirYear: "desc" }, { discoveryScore: "desc" }]
+  },
+  IMPERDIVEIS: {
+    where: { discoveryScore: { gte: MIN_DISCOVERY_FOR_IMPERDIVEIS }, qualityScore: { gte: MIN_QUALITY_FOR_IMPERDIVEIS } },
+    orderBy: { discoveryScore: "desc" }
+  },
+  TOP_100: { where: { discoveryScore: { not: null } }, orderBy: { discoveryScore: "desc" } },
+  TOP_250: { where: { discoveryScore: { not: null } }, orderBy: { discoveryScore: "desc" } }
 };
 
 async function fetchSmartList(key: SmartListKey, limit: number): Promise<Series[]> {
-  const { where, orderBy } = SMART_LISTS[key];
+  const { orderBy } = SMART_LISTS[key];
+  const where = resolveWhere(SMART_LISTS[key]);
   const rows = await prisma.series.findMany({ where, orderBy, take: limit });
   return rows.map(toSeriesSummary);
 }
@@ -77,6 +123,13 @@ export const listEmAlta = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_ALTA", l
 export const listMaisComentadas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_COMENTADAS", limit);
 export const listBaseadasEmLivros = (limit = DEFAULT_LIMIT) => fetchSmartList("BASEADAS_EM_LIVROS", limit);
 export const listPremiadas = (limit = DEFAULT_LIMIT) => fetchSmartList("PREMIADAS", limit);
+export const listBombandoAgora = (limit = DEFAULT_LIMIT) => fetchSmartList("BOMBANDO_AGORA", limit);
+export const listMaisAssistidas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_ASSISTIDAS", limit);
+export const listEmAltaNosStreamings = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_ALTA_NOS_STREAMINGS", limit);
+export const listLancamentos = (limit = DEFAULT_LIMIT) => fetchSmartList("LANCAMENTOS", limit);
+export const listImperdiveis = (limit = DEFAULT_LIMIT) => fetchSmartList("IMPERDIVEIS", limit);
+export const listTop100 = (limit = 100) => fetchSmartList("TOP_100", limit);
+export const listTop250 = (limit = 250) => fetchSmartList("TOP_250", limit);
 
 /**
  * Fase 9/12 — how many series currently qualify for each smart list, for the sync report
@@ -85,6 +138,6 @@ export const listPremiadas = (limit = DEFAULT_LIMIT) => fetchSmartList("PREMIADA
  */
 export async function computeSmartListCounts(): Promise<Record<SmartListKey, number>> {
   const keys = Object.keys(SMART_LISTS) as SmartListKey[];
-  const counts = await Promise.all(keys.map((key) => prisma.series.count({ where: SMART_LISTS[key].where })));
+  const counts = await Promise.all(keys.map((key) => prisma.series.count({ where: resolveWhere(SMART_LISTS[key]) })));
   return Object.fromEntries(keys.map((key, index) => [key, counts[index]])) as Record<SmartListKey, number>;
 }

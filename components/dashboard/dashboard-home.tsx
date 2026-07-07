@@ -6,12 +6,14 @@ import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card
 import { RecommendationCard } from "@/components/recommendations/recommendation-card";
 import { LevelProgressCard } from "@/components/achievements/level-progress-card";
 import { ActivityCard } from "@/components/feed/activity-card";
+import { SeriesPosterCard } from "@/components/media/series-poster-card";
 import {
   BellIcon,
   CalendarIcon,
   ChartIcon,
   CompassIcon,
   FilmIcon,
+  FlameIcon,
   PlayIcon,
   SparklesIcon,
   TrophyIcon
@@ -24,6 +26,7 @@ import { getUserAchievementsOverview } from "@/lib/gamification";
 import { listAvailableRecaps } from "@/lib/recap";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { listNotifications, countUnreadNotifications } from "@/lib/notifications/service";
+import { listBombandoAgora } from "@/lib/catalog/smart-lists";
 import { formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -35,7 +38,7 @@ import type { User } from "@prisma/client";
 export async function DashboardHome({ user }: { user: Pick<User, "id" | "name"> }) {
   const currentYear = new Date().getUTCFullYear();
 
-  const [watchNext, upcoming, recommendations, stats, achievements, recapAvailability, activity, notifications, unreadCount] =
+  const [watchNext, upcoming, recommendations, stats, achievements, recapAvailability, activity, notifications, unreadCount, bombandoAgora] =
     await Promise.all([
       getWatchNextForUser(user.id, { limit: 4 }),
       getUpcomingEpisodesForUser(user.id, 3),
@@ -45,7 +48,10 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name"> 
       listAvailableRecaps(user.id),
       getRecentActivityForUser(user.id, 3),
       listNotifications(user.id, 3),
-      countUnreadNotifications(user.id)
+      countUnreadNotifications(user.id),
+      // Fase 9 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — alimentada exclusivamente pelo
+      // Discovery Engine (discoveryScore), nunca por popularidade bruta diretamente.
+      listBombandoAgora(6)
     ]);
 
   const currentYearRecap = recapAvailability.enabled ? recapAvailability.availability.years.find((y) => y.year === currentYear) : undefined;
@@ -69,6 +75,18 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name"> 
             </div>
           ) : (
             <EmptyPlaceholder text={watchNext.hasTrackedSeries ? "Voce esta em dia com suas series." : "Voce ainda nao segue nenhuma serie."} />
+          )}
+        </DashboardCard>
+
+        <DashboardCard icon={FlameIcon} title="🔥 Bombando Agora" href="/series?sort=discovery">
+          {bombandoAgora.length ? (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+              {bombandoAgora.map((series) => (
+                <SeriesPosterCard key={series.id} series={series} variant="rating" />
+              ))}
+            </div>
+          ) : (
+            <EmptyPlaceholder text="O Discovery Engine ainda nao rankeou series suficientes. Rode npm run discovery:run." />
           )}
         </DashboardCard>
 

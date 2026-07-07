@@ -61,6 +61,7 @@ enum CatalogSyncType {
   TRENDING
   CATALOG_FULL
   COVERAGE
+  DISCOVERY_ENGINE
 }
 
 enum CatalogSyncStatus {
@@ -177,6 +178,11 @@ model Series {
   watchProviders      String[]                @default([])
   collectionTags      String[]                @default([])
   type                String?
+  // Fase 3 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — the Premium Discovery Score (0-100):
+  // a distinct signal from qualityScore above, weighted towards *discovery* relevance
+  // (trending presence, streaming priority, recency) rather than editorial completeness.
+  // Computed by lib/discovery/discovery-score.ts, persisted by lib/discovery/engine.ts.
+  discoveryScore      Float?
   seasons             Season[]
   reviews             Review[]
   ratings             Rating[]
@@ -193,6 +199,7 @@ model Series {
   @@index([popularityScore])
   @@index([voteAverage])
   @@index([qualityScore])
+  @@index([discoveryScore])
   @@index([title])
 }
 

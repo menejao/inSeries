@@ -43,6 +43,11 @@ export type Series = {
   // catalog pipeline (see lib/catalog/quality-score.ts, collection-tags.ts, normalize.ts),
   // now exposed to the UI for the first time. All additive; no sync/pipeline logic changed.
   qualityScore?: number | null;
+  // INSERIES-TRENDING-DISCOVERY-ENGINE-01 — Premium Discovery Score (see
+  // lib/discovery/discovery-score.ts), distinct from qualityScore above: null for series
+  // never processed by the Discovery Engine yet (e.g. seeded/imported only by the old
+  // pipeline).
+  discoveryScore?: number | null;
   collectionTags: string[];
   watchProviders: string[];
   keywords: string[];

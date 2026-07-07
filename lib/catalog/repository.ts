@@ -32,6 +32,7 @@ export function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons
     backdropUrl: model.backdropUrl ?? "",
     voteAverage: model.voteAverage ?? null,
     qualityScore: model.qualityScore ?? null,
+    discoveryScore: model.discoveryScore ?? null,
     collectionTags: model.collectionTags,
     watchProviders: model.watchProviders,
     keywords: model.keywords,

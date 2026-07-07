@@ -26,6 +26,7 @@
     "sync:resume": "tsx scripts/sync-resume.ts",
     "sync:coverage": "tsx scripts/sync-coverage.ts",
     "sync:stats": "tsx scripts/sync-stats.ts",
+    "discovery:run": "tsx scripts/discovery-run.ts",
     "notifications:episodes": "tsx scripts/notify-new-episodes.ts",
     "smoke:test": "tsx scripts/smoke-test.ts"
   },
