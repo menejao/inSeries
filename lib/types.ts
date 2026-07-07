@@ -56,6 +56,12 @@ export type Series = {
   productionCountries: string[];
   tagline?: string | null;
   homepage?: string | null;
+  // INSERIES-LANDING-CINEMATIC-IMMERSION-01 — TMDb-reported totals (distinct from
+  // `seasons.length`/episode counts derived from locally-imported rows, which can lag
+  // behind for a series whose seasons/episodes haven't been fully synced yet). Used by the
+  // "Maratonas" carousel to show real season/episode counts without waiting on that sync.
+  numberOfSeasons?: number | null;
+  numberOfEpisodes?: number | null;
 };
 
 export type UserProfile = {

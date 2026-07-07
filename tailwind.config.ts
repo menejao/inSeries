@@ -83,14 +83,19 @@ const config: Config = {
         "fade-in-up": { from: { opacity: "0", transform: "translateY(6px)" }, to: { opacity: "1", transform: "translateY(0)" } },
         "scale-in": { from: { opacity: "0", transform: "scale(0.96)" }, to: { opacity: "1", transform: "scale(1)" } },
         "slide-up": { from: { transform: "translateY(100%)" }, to: { transform: "translateY(0)" } },
-        shimmer: { from: { backgroundPosition: "0% 0" }, to: { backgroundPosition: "-200% 0" } }
+        shimmer: { from: { backgroundPosition: "0% 0" }, to: { backgroundPosition: "-200% 0" } },
+        // Fase 13 (INSERIES-LANDING-CINEMATIC-IMMERSION-01) — a very slow, subtle zoom on
+        // the Hero's active backdrop ("parallax leve"). Long duration + `alternate` so it
+        // reads as ambient motion, never a distracting effect.
+        kenburns: { from: { transform: "scale(1)" }, to: { transform: "scale(1.08)" } }
       },
       animation: {
         "fade-in": "fade-in 0.15s ease-out",
         "fade-in-up": "fade-in-up 0.2s ease-out",
         "scale-in": "scale-in 0.15s ease-out",
         "slide-up": "slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)",
-        shimmer: "shimmer 1.6s linear infinite"
+        shimmer: "shimmer 1.6s linear infinite",
+        kenburns: "kenburns 20s ease-in-out infinite alternate"
       }
     }
   },

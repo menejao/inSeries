@@ -93,6 +93,8 @@ export function toSeriesSummary(model: {
   productionCountries: string[];
   tagline: string | null;
   homepage: string | null;
+  numberOfSeasons: number | null;
+  numberOfEpisodes: number | null;
 }): Series {
   return {
     id: model.id,
@@ -123,6 +125,8 @@ export function toSeriesSummary(model: {
     productionCountries: model.productionCountries,
     tagline: model.tagline,
     homepage: model.homepage,
+    numberOfSeasons: model.numberOfSeasons,
+    numberOfEpisodes: model.numberOfEpisodes,
     seasons: []
   };
 }

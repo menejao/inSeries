@@ -46,6 +46,21 @@ export function Carousel({ children, className }: PropsWithChildren<{ className?
   );
 }
 
-export function CarouselItem({ children, className }: PropsWithChildren<{ className?: string }>) {
-  return <div className={cn("w-40 shrink-0 snap-start sm:w-44 lg:w-48", className)}>{children}</div>;
+/**
+ * Fase 8 (INSERIES-LANDING-CINEMATIC-IMMERSION-01) — `size="large"` widens the tile for
+ * carousels that want "poster grande" (e.g. "Em Alta"). A dedicated prop (not a className
+ * override) so the width classes are always mutually exclusive — `cn()` here is plain
+ * `clsx` with no Tailwind-conflict dedup, so two competing `w-*` utilities from an
+ * overridden className could both end up in the compiled CSS with unpredictable precedence.
+ */
+export function CarouselItem({
+  children,
+  className,
+  size = "default"
+}: PropsWithChildren<{ className?: string; size?: "default" | "large" }>) {
+  return (
+    <div className={cn(size === "large" ? "w-48 sm:w-56 lg:w-64" : "w-40 sm:w-44 lg:w-48", "shrink-0 snap-start", className)}>
+      {children}
+    </div>
+  );
 }

@@ -45,6 +45,8 @@ export function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons
     productionCountries: model.productionCountries,
     tagline: model.tagline ?? null,
     homepage: model.homepage ?? null,
+    numberOfSeasons: model.numberOfSeasons ?? null,
+    numberOfEpisodes: model.numberOfEpisodes ?? null,
     seasons: model.seasons
       .sort((a, b) => a.number - b.number)
       .map((season) => ({

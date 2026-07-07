@@ -29,6 +29,7 @@ export function PosterImage({
   imageClassName
 }: ImageBoxProps) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const showFallback = !src || failed;
 
   return (
@@ -36,15 +37,22 @@ export function PosterImage({
       {showFallback ? (
         <ImageFallback label={alt} className={imageClassName} />
       ) : (
-        <Image
-          src={src as string}
-          alt={alt}
-          fill
-          sizes={sizes}
-          priority={priority}
-          className={cn("object-cover", imageClassName)}
-          onError={() => setFailed(true)}
-        />
+        <>
+          {/* Fase 15 (INSERIES-LANDING-CINEMATIC-IMMERSION-01) — shimmer placeholder while a remote TMDb image loads, never a blank/jarring pop-in. Fade-in lives on this wrapper (not merged into imageClassName) so it never fights a consumer's own hover/zoom transition on the <Image> itself. */}
+          {!loaded ? <div className="skeleton-shimmer absolute inset-0 animate-shimmer" aria-hidden="true" /> : null}
+          <div className={cn("absolute inset-0 transition-opacity duration-500", loaded ? "opacity-100" : "opacity-0")}>
+            <Image
+              src={src as string}
+              alt={alt}
+              fill
+              sizes={sizes}
+              priority={priority}
+              className={cn("object-cover", imageClassName)}
+              onLoad={() => setLoaded(true)}
+              onError={() => setFailed(true)}
+            />
+          </div>
+        </>
       )}
     </div>
   );
@@ -59,6 +67,7 @@ export function BackdropImage({
   imageClassName
 }: ImageBoxProps) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const showFallback = !src || failed;
 
   return (
@@ -66,15 +75,21 @@ export function BackdropImage({
       {showFallback ? (
         <ImageFallback label={alt} large className={imageClassName} />
       ) : (
-        <Image
-          src={src as string}
-          alt={alt}
-          fill
-          sizes={sizes}
-          priority={priority}
-          className={cn("object-cover", imageClassName)}
-          onError={() => setFailed(true)}
-        />
+        <>
+          {!loaded ? <div className="skeleton-shimmer absolute inset-0 animate-shimmer" aria-hidden="true" /> : null}
+          <div className={cn("absolute inset-0 transition-opacity duration-500", loaded ? "opacity-100" : "opacity-0")}>
+            <Image
+              src={src as string}
+              alt={alt}
+              fill
+              sizes={sizes}
+              priority={priority}
+              className={cn("object-cover", imageClassName)}
+              onLoad={() => setLoaded(true)}
+              onError={() => setFailed(true)}
+            />
+          </div>
+        </>
       )}
     </div>
   );
