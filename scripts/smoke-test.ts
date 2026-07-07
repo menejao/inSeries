@@ -2138,7 +2138,7 @@ async function main() {
   // ---- Experiencia cinematografica: Hero, carrosseis, posters/backdrops reais, stills ----
   check(
     "Landing possui Hero cinematografico (backdrop real, Quality Score considerado na selecao)",
-    String(landingAnon.body).includes("Em destaque:") &&
+    String(landingAnon.body).includes("Em destaque no catalogo inSeries") &&
       String(landingAnon.body).includes("dev-media") &&
       String(landingAnon.body).includes("backdrop.svg"),
     landingAnon.status
@@ -2148,6 +2148,52 @@ async function main() {
     String(landingAnon.body).includes("Mais Populares") &&
       String(landingAnon.body).includes("Novidades") &&
       String(landingAnon.body).includes("Mais Bem Avaliadas"),
+    landingAnon.status
+  );
+
+  // ---- INSERIES-LANDING-CINEMATIC-IMMERSION-01: Hero full-bleed, navbar overlay, ----
+  // ---- carrosseis diferenciados, banners cinematograficos, colecoes editoriais ----
+  check(
+    "Hero (Fase 2) ocupa a largura total e entre 95-100vh, sem aparencia de card",
+    String(landingAnon.body).includes("min-h-[95dvh]") && String(landingAnon.body).includes("-mx-[50vw] -mt-24 w-screen"),
+    landingAnon.status
+  );
+  check(
+    "Navbar (Fase 5) e fixa e transparente sobre o Hero, com transicao para solido no scroll",
+    String(landingAnon.body).includes("fixed inset-x-0 top-0") && String(landingAnon.body).includes("transition-colors duration-300"),
+    landingAnon.status
+  );
+  check(
+    "Hero (Fase 3) tem indicador de rotacao entre series (nunca fixo)",
+    String(landingAnon.body).includes('role="tablist"'),
+    landingAnon.status
+  );
+  check(
+    "Banners cinematograficos (Fase 7) usam backdrop real e linkam para a serie",
+    String(landingAnon.body).includes("Serie da Semana") &&
+      String(landingAnon.body).includes("Mais Comentada") &&
+      String(landingAnon.body).includes("Vale a Maratona") &&
+      String(landingAnon.body).includes("Escolha da Comunidade"),
+    landingAnon.status
+  );
+  check(
+    "Carrosseis diferenciados (Fase 8): badge NOVO e colecao completa aparecem",
+    String(landingAnon.body).includes("NOVO") && String(landingAnon.body).includes("Colecao completa"),
+    landingAnon.status
+  );
+  check(
+    "Colecoes editoriais (Fase 10) renderizam a partir de generos/tags existentes",
+    String(landingAnon.body).includes("Descubra por tema"),
+    landingAnon.status
+  );
+  check(
+    "Landing usa backdrops de forma intensiva (Fase 11)",
+    countOccurrences(String(landingAnon.body), "backdrop.svg") >= 10,
+    countOccurrences(String(landingAnon.body), "backdrop.svg")
+  );
+  check(
+    "Estatisticas (Fase 12) nao aparecem mais como blocos de dashboard na primeira dobra",
+    !String(landingAnon.body).includes('rounded-3xl border border-border bg-surface-strong/50 p-4 text-center'),
     landingAnon.status
   );
 

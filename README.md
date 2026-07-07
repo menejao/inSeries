@@ -1462,6 +1462,115 @@ O TMDb retorna, para cada provedor, tanto o nome quanto um `logo_path`. O pipeli
 - Sandbox sem acesso de rede real ao TMDb (como toda sprint anterior): a validacao usa `seed-dev.ts`, agora computando `qualityScore`/`collectionTags` com as mesmas funcoes reais do pipeline (`computeQualityScore`/`deriveCollectionTags`) em vez de numeros inventados — garante que a demonstracao local é honesta com a formula real, mas o caminho end-to-end com dados reais do TMDb nao pode ser validado aqui
 - Nenhuma regra de negocio, autenticacao, sincronizacao, pipeline, permissao ou schema foi alterada — a sprint e estritamente sobre conectar dados ja existentes a interface
 
+## Landing cinematografica (INSERIES-LANDING-CINEMATIC-IMMERSION-01)
+
+A sprint anterior conectou os metadados enriquecidos (Quality Score, Collection Tags, Providers, logos) a interface. Esta sprint transforma a **experiencia visual** da Landing publica em torno desses mesmos dados — sem video, sem autoplay, usando exclusivamente imagens reais (backdrop/poster/logo) ja sincronizadas do TMDb. Nenhuma regra de negocio, autenticacao, fluxo de cadastro, schema ou permissao foi alterada.
+
+### Auditoria visual (Fase 1) — o que a Landing anterior tinha
+
+- Hero era um card com bordas arredondadas e container centralizado (`-mx-4 sm:mx-0 sm:rounded-4xl sm:border`), nunca full-bleed, sempre fixo na serie mais popular (sem rotacao)
+- Header era um Server Component estatico, sem overlay, sem transparencia, sem reacao a scroll — so mais um bloco no topo da pagina
+- 10 carrosseis em sequencia direta, todos com o mesmo layout de card — "Hero, Cards, Cards, Cards, Cards..." sem ritmo, sem banners, sem grid intercalado
+- Estatisticas do catalogo apareciam logo abaixo do Hero como 4 caixas com borda — a primeira coisa que o visitante via depois do Hero era, na pratica, um widget de admin/dashboard
+- Quase todo o uso de imagem era poster (retrato); backdrop so aparecia no Hero e no header da pagina da serie
+
+### Hero Full Screen e Dinamico (Fase 2/3/4) — `components/landing/cinematic-hero.tsx`
+
+O Hero agora ocupa `min-h-[95dvh]` no mobile e `100dvh` no desktop, **full-bleed** (100vw, sem bordas, sem container centralizado) — a mesma tecnica de qualquer plataforma de streaming. Tecnicamente: a Landing quebra o container `max-w-7xl` do `LandingShell` com `relative left-1/2 right-1/2 -mx-[50vw] w-screen` (uma tecnica CSS padrao de "full-bleed a partir de um container limitado", contida por `overflow-x-clip` no shell para nunca criar scroll horizontal).
+
+`CinematicHero` (Client Component) rotaciona automaticamente a cada 18s (dentro da janela de 15-20s pedida) entre um pool de series de alta qualidade (mesmo criterio de Quality Score da sprint anterior — `HERO_MIN_QUALITY_SCORE`), **embaralhado no servidor a cada request/reload** (`Math.random()`, nunca no cliente — sem esse cuidado haveria mismatch de hidratacao entre o HTML do servidor e o primeiro render do cliente). Isso satisfaz os dois requisitos ao mesmo tempo: o pool nunca repete uma serie dentro de si mesmo, e cada atualizacao de pagina mostra uma ordem/serie inicial diferente.
+
+- **Sem flickering**: apenas duas camadas de backdrop existem no DOM a qualquer momento — a ativa (`opacity-100`) e a proxima (`opacity-0`, invisivel mas ja carregando — "preload da proxima imagem"). Quando o timer avança, a camada que era "proxima" so troca de classe (mesmo `key`, React reconcilia no lugar em vez de remontar), e uma nova "proxima" e montada por tras
+- **Pausa no hover**: `onMouseEnter`/`onMouseLeave` no container inteiro pausam o `setInterval`
+- **Indicador de rotacao**: pontos clicaveis (`role="tablist"`) permitem navegacao manual, sempre visiveis (nao escondidos atras de hover — funcionam em touch tambem)
+- **Parallax leve**: a camada de backdrop ativa recebe um zoom lento (`animate-kenburns`, 20s, `scale(1)` -> `scale(1.08)`) — puramente decorativo, respeita `prefers-reduced-motion` (ja tratado globalmente em `app/globals.css`)
+
+### Destaque Premium (Fase 4) — o que o Hero mostra por serie
+
+Para a serie em rotacao: status, tipo (categoria — `type`, ex. "Miniseries"), ano, nota, Quality Score, generos, sinopse, Collection Tags e providers (reaproveitando os componentes da sprint anterior), alem do logo oficial no lugar do titulo em texto quando existe (`SeriesLogoOrTitle`, sprint anterior — nunca duplicado). O logo/marca do proprio inSeries nao aparece mais dentro do Hero: como o header fixo ja mostra a marca sobreposta em todas as paginas, repeti-la dentro do Hero seria informacao duplicada.
+
+### Navegacao Transparente (Fase 5) — `components/layout/landing-header.tsx`
+
+O header publico virou Client Component: `fixed inset-x-0 top-0 z-50`, transparente por padrao, com `useEffect` + listener de scroll (`passive: true`) que aplica um fundo solido (`bg-canvas/85 backdrop-blur-md border-b`) apos 60px de scroll, com `transition-colors duration-300` para a troca ser suave, nunca abrupta. Por ser `fixed` (removido do fluxo normal), `LandingShell` foi ajustado para compensar: o antigo `pt-4` virou `pt-24`, garantindo que toda pagina publica que **nao** e a Landing (login, registro, catalogo, pagina da serie) continue com espaco correto abaixo do header fixo — so a Landing cancela esse `pt-24` com `-mt-24` no wrapper do Hero, reclamando o viewport inteiro.
+
+### Ritmo Visual (Fase 6) — nova sequencia da Landing
+
+A sequencia deixou de ser "Hero, Cards x10" e passou a alternar: Hero → Carrossel → Banner cinematografico → Carrosseis → Banner → Carrosseis → Banner → **Grid de Colecoes** → Banner → Estatisticas (discretas) → Beneficios/Recursos/Depoimentos/FAQ → CTA final. Nem toda lista inteligente virou um carrossel dedicado — para a Landing "respirar", cinco delas (Minisseries, Curtas, Baseadas em Livros, Premiadas, Longa Duracao) foram consolidadas na grade de Colecoes Editoriais (Fase 10) em vez de mais cinco carrosseis identicos.
+
+### Banners Cinematograficos (Fase 7) — `components/landing/cinematic-banner.tsx`
+
+Quatro banners horizontais entre os carrosseis, cada um com um backdrop real de fundo e linkando direto para a serie: **Serie da Semana** (mais popular), **Mais Comentada** (mais votos — `listMaisComentadas`, sprint anterior, nunca usada na UI ate agora), **Vale a Maratona** (de `listMaratonas`) e **Escolha da Comunidade** (de `listPremiadas`/`listMaisBemAvaliadas`). Cada banner deliberadamente escolhe uma serie diferente dos outros banners/do Hero quando possivel (`.find` com exclusao por id), para nao repetir a mesma capa varias vezes seguidas.
+
+### Carrosseis Diferenciados (Fase 8) — `SeriesPosterCard` ganhou `variant`
+
+| Carrossel | Variant | O que muda |
+|---|---|---|
+| Em Alta | `large` (via `CarouselItem size="large"`) | Poster maior (`w-48 sm:w-56 lg:w-64` em vez de `w-40 sm:w-44 lg:w-48`) |
+| Mais Bem Avaliadas | `rating` | Nota em destaque (badge maior, centralizado) |
+| Novidades | `new` | Badge "NOVO" |
+| Maratonas | `episodes` | Temporadas/episodios no hover |
+| Em Exibicao | `status` | Badge de status sempre visivel (nao so no hover) |
+| Finalizadas | `collection` | Badge "Colecao completa" |
+| Mais Populares (demais) | `default` | Comportamento original |
+
+`CarouselItem` ganhou uma prop `size` dedicada (`"default" | "large"`) em vez de aceitar uma classe de largura arbitraria via `className` — evita que duas classes `w-*` conflitantes (a padrao do componente + uma sobrescrita) coexistam no DOM sem uma resolucao previsivel (o util `cn()` deste projeto e so `clsx`, sem dedupe de utilitarios Tailwind conflitantes).
+
+### Cards Premium (Fase 9)
+
+Hover mais sofisticado em toda `SeriesPosterCard`/`SeriesCard`: gradiente mais forte, escala da imagem maior (`scale-110` em vez de `scale-105`), elevacao (`-translate-y-1.5`), generos revelados no hover (informacao extra sem poluir em repouso), tudo com timing mais lento/suave (`duration-300`/`duration-500`).
+
+### Colecoes Editoriais (Fase 10) — grid, nao mais carrosseis
+
+Dez tiles (`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`), cada um um backdrop real + titulo, linkando para um filtro de descoberta **ja existente** — nenhuma regra nova:
+
+- 5 via Collection Tags ja existentes: Minisseries, Series Curtas, Indicadas ao Emmy (reaproveita a tag "Premiada" — TMDb nao expoe premios reais, mesma decisao documentada na sprint QUALITY-01), Baseadas em Livros, Longa Duracao
+- 5 via genero (`searchSeries({ genre })`, mecanismo ja existente desde a sprint anterior): Sci-Fi, Drama, Suspense, Fantasia, Animacoes
+
+Cada tile so aparece se houver pelo menos uma serie correspondente no catalogo (nunca uma colecao vazia).
+
+### Uso Intensivo de Backdrops (Fase 11)
+
+Backdrop passou a ser a imagem dominante da Landing: Hero (rotativo), os 4 banners cinematograficos e os 10 tiles de colecoes usam backdrop — o poster continua reservado aos carrosseis (onde o formato retrato faz mais sentido para "folhear" varias series). O total de `<img>` de backdrop na Landing saltou de 1 (so o Hero) para dezenas por carregamento de pagina.
+
+### Remocao do Aspecto Administrativo (Fase 12)
+
+O bloco de estatisticas (series/episodios/usuarios/reviews) saiu da primeira dobra (logo abaixo do Hero) e foi reposicionado logo antes da secao "Por que inSeries", bem mais abaixo na pagina. Alem de mudar de lugar, mudou de forma: as 4 caixas com borda (`rounded-3xl border ... p-4`, visual de widget/dashboard) viraram uma faixa inline discreta (`flex flex-wrap justify-center gap-x-10 border-y border-border/60 py-8 text-center`) — os numeros continuam la (nada foi removido), mas nao competem mais com o catalogo pela atencao do visitante na primeira dobra.
+
+### Microinteracoes (Fase 13) — `components/media/scroll-reveal.tsx`
+
+`ScrollReveal` envolve cada secao abaixo do Hero (carrosseis, banners, colecoes, beneficios, recursos, depoimentos, FAQ, CTA final) com um `IntersectionObserver`: a secao nasce com `opacity-0 translate-y-4` e anima para `opacity-100 translate-y-0` (reaproveitando o mesmo timing de transicao do resto do design system) na primeira vez que entra no viewport — nunca de novo depois disso (o observer se desconecta apos revelar). O conteudo sempre existe no HTML enviado pelo servidor (nada e escondido de crawlers/no-JS); so a animacao de entrada e progressiva. `prefers-reduced-motion` ja colapsa toda transicao globalmente, entao a acessibilidade vem de graca.
+
+### Mobile Premium (Fase 14)
+
+- Hero usa `min-h-[95dvh]` (unidade de viewport dinamica, ajusta a altura real disponivel descontando a barra de endereco do navegador movel — mais confiavel que `vh` puro em iOS/Android)
+- Header fixo mantem `safe-pt` (`env(safe-area-inset-top)`) para nao colidir com notch/ilha dinamica
+- Carrossel ja era touch-friendly (scroll nativo com `snap-x snap-mandatory`, sprint anterior) — sem mudanca necessaria
+- Tipografia do Hero escala de `text-4xl` (mobile) ate `text-7xl` (desktop) via classes responsivas
+
+### Performance (Fase 15)
+
+- **Shimmer/blur placeholder**: `PosterImage`/`BackdropImage` agora mostram um `skeleton-shimmer` (reaproveita a mesma animacao dos componentes `Skeleton*` existentes) atras da imagem ate o evento `onLoad` disparar, com fade-in de opacidade (`transition-opacity duration-500`) na propria imagem — nunca mais um "pop-in" abrupto. O fade fica num wrapper `<div>` proprio (nao misturado a `imageClassName`) para nunca competir com uma transicao de hover/zoom que o consumidor do componente ja tenha (ex.: `group-hover:scale-110`) — duas classes `transition-*` conflitantes no mesmo elemento tem resolucao imprevisivel sem `tailwind-merge`
+- **`priority` so acima da dobra**: a primeira imagem do Hero (`index === 0`) e os 4 primeiros posteres do primeiro carrossel continuam com `priority`; todo o resto (banners, colecoes, carrosseis seguintes) carrega sob demanda (comportamento padrao do `next/image`, nunca forcado a eager)
+- **Sem N+1 novo**: os 4 banners e 10 tiles de colecao reaproveitam arrays ja buscados (`maisPopulares[0]`, `maratonas[0]`, etc.) ou usam consultas ja bounded por `pageSize`/`take` (as 5 buscas por genero para os tiles, `pageSize: 1` cada) — nenhuma consulta proporcional ao tamanho do catalogo
+- **Bundle**: `/` (Landing) foi de um Server Component quase sem JS proprio para ~4.9kB de JS de rota (Hero rotativo + header com scroll listener + scroll-reveal) — o First Load JS total (`~120kB`) permanece na mesma faixa das paginas mais pesadas ja existentes no app (ex. `/series/[id]`), sem build warnings novos
+
+### Decisoes arquiteturais
+
+- **Full-bleed via CSS, nao via restruturacao do shell**: a tecnica `left-1/2 -mx-[50vw] w-screen` fica isolada no wrapper do Hero dentro da propria Landing — `LandingShell`/`LandingHeader` só receberam o ajuste minimo necessario (header fixo + `pt-24` de compensacao), sem redesenhar o shell publico inteiro, minimizando o raio de impacto em login/registro/catalogo
+- **Embaralhar no servidor, nunca no cliente**: qualquer `Math.random()` de selecao do pool do Hero acontece durante o render do servidor (React Server Component), nunca dentro do Client Component `CinematicHero` — evita mismatch de hidratacao (o HTML que o servidor manda e exatamente o que o cliente hidrata; so a *rotacao ao longo do tempo* e client-side, via `setInterval`)
+- **Consolidar 5 listas na grade de Colecoes em vez de 5 carrosseis a mais**: julgamento de design para o "ritmo respirar" pedido pelo ticket — nenhuma lista foi removida da navegacao (todas continuam acessiveis via seus links), so deixaram de ser um carrossel de topo de pagina
+
+### Bug encontrado e corrigido durante esta sprint
+
+Ao mover a largura variavel do carrossel "Em Alta" (`large`) de uma classe Tailwind sobrescrita via `className` para uma prop dedicada em `CarouselItem`, percebi que o padrao anterior (`cn("w-40 shrink-0 snap-start sm:w-44 lg:w-48", className)`, ja em uso desde a sprint COVERAGE-01) sempre teve um risco latente: como `cn()` neste projeto e so `clsx` (sem dedupe de utilitarios Tailwind conflitantes), duas classes `w-*` poderiam coexistir no DOM com resolucao de CSS imprevisivel. Nao chegou a quebrar nada ate agora porque nenhum caller anterior tentava sobrescrever a largura — mas ao precisar disso pela primeira vez nesta sprint, troquei para uma prop `size` dedicada (larguras sempre mutuamente exclusivas) em vez de arriscar o padrao antigo. Mesmo problema de fundo tambem existia em `PosterImage`/`BackdropImage` (uma nova classe de fade-in por opacidade que eu ia adicionar quase colidiu com as transicoes de hover/zoom que os consumidores ja passam via `imageClassName`) — resolvido isolando o fade num `<div>` wrapper proprio, nunca misturado a `imageClassName`.
+
+### Limitacoes atuais
+
+- Sem Lighthouse/CI automatizado neste sandbox para medir Web Vitals numericamente — a validacao de performance foi por inspecao (bundle size no build, contagem de imagens com `priority`, ausencia de novas queries por item) e pelo smoke test, nao por um relatorio Lighthouse real
+- O piso de qualidade do Hero, o intervalo de rotacao (18s) e os limiares de "Colecao Curtas"/"Emmy" (reaproveitando "Premiada") sao constantes documentadas no codigo, nao variaveis de ambiente — julgamento de escopo (este ticket nao pede configuracao por env)
+- Sandbox sem acesso de rede real ao TMDb (como toda sprint anterior) — a validacao usa o catalogo local (`seed-dev.ts`) com Quality Score/Collection Tags calculados pelas funcoes reais do pipeline; o comportamento com o catalogo real de producao (milhares de series, mais diversidade de generos/tags) nao foi validado aqui
+- Nenhuma regra de negocio, autenticacao, fluxo de cadastro, sincronizacao TMDb, permissao ou schema foi alterada — a sprint e estritamente visual/experiencia sobre a Landing publica
+
 ## Comandos
 
 - `npm install`: instala dependencias
