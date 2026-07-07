@@ -1,14 +1,23 @@
 import { generateNewEpisodeAvailableNotifications } from "@/lib/notifications/episode-availability";
 import { config } from "@/lib/config";
+import { prisma } from "@/lib/db/prisma";
 import {
+  getLatestCoverageRun,
+  resumeCoverage,
+  runCoverageWithSources,
   syncAiringTodaySeries,
+  syncCoverage,
   syncDiscoverSeries,
   syncFullCatalog,
   syncOnTheAirSeries,
   syncPopularSeries,
   syncTopRatedSeries,
-  syncTrendingSeries
+  syncTrendingSeries,
+  syncUpdateDue
 } from "@/lib/catalog/sync";
+import { collectCandidates, type SourceDefinition } from "@/lib/catalog/aggregator";
+import { createSyncCache } from "@/lib/catalog/sync-cache";
+import { getUpdateIntervalMs, isDueForUpdate } from "@/lib/catalog/update-policy";
 import { getTmdbCallStats, resetTmdbCallStats, withTmdbRateLimit } from "@/lib/tmdb/rate-limit";
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
@@ -1493,6 +1502,244 @@ async function main() {
     { nonRetryableAttempts, stats: getTmdbCallStats() }
   );
 
+  // ---- Descoberta massiva e coverage (INSERIES-TMDB-CATALOG-COVERAGE-01): agregacao, dedup, ----
+  // ---- priorizacao, cache, cadencia por status e retomada — tudo validado sem rede real ao TMDb ----
+  let trendingFailureAttempts = 0;
+  const aggregatorSources: SourceDefinition[] = [
+    {
+      key: "POPULAR_SERIES",
+      pages: 1,
+      fetchPage: async (page) =>
+        page === 1
+          ? [
+              { id: 500001, name: "Aggregator Alpha", popularity: 100, vote_count: 1000, vote_average: 9 },
+              { id: 500002, name: "Aggregator Beta", popularity: 1, vote_count: 1, vote_average: 1 }
+            ]
+          : []
+    },
+    {
+      key: "TOP_RATED",
+      pages: 1,
+      fetchPage: async (page) =>
+        page === 1
+          ? [
+              { id: 500001, name: "Aggregator Alpha", popularity: 100, vote_count: 1000, vote_average: 9 },
+              { id: 500003, name: "Aggregator Gamma", popularity: 50, vote_count: 500, vote_average: 6 }
+            ]
+          : []
+    },
+    {
+      key: "TRENDING",
+      pages: 1,
+      fetchPage: async () => {
+        trendingFailureAttempts += 1;
+        throw new Error("fonte instavel de teste");
+      }
+    }
+  ];
+
+  const aggregation = await collectCandidates(aggregatorSources, createSyncCache());
+  check(
+    "agregador (Fase 2) consolida as fontes configuradas e isola a fonte que falhou",
+    aggregation.perSourceCounts.POPULAR_SERIES === 2 &&
+      aggregation.perSourceCounts.TOP_RATED === 2 &&
+      aggregation.perSourceCounts.TRENDING === 0 &&
+      aggregation.totalCollected === 4 &&
+      aggregation.pagesProcessed === 2 &&
+      trendingFailureAttempts === 1 &&
+      aggregation.errors.length === 1 &&
+      aggregation.errors[0].source.includes("TRENDING"),
+    { perSourceCounts: aggregation.perSourceCounts, errors: aggregation.errors }
+  );
+  check(
+    "deduplicacao (Fase 3): id repetido entre fontes vira uma unica entrada, com as duas fontes registradas",
+    aggregation.uniqueCount === 3 &&
+      aggregation.duplicatesRemoved === 1 &&
+      aggregation.candidates.length === 3 &&
+      aggregation.candidates.find((candidate) => candidate.tmdbId === "500001")?.sources.length === 2,
+    aggregation.candidates.map((candidate) => ({ id: candidate.tmdbId, sources: candidate.sources }))
+  );
+  check(
+    "priorizacao (Fase 4): fila ordenada por prioridade calculada (popularidade/votos/nota), mais relevante primeiro",
+    aggregation.candidates[0].tmdbId === "500001" && aggregation.candidates[aggregation.candidates.length - 1].tmdbId === "500002",
+    aggregation.candidates.map((candidate) => ({ id: candidate.tmdbId, score: candidate.priorityScore }))
+  );
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const cadenceReferenceNow = new Date("2026-01-15T12:00:00.000Z");
+  check(
+    "cadencia (Fase 6): serie nunca sincronizada esta sempre devida",
+    isDueForUpdate("RETURNING", null, cadenceReferenceNow),
+    null
+  );
+  check(
+    "cadencia (Fase 6): RETURNING/IN_PRODUCTION exige pelo menos 1 dia entre atualizacoes",
+    isDueForUpdate("RETURNING", new Date(cadenceReferenceNow.getTime() - 12 * 60 * 60 * 1000), cadenceReferenceNow) === false &&
+      isDueForUpdate("RETURNING", new Date(cadenceReferenceNow.getTime() - 25 * 60 * 60 * 1000), cadenceReferenceNow) === true,
+    null
+  );
+  check(
+    "cadencia (Fase 6): ENDED exige 7 dias e CANCELED exige 30 dias entre atualizacoes",
+    isDueForUpdate("ENDED", new Date(cadenceReferenceNow.getTime() - 3 * DAY_MS), cadenceReferenceNow) === false &&
+      isDueForUpdate("ENDED", new Date(cadenceReferenceNow.getTime() - 8 * DAY_MS), cadenceReferenceNow) === true &&
+      isDueForUpdate("CANCELED", new Date(cadenceReferenceNow.getTime() - 10 * DAY_MS), cadenceReferenceNow) === false &&
+      isDueForUpdate("CANCELED", new Date(cadenceReferenceNow.getTime() - 31 * DAY_MS), cadenceReferenceNow) === true,
+    { ended: getUpdateIntervalMs("ENDED"), canceled: getUpdateIntervalMs("CANCELED") }
+  );
+
+  const sessionCache = createSyncCache();
+  let seriesDetailFetchCalls = 0;
+  const firstCacheRead = await sessionCache.getOrFetchSeriesDetails("cache-1", async () => {
+    seriesDetailFetchCalls += 1;
+    return "primeira-resposta";
+  });
+  const secondCacheRead = await sessionCache.getOrFetchSeriesDetails("cache-1", async () => {
+    seriesDetailFetchCalls += 1;
+    return "segunda-resposta";
+  });
+  check(
+    "cache de execucao (Fase 7) reaproveita a mesma chave, sem refazer o fetch",
+    seriesDetailFetchCalls === 1 &&
+      firstCacheRead === "primeira-resposta" &&
+      secondCacheRead === "primeira-resposta" &&
+      sessionCache.stats().hits === 1 &&
+      sessionCache.stats().misses === 1,
+    sessionCache.stats()
+  );
+
+  let seasonFetchAttempts = 0;
+  await sessionCache
+    .getOrFetchSeasonDetails("cache-2", 1, async () => {
+      seasonFetchAttempts += 1;
+      throw new Error("falha simulada");
+    })
+    .catch(() => undefined);
+  const cacheReadAfterFailure = await sessionCache.getOrFetchSeasonDetails("cache-2", 1, async () => {
+    seasonFetchAttempts += 1;
+    return "ok-na-segunda-tentativa";
+  });
+  check(
+    "cache de execucao (Fase 7): uma promessa rejeitada nao fica presa no cache",
+    seasonFetchAttempts === 2 && cacheReadAfterFailure === "ok-na-segunda-tentativa",
+    { seasonFetchAttempts, cacheReadAfterFailure }
+  );
+
+  const coverageFixtureId = Date.now();
+  const dueTmdbId = coverageFixtureId + 1;
+  const notDueTmdbId = coverageFixtureId + 2;
+  const newTmdbId = coverageFixtureId + 3;
+
+  const notDueOriginalLastSyncedAt = new Date(Date.now() - 60 * 60 * 1000);
+  const dueSeries = await prisma.series.create({
+    data: { slug: `smoketest-coverage-due-${coverageFixtureId}`, title: "Smoke Coverage Due", status: "RETURNING" }
+  });
+  const notDueSeries = await prisma.series.create({
+    data: { slug: `smoketest-coverage-not-due-${coverageFixtureId}`, title: "Smoke Coverage Not Due", status: "RETURNING" }
+  });
+  await prisma.externalSourceMapping.create({
+    data: {
+      seriesId: dueSeries.id,
+      source: "TMDB",
+      entityType: "SERIES",
+      externalId: String(dueTmdbId),
+      lastSyncedAt: new Date(Date.now() - 40 * DAY_MS)
+    }
+  });
+  await prisma.externalSourceMapping.create({
+    data: {
+      seriesId: notDueSeries.id,
+      source: "TMDB",
+      entityType: "SERIES",
+      externalId: String(notDueTmdbId),
+      lastSyncedAt: notDueOriginalLastSyncedAt
+    }
+  });
+
+  const coverageFixtureSources: SourceDefinition[] = [
+    {
+      key: "POPULAR_SERIES",
+      pages: 1,
+      fetchPage: async (page) =>
+        page === 1
+          ? [
+              { id: dueTmdbId, name: "Smoke Coverage Due", popularity: 10, vote_count: 100, vote_average: 7 },
+              { id: notDueTmdbId, name: "Smoke Coverage Not Due", popularity: 10, vote_count: 100, vote_average: 7 },
+              { id: newTmdbId, name: "Smoke Coverage New", popularity: 10, vote_count: 100, vote_average: 7 }
+            ]
+          : []
+    }
+  ];
+
+  const coverageSummary = await runCoverageWithSources(coverageFixtureSources);
+  check(
+    "coverage (Fase 5/8/9): agrega, deduplica e processa a fila sintetica sem N+1 (uma consulta em lote)",
+    coverageSummary.uniqueCount === 3 && coverageSummary.duplicatesRemoved === 0 && coverageSummary.perSourceCounts.POPULAR_SERIES === 3,
+    coverageSummary
+  );
+  check(
+    "coverage (Fase 5/6): serie devida e atualizada, serie nao devida e ignorada, serie nova falha isolada (sem rede)",
+    coverageSummary.totals.updatedSeriesCount === 1 && coverageSummary.skippedByCadenceCount === 1 && coverageSummary.errors.length === 1,
+    coverageSummary
+  );
+  check(
+    "coverage (Fase 9): callsSaved reflete duplicatas + ignoradas por cadencia + cache hits",
+    coverageSummary.observability.callsSaved ===
+      coverageSummary.duplicatesRemoved + coverageSummary.skippedByCadenceCount + coverageSummary.observability.cacheHits,
+    coverageSummary.observability
+  );
+
+  const dueMappingAfterSync = await prisma.externalSourceMapping.findUnique({
+    where: { source_entityType_externalId: { source: "TMDB", entityType: "SERIES", externalId: String(dueTmdbId) } }
+  });
+  const notDueMappingAfterSync = await prisma.externalSourceMapping.findUnique({
+    where: { source_entityType_externalId: { source: "TMDB", entityType: "SERIES", externalId: String(notDueTmdbId) } }
+  });
+  check(
+    "coverage (Fase 6): lastSyncedAt so avanca para quem foi de fato atualizado",
+    Boolean(dueMappingAfterSync?.lastSyncedAt) &&
+      dueMappingAfterSync!.lastSyncedAt!.getTime() > Date.now() - 5 * 60 * 1000 &&
+      notDueMappingAfterSync?.lastSyncedAt?.getTime() === notDueOriginalLastSyncedAt.getTime(),
+    { due: dueMappingAfterSync?.lastSyncedAt, notDue: notDueMappingAfterSync?.lastSyncedAt }
+  );
+
+  const persistedCoverageRun = await prisma.catalogSyncRun.findUnique({ where: { id: coverageSummary.runId } });
+  check(
+    "coverage (Fase 8/9): execucao fica registrada em CatalogSyncRun com o tipo/metricas corretos",
+    persistedCoverageRun?.type === "COVERAGE" && persistedCoverageRun?.status === coverageSummary.status,
+    persistedCoverageRun
+  );
+
+  const latestCoverageRun = await getLatestCoverageRun();
+  check(
+    "getLatestCoverageRun() (usado por sync:stats) retorna a execucao de coverage mais recente",
+    latestCoverageRun?.id === coverageSummary.runId,
+    latestCoverageRun
+  );
+
+  const nothingToResume = await resumeCoverage();
+  check(
+    "resumeCoverage() (sync:resume) nao inicia trabalho novo quando nao ha fila pendente",
+    nothingToResume.resumed === false && nothingToResume.summary === undefined,
+    nothingToResume
+  );
+
+  await prisma.series.deleteMany({ where: { id: { in: [dueSeries.id, notDueSeries.id] } } });
+
+  const coverageAbort = await syncCoverage();
+  const coverageAbortRun = await prisma.catalogSyncRun.findUnique({ where: { id: coverageAbort.runId } });
+  check(
+    "sync:coverage aborta com erro amigavel sem TMDB key (nao quebra)",
+    coverageAbort.status === "FAILED" && Boolean(coverageAbortRun?.errorMessage?.includes("TMDb nao configurado")),
+    { coverageAbort, errorMessage: coverageAbortRun?.errorMessage }
+  );
+
+  const updateDueAbort = await syncUpdateDue();
+  check(
+    "sync:update aborta com erro amigavel sem TMDB key (nao quebra)",
+    updateDueAbort.status === "FAILED" && Boolean(updateDueAbort.errorMessage?.includes("TMDb nao configurado")),
+    updateDueAbort
+  );
+
   // ---- Observabilidade: config central, feature flags, health/ready, request id, metricas, erros ----
   const healthCheck = await request({ value: "" }, "/api/health");
   check(
@@ -1704,13 +1951,17 @@ async function main() {
     process.exitCode = 1;
   } else {
     console.log(
-      "Smoke test concluido com sucesso: fluxo principal, descoberta/busca, calendario, fundacao social e feed de atividades validados ponta a ponta."
+      "Smoke test concluido com sucesso: fluxo principal, descoberta/busca, calendario, fundacao social, feed de atividades e coverage de catalogo validados ponta a ponta."
     );
   }
 }
 
-main().catch((error) => {
-  console.error("Smoke test quebrou com excecao nao tratada.");
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error("Smoke test quebrou com excecao nao tratada.");
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
