@@ -22,6 +22,10 @@
     "sync:airing-today": "tsx scripts/sync-airing-today.ts",
     "sync:trending": "tsx scripts/sync-trending.ts",
     "sync:catalog": "tsx scripts/sync-catalog.ts",
+    "sync:update": "tsx scripts/sync-update.ts",
+    "sync:resume": "tsx scripts/sync-resume.ts",
+    "sync:coverage": "tsx scripts/sync-coverage.ts",
+    "sync:stats": "tsx scripts/sync-stats.ts",
     "notifications:episodes": "tsx scripts/notify-new-episodes.ts",
     "smoke:test": "tsx scripts/smoke-test.ts"
   },

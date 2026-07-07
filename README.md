@@ -205,6 +205,160 @@ Nenhuma fonte paralela: `/calendar`, `/api/search` e `/series` sempre leem `Seri
 - Testado neste ambiente sem acesso de rede ao TMDb (sandbox sem credenciais/rede real): toda a logica de paginacao, filtros, concorrencia, retry/backoff e o caminho "TMDb nao configurado" foram validados (isoladamente, com chamadas simuladas, e via os 8 scripts de CLI abortando corretamente); o comportamento contra a API real do TMDb nao pode ser validado ponta a ponta aqui e depende de uma execucao com `TMDB_API_KEY`/`TMDB_ACCESS_TOKEN` configuradas
 - Nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou estrutura de navegacao foi alterada — a sprint e estritamente o pipeline de sincronizacao do catalogo
 
+### Descoberta massiva e coverage (INSERIES-TMDB-CATALOG-COVERAGE-01)
+
+A sprint anterior (SCALE-01, acima) trouxe seis fontes de descoberta, cada uma sincronizada **separadamente** — `sync:catalog` ate rodava todas em sequencia, mas sem consolidar os IDs entre si antes de processar. **COVERAGE-01** adiciona uma camada por cima disso: um agregador que junta as seis fontes numa unica fila deduplicada e priorizada antes de tocar o banco, alem de cadencia de atualizacao por status e retomada automatica apos interrupcao. Nenhum dos oito comandos `sync:*` da sprint anterior foi alterado — `sync:coverage` e um pipeline novo, adicional.
+
+#### Auditoria (Fase 1)
+
+- `sync:catalog` (`syncFullCatalog`) rodava as seis fontes uma a uma, cada uma decidindo novo-vs-existente **isoladamente** — uma serie que aparece em Popular *e* em Trending era processada (e escrita) duas vezes na mesma execucao, sem nenhuma deduplicacao entre fontes
+- Sem ordem de prioridade: a ordem de processamento era so a ordem fixa das fontes, nao popularidade/votos/relevancia
+- Sem cache dentro de uma execucao: se duas fontes retornassem o mesmo id, os detalhes completos podiam ser buscados duas vezes
+- Sem retomada: uma interrupcao no meio de `sync:catalog` perdia todo o progresso daquela execucao — a proxima chamada comecava do zero
+- Cadencia de atualizacao (Fase 6) nao existia: toda serie ja catalogada era sempre elegivel para atualizacao leve, sem levar em conta ha quanto tempo foi sincronizada pela ultima vez nem seu status (`RETURNING`, `ENDED`, `CANCELED`, etc.)
+
+#### Agregacao de fontes (Fase 2) — `lib/catalog/aggregator.ts`
+
+`collectCandidates(sources, cache)` busca todas as paginas configuradas das seis fontes (Popular, Discover, Top Rated, On The Air, Airing Today, Trending) e funde cada item num `Map` unico **por id do TMDb** — o id vira a chave primaria da fila, exatamente como o ticket pede. Cada candidato guarda a lista de todas as fontes que o sugeriram (`sources: DiscoverySourceKey[]`), usada tanto no relatorio quanto na priorizacao abaixo. Uma pagina que falha (rede, rate limit esgotado, etc.) vira um erro isolado — nunca aborta as demais fontes/paginas.
+
+#### Deduplicacao (Fase 3)
+
+A fusao acima *e* a deduplicacao: um id que aparece em duas ou mais fontes ocupa uma unica entrada no `Map`, nunca duas. `AggregationResult` expõe as estatisticas que o relatorio final (Fase 11) e os testes obrigatorios pedem: `totalCollected` (soma bruta de todas as paginas, com repeticao), `uniqueCount` (tamanho real da fila), `duplicatesRemoved` (`totalCollected - uniqueCount`) e `pagesProcessed`.
+
+#### Priorizacao (Fase 4)
+
+Cada candidato recebe um `priorityScore` calculado em `computePriorityScore` — a mesma forma de pontuacao ponderada ja usada pelo motor de recomendacoes (`lib/recommendations/scoring.ts`): `popularity * peso + vote_count * peso + vote_average * peso`, mais bonus fixos para series em exibicao e com episodio novo hoje. A fila final (`candidates`) sai ordenada por `priorityScore` decrescente — series mais relevantes sao processadas (e, no caso de novas series, importadas) primeiro. Pesos configuraveis via env, sem numero magico no codigo:
+
+- `TMDB_PRIORITY_WEIGHT_POPULARITY` (padrao `1`)
+- `TMDB_PRIORITY_WEIGHT_VOTE_COUNT` (padrao `0.01`)
+- `TMDB_PRIORITY_WEIGHT_VOTE_AVERAGE` (padrao `5`)
+- `TMDB_PRIORITY_ON_AIR_BONUS` (padrao `20`): aplicado a qualquer candidato sugerido por On The Air ou Airing Today
+- `TMDB_PRIORITY_NEW_EPISODE_BONUS` (padrao `10`): aplicado so a candidatos sugeridos por Airing Today (episodio novo *hoje*, sinal mais forte que so "em exibicao")
+
+#### Atualizacao incremental e estrategias por status (Fase 5/6) — `lib/catalog/update-policy.ts`
+
+Para cada candidato da fila, o pipeline decide em qual dos tres caminhos ele cai — **numa unica consulta em lote** (ver "Performance" abaixo), nunca uma consulta por candidato:
+
+- **Sem `ExternalSourceMapping`** (serie nova): fetch completo — detalhes + todas as temporadas + todos os episodios (`fetchFullSeriesFromTmdb`), igual ao caminho ja existente da sprint anterior
+- **Ja catalogada e devida para atualizacao** (`isDueForUpdate`): atualizacao leve a partir dos campos que a propria fonte de descoberta ja trouxe — zero chamadas extras ao TMDb, igual ao caminho "atualizacao inteligente" da sprint anterior
+- **Ja catalogada e ainda nao devida**: ignorada, contada em `skippedByCadenceCount` — nenhuma escrita, nenhuma chamada
+
+A cadencia (`isDueForUpdate`/`getUpdateIntervalMs`) depende do `status` (`SeriesLifecycleStatus`) da propria serie e de `ExternalSourceMapping.lastSyncedAt`:
+
+| Status | Intervalo minimo entre atualizacoes |
+|---|---|
+| `RETURNING` | 1 dia |
+| `IN_PRODUCTION` | 1 dia |
+| `PILOT` | 1 dia (nao mencionado explicitamente no ticket; tratado como `RETURNING`/`IN_PRODUCTION` por ser tao ou mais volatil que uma serie em producao) |
+| `ENDED` | 7 dias |
+| `CANCELED` | 30 dias |
+
+A politica e uma funcao pura e reutilizavel (`getUpdateIntervalMs(status)`, `isDueForUpdate(status, lastSyncedAt, now?)`) — usada tanto pelo pipeline de coverage quanto pelo novo comando standalone `sync:update` abaixo.
+
+#### `npm run sync:update` — atualizacao por cadencia, sem descoberta
+
+`syncUpdateDue` (reusa o `CatalogSyncType` `SERIES_DETAILS` ja existente — nao introduz outro valor de enum, ja que o tipo de execucao e o mesmo, so o criterio de selecao muda) percorre **todo** o catalogo ja mapeado e aplica a mesma cadencia acima, disparando o fetch completo (`syncOneSeries`, comportamento inalterado de `sync:series`) so para quem esta de fato devido. Ao contrario de `sync:series` (`syncExistingSeriesDetails`), que sempre atualiza tudo, `sync:update` e a versao "so faz de novo se ja passou tempo suficiente".
+
+#### Cache de execucao (Fase 7) — `lib/catalog/sync-cache.ts`
+
+`createSyncCache()` cria um cache **novo a cada execucao** (nunca persiste entre execucoes) com tres compartimentos independentes — paginas de listagem, detalhes de serie, detalhes de temporada — cada um memorizando a `Promise` em voo pela chave (fonte+pagina, id do TMDb, id do TMDb+numero da temporada). Uma promessa que falha e removida do cache (nunca "envenena" chamadas futuras com um erro cacheado). E uma rede de seguranca (defesa em profundidade): a deduplicacao da Fase 3 e o mecanismo primario que evita buscar o mesmo id duas vezes; o cache cobre o caso em que o mesmo id precisaria ser buscado de novo por outro motivo dentro da mesma execucao (por exemplo, apos uma retomada). `stats()` expõe `hits`/`misses`, usados no relatorio final.
+
+#### Continuacao automatica / retomada (Fase 8)
+
+O progresso da fila inteira (`remainingQueue`, contadores acumulados, totais, erros) e salvo em `CatalogSyncRun.metadata.resumeState` a cada `TMDB_COVERAGE_BATCH_SIZE` itens processados (padrao `25`) — nunca so no final. Como a fila e feita inteiramente de dados json-serializaveis (o proprio formato de lista do TMDb, sem classes ou funcoes), ela cabe direto na coluna `Json?` existente, sem serializacao customizada.
+
+- `npm run sync:coverage`: se ja existe uma execucao `COVERAGE` em `RUNNING` com fila pendente, **retoma** em vez de comecar uma nova (nunca reinicia do zero desnecessariamente, como o ticket pede); so cria uma execucao nova quando nao ha nada para retomar
+- `npm run sync:resume`: retoma explicitamente; se nao houver nada para retomar, imprime uma mensagem clara e sai com codigo 0 (nao e um erro nao ter o que retomar)
+- Um `Ctrl+C` durante `sync:coverage`/`sync:resume` imprime uma mensagem confirmando que o progresso ja esta salvo e que `sync:resume` continua de onde parou — o checkpoint mais recente ja foi persistido antes da interrupcao ser possivel notar, nunca depois
+
+`TMDB_COVERAGE_BATCH_SIZE` controla o quao frequente e o checkpoint: menor = menos trabalho perdido numa interrupcao, ao custo de mais escritas no `CatalogSyncRun`; maior = o oposto.
+
+#### Metricas (Fase 9)
+
+Alem do bloco `observability` ja existente (`pagesProcessed`, `requestCount`, `averageRequestMs`, `retryCount`, `rateLimitHitCount`, `lightweightUpdateCount`, `skippedCount`), o `CoverageSummary` acrescenta `cacheHits`, `cacheMisses` e `callsSaved` (= duplicatas removidas + ignoradas por cadencia + cache hits — toda chamada ao TMDb que o pipeline evitou fazer), mais `perSourceCounts`, `totalCollected`, `uniqueCount`, `duplicatesRemoved` e `skippedByCadenceCount` no nivel do resumo. Tudo persistido em `CatalogSyncRun.metadata` a cada checkpoint (Fase 8) e no registro final.
+
+#### CLI (Fase 10)
+
+| Comando | Funcao | O que faz |
+|---|---|---|
+| `npm run sync:coverage` | `syncCoverage()` | Pipeline completo: agrega as 6 fontes, deduplica, prioriza, processa (ou retoma execucao pendente) |
+| `npm run sync:update` | `syncUpdateDue()` | So atualiza series ja catalogadas que estao devidas pela cadencia — sem descobrir nada novo |
+| `npm run sync:resume` | `resumeCoverage()` | Retoma a ultima execucao de coverage interrompida; sem efeito (saida 0) se nao ha nada pendente |
+| `npm run sync:stats` | `getLatestCoverageRun()` + `getRecentSyncRuns()` | Imprime a ultima execucao de coverage e as 10 execucoes mais recentes de qualquer tipo |
+
+#### Relatorio final (Fase 11) — `scripts/_shared/print-coverage-report.ts`
+
+`sync:coverage`/`sync:resume` imprimem, ao final, linhas no formato `rotulo` + pontos + valor (o template exato pedido pelo ticket), uma por fonte mais os totais agregados, cadencia, tempo, requests, retries, rate limits e cache — por exemplo:
+
+```
+Fonte Popular.............500 series
+
+Fonte Discover.............800 series
+
+Duplicadas removidas......430
+
+Fila final.................1270 series
+
+Novas......................180
+
+Atualizadas................1090
+
+Ignoradas (cadencia).......842
+
+Tempo......................00:18:34
+
+Requests...................3642
+
+Retries....................7
+
+Rate Limits................2
+
+Cache Hits..................1589
+
+Cache Miss..................2053
+```
+
+(exemplo ilustrativo — os numeros reais dependem do catalogo e das paginas configuradas). Erros individuais (ate 10, com contagem do restante) e o status final (`SUCCESS`/`PARTIAL`/`FAILED`, com "(retomado)" quando aplicavel) fecham a saida.
+
+#### Performance (Fase 12)
+
+- **Sem N+1**: a decisao novo-vs-existente e cadencia-devida-vs-ignorada para a fila inteira e resolvida com **uma unica** consulta em lote (`externalSourceMapping.findMany({ externalId: { in: [...] } })`), nunca uma consulta por candidato — depois disso, o loop de processamento so consulta um `Map` em memoria
+- **Sem escrita duplicada**: a deduplicacao da Fase 3 garante que cada id e processado (e, se aplicavel, escrito) uma unica vez por execucao
+- **Concorrencia controlada**: reusa o mesmo limitador de taxa da sprint anterior (`TMDB_MAX_CONCURRENT_REQUESTS`, `TMDB_REQUEST_DELAY_MS`) — nenhum limite novo, nenhuma chamada fora dele
+- **Uso eficiente do Prisma**: mesmas transacoes curtas e escopadas da sprint anterior (`upsertNormalizedSeriesWithCounts`); o checkpoint de retomada e um unico `update` por lote de `TMDB_COVERAGE_BATCH_SIZE` itens, nao um `update` por item
+
+#### Cookbook — coverage em diferentes escalas
+
+```bash
+# Coverage com os padroes de paginacao ja configurados (mesmas variaveis TMDB_*_PAGES da sprint anterior)
+npm run sync:coverage
+
+# ~500 series priorizadas, combinando Popular + Discover com bastante paginacao
+TMDB_POPULAR_PAGES=15 TMDB_DISCOVER_PAGES=15 npm run sync:coverage
+
+# ~1000 series, todas as 6 fontes contribuindo
+TMDB_POPULAR_PAGES=15 TMDB_DISCOVER_PAGES=15 TMDB_MIN_VOTE_COUNT=20 npm run sync:coverage
+
+# ~5000 series — mais paginas, checkpoint mais frequente (perde menos trabalho numa interrupcao longa)
+TMDB_POPULAR_PAGES=50 TMDB_DISCOVER_PAGES=50 TMDB_COVERAGE_BATCH_SIZE=50 npm run sync:coverage
+
+# Interrompeu no meio (Ctrl+C, queda de rede, deploy)? Retomar sem perder progresso:
+npm run sync:resume
+
+# So manter o catalogo existente em dia, sem descobrir series novas
+npm run sync:update
+
+# Ver a ultima execucao de coverage e o historico recente de qualquer sync
+npm run sync:stats
+```
+
+#### Limitacoes atuais (COVERAGE-01)
+
+- Mesma limitacao de ambiente da sprint anterior: sandbox sem acesso de rede real ao TMDb. O agregador, a deduplicacao, a priorizacao, a cadencia por status, o cache e a retomada foram validados diretamente (`collectCandidates`/`runCoverageWithSources` chamados com fontes sinteticas e fixtures reais no banco local) — o caminho de fetch completo para series genuinamente novas depende de rede real e so foi validado quanto ao isolamento de erro (uma falha de rede vira um erro por item, nunca derruba a execucao)
+- `/admin/sync` continua listando qualquer `CatalogSyncType` sem mudanca de codigo (inclui `COVERAGE` automaticamente), mas o gatilho manual do workspace administrativo (`/api/admin/sync/[type]`) nao ganhou uma opcao dedicada para coverage — so CLI por enquanto, mesma decisao consciente da sprint anterior
+- `PILOT` recebeu cadencia diaria por interpretacao (o ticket so especifica `RETURNING`/`IN_PRODUCTION`/`ENDED`/`CANCELED`) — documentado acima
+- Nenhuma regra de negocio, autenticacao, funcionalidade do usuario ou estrutura de navegacao foi alterada — a sprint e estritamente uma camada adicional sobre o pipeline de sincronizacao do catalogo
+
 ## Descoberta e busca
 
 Camada isolada em `lib/discovery/search.ts`, reutilizavel por catalogo, calendario, listas, perfil e uma futura busca dedicada — nenhuma logica de filtro/ordenacao/paginacao fica na pagina.
