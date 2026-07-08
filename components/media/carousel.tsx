@@ -52,15 +52,17 @@ export function Carousel({ children, className }: PropsWithChildren<{ className?
  * override) so the width classes are always mutually exclusive — `cn()` here is plain
  * `clsx` with no Tailwind-conflict dedup, so two competing `w-*` utilities from an
  * overridden className could both end up in the compiled CSS with unpredictable precedence.
+ *
+ * `size="auto"` (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) applies no width utility at
+ * all, for children (like ContinueWatchingCard) that already define their own responsive
+ * width — same conflict-avoidance reasoning, just resolved by omission instead of a
+ * fixed value.
  */
 export function CarouselItem({
   children,
   className,
   size = "default"
-}: PropsWithChildren<{ className?: string; size?: "default" | "large" }>) {
-  return (
-    <div className={cn(size === "large" ? "w-48 sm:w-56 lg:w-64" : "w-40 sm:w-44 lg:w-48", "shrink-0 snap-start", className)}>
-      {children}
-    </div>
-  );
+}: PropsWithChildren<{ className?: string; size?: "default" | "large" | "auto" }>) {
+  const widthClass = size === "large" ? "w-48 sm:w-56 lg:w-64" : size === "auto" ? "" : "w-40 sm:w-44 lg:w-48";
+  return <div className={cn(widthClass, "shrink-0 snap-start", className)}>{children}</div>;
 }

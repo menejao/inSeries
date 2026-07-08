@@ -29,6 +29,8 @@ import { computeCatalogStatistics } from "@/lib/catalog/statistics";
 import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
 import { pickHero } from "@/lib/catalog/hero-selection";
+import { getContinueWatchingForUser } from "@/lib/continue-watching";
+import { getWatchNextForUser } from "@/lib/watch-next";
 import { runDiscoveryEngine } from "@/lib/discovery/engine";
 import { computeDiscoveryScore } from "@/lib/discovery/discovery-score";
 import { computeSourceWeightScore, computeStreamingPriorityScore } from "@/lib/discovery/source-weight";
@@ -786,6 +788,78 @@ async function main() {
       String(meWithWatchNextCta.body).includes("Assistir a seguir") &&
       String(meWithWatchNextCta.body).includes("Ver todos"),
     meWithWatchNextCta.status
+  );
+
+  // ---- Continuar assistindo (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) ----
+  const jarWatchNextDashboardMe = await request(jarWatchNextDashboard, "/api/auth/me");
+  const jarWatchNextDashboardUserId: string | undefined = jarWatchNextDashboardMe.body?.data?.id;
+
+  const dashboardHomeWithContinueWatching = await request(jarWatchNextDashboard, "/");
+  const dashboardHomeBody = String(dashboardHomeWithContinueWatching.body);
+  const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar assistindo");
+  const dashboardGridIndex = dashboardHomeBody.indexOf("Proximos lancamentos");
+  check(
+    "Dashboard exibe a secao Continuar assistindo",
+    dashboardHomeWithContinueWatching.status === 200 &&
+      continueWatchingIndex !== -1 &&
+      dashboardHomeBody.includes("Retome suas series exatamente de onde parou."),
+    dashboardHomeWithContinueWatching.status
+  );
+  check(
+    "Continuar assistindo fica no topo do Dashboard (antes do grid de outras secoes)",
+    continueWatchingIndex !== -1 && dashboardGridIndex !== -1 && continueWatchingIndex < dashboardGridIndex,
+    { continueWatchingIndex, dashboardGridIndex }
+  );
+  check(
+    "Continuar assistindo mostra o proximo episodio correto (T01 | E01)",
+    dashboardHomeBody.includes("T01 | E01"),
+    dashboardHomeWithContinueWatching.status
+  );
+
+  check("sessao do usuario userwndash expoe id valido (/api/auth/me)", Boolean(jarWatchNextDashboardUserId), jarWatchNextDashboardMe.body);
+
+  const continueWatchingBeforeMark = jarWatchNextDashboardUserId
+    ? await getContinueWatchingForUser(jarWatchNextDashboardUserId)
+    : { items: [], hasTrackedSeries: false };
+  const watchNextForConsistency = jarWatchNextDashboardUserId
+    ? await getWatchNextForUser(jarWatchNextDashboardUserId)
+    : { items: [], hasTrackedSeries: false };
+  check(
+    "Continuar assistindo e Watch Next permanecem consistentes (mesmas series/proximo episodio)",
+    continueWatchingBeforeMark.items.length > 0 &&
+      continueWatchingBeforeMark.items.length === watchNextForConsistency.items.length &&
+      continueWatchingBeforeMark.items.every((item, index) => item.episode.id === watchNextForConsistency.items[index]?.episode.id),
+    {
+      continueWatching: continueWatchingBeforeMark.items.map((item) => item.episode.id),
+      watchNext: watchNextForConsistency.items.map((item) => item.episode.id)
+    }
+  );
+
+  const firstPendingEpisodeId = continueWatchingBeforeMark.items.find((item) => item.series.id === seriesId)?.episode.id;
+  if (firstPendingEpisodeId) {
+    await request(jarWatchNextDashboard, `/api/episodes/${firstPendingEpisodeId}/progress`, {
+      method: "POST",
+      body: JSON.stringify({ episodeId: firstPendingEpisodeId, watched: true })
+    });
+  }
+  const dashboardAfterMarking = await request(jarWatchNextDashboard, "/");
+  check(
+    "Marcar episodio como assistido avanca o card de Continuar assistindo para o proximo episodio",
+    Boolean(firstPendingEpisodeId) &&
+      dashboardAfterMarking.status === 200 &&
+      String(dashboardAfterMarking.body).includes("T01 | E02"),
+    dashboardAfterMarking.status
+  );
+
+  const jarContinueWatchingEmpty: CookieJar = { value: "" };
+  await registerUser(jarContinueWatchingEmpty, "usercwempty");
+  const dashboardEmptyContinueWatching = await request(jarContinueWatchingEmpty, "/");
+  check(
+    "Continuar assistindo mostra empty state para usuario sem series acompanhadas, com CTA Explorar catalogo",
+    dashboardEmptyContinueWatching.status === 200 &&
+      String(dashboardEmptyContinueWatching.body).includes("Voce ainda nao comecou nenhuma serie") &&
+      String(dashboardEmptyContinueWatching.body).includes("Explorar catalogo"),
+    dashboardEmptyContinueWatching.status
   );
 
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----

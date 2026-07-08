@@ -7,6 +7,7 @@ import { RecommendationCard } from "@/components/recommendations/recommendation-
 import { LevelProgressCard } from "@/components/achievements/level-progress-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { SeriesPosterCard } from "@/components/media/series-poster-card";
+import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
 import {
   BellIcon,
   CalendarIcon,
@@ -27,6 +28,7 @@ import { listAvailableRecaps } from "@/lib/recap";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { listNotifications, countUnreadNotifications } from "@/lib/notifications/service";
 import { listBombandoAgora } from "@/lib/catalog/smart-lists";
+import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -38,21 +40,35 @@ import type { User } from "@prisma/client";
 export async function DashboardHome({ user }: { user: Pick<User, "id" | "name"> }) {
   const currentYear = new Date().getUTCFullYear();
 
-  const [watchNext, upcoming, recommendations, stats, achievements, recapAvailability, activity, notifications, unreadCount, bombandoAgora] =
-    await Promise.all([
-      getWatchNextForUser(user.id, { limit: 4 }),
-      getUpcomingEpisodesForUser(user.id, 3),
-      getRecommendationsForUser(user.id, { limit: 6 }),
-      getUserStats(user.id),
-      getUserAchievementsOverview(user.id),
-      listAvailableRecaps(user.id),
-      getRecentActivityForUser(user.id, 3),
-      listNotifications(user.id, 3),
-      countUnreadNotifications(user.id),
-      // Fase 9 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — alimentada exclusivamente pelo
-      // Discovery Engine (discoveryScore), nunca por popularidade bruta diretamente.
-      listBombandoAgora(6)
-    ]);
+  const [
+    watchNext,
+    upcoming,
+    recommendations,
+    stats,
+    achievements,
+    recapAvailability,
+    activity,
+    notifications,
+    unreadCount,
+    bombandoAgora,
+    continueWatching
+  ] = await Promise.all([
+    getWatchNextForUser(user.id, { limit: 4 }),
+    getUpcomingEpisodesForUser(user.id, 3),
+    getRecommendationsForUser(user.id, { limit: 6 }),
+    getUserStats(user.id),
+    getUserAchievementsOverview(user.id),
+    listAvailableRecaps(user.id),
+    getRecentActivityForUser(user.id, 3),
+    listNotifications(user.id, 3),
+    countUnreadNotifications(user.id),
+    // Fase 9 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — alimentada exclusivamente pelo
+    // Discovery Engine (discoveryScore), nunca por popularidade bruta diretamente.
+    listBombandoAgora(6),
+    // Fase 2/9 (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) — roda ao lado de todo o resto do
+    // Dashboard no mesmo Promise.all, nunca depois (sem waterfall sequencial).
+    getContinueWatchingForUser(user.id, { limit: 10 })
+  ]);
 
   const currentYearRecap = recapAvailability.enabled ? recapAvailability.availability.years.find((y) => y.year === currentYear) : undefined;
   const latestMonthRecap = recapAvailability.enabled ? recapAvailability.availability.months[0] : undefined;
@@ -64,6 +80,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name"> 
         <h1 className="section-title">Dashboard</h1>
         <p className="section-copy">Seu hub de series — tudo que importa agora, num so lugar.</p>
       </div>
+
+      <ContinueWatchingSection continueWatching={continueWatching} />
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <DashboardCard icon={PlayIcon} title="Assistir a seguir" href="/watch-next">

@@ -1813,6 +1813,134 @@ O update de `discoveryScore` e uma chamada extra por serie processada, sempre li
 - `maxCandidatesPerRun`, os pesos de fonte/score e a lista de streamings prioritarios sao
   constantes/env vars documentadas, nao uma tela de configuracao dinamica no admin.
 
+## Continuar assistindo (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01)
+
+O Dashboard deixa de ser so uma visao geral e ganha uma primeira area dedicada a retomar a
+experiencia: "Continuar assistindo", no topo, mostrando as ultimas series acompanhadas e o
+proximo episodio de cada uma — como o "continue watching" de qualquer plataforma de
+streaming.
+
+### Fase 1 — Auditoria
+
+- **Onde ja e calculado o proximo episodio**: `getWatchNextForUser` (`lib/watch-next/queries.ts`).
+  Busca todo `UserSeriesStatus` do usuario em estado `WATCHING`/`WANT_TO_WATCH`, com
+  `seasons`/`episodes`/`progress` aninhados numa unica query; para cada serie, filtra
+  episodios ja lancados (`airedAt <= now`) e nao assistidos, pega o mais antigo como "next".
+  Essa e a **unica** logica de "o que assistir a seguir" no app — usada por `/watch-next`,
+  `/me` e `GET /api/me/watch-next`.
+- **Como saber a ultima serie assistida**: `UserSeriesStatus.lastActivityAt` — atualizado em
+  toda mudanca de status (`upsertSeriesStatus`) e toda marcacao de episodio
+  (`toggleEpisodeProgress`, ambos em `lib/progress/mutations.ts`) — **ja existe**, sem
+  precisar de tabela ou coluna nova.
+- **Se ja existe timestamp de episodio assistido**: sim — `UserEpisodeProgress.watchedAt`,
+  preenchido no mesmo `toggleEpisodeProgress`. Tambem ja existente.
+- **Se a ordenacao por atividade recente ja pode ser feita sem schema novo**: sim — os dois
+  campos acima (`lastActivityAt`, `watchedAt`) mais `UserSeriesStatus.startedAt` e
+  `completionPercent` (tambem ja existentes) sao suficientes para toda a Fase 3. **Nenhuma
+  migration foi necessaria nesta sprint.**
+- **UserSeriesStatus/Episode/Season/Series**: nenhum desses modelos precisou de alteracao —
+  `Episode.runtimeMinutes` (duracao), `Season.episodeCount` (total da temporada) e
+  `UserSeriesStatus.completionPercent` (progresso da serie, ja recalculado por
+  `calculateSeriesProgress` a cada mutation) ja cobrem todo o Fase 2.
+
+### Fase 2 — Servico de Continue Watching (`lib/continue-watching/`)
+
+`getContinueWatchingForUser` (`lib/continue-watching/queries.ts`) **nunca recalcula** qual e
+o proximo episodio: chama `getWatchNextForUser` sem limite, e so enriquece o resultado com
+campos extras via um numero fixo de queries adicionais, todas em lote (`WHERE ... IN (...)`,
+nunca uma por serie/episodio — Fase 9):
+
+1. `series.findMany` → `backdropUrl` de cada serie.
+2. `userSeriesStatus.findMany` → `completionPercent` (progresso da serie), `lastActivityAt`,
+   `startedAt`.
+3. `season.findMany` → `episodeCount` de cada temporada (denominador do progresso da
+   temporada).
+4. `userEpisodeProgress.findMany` (so `watched: true`, ordenado por `watchedAt desc`) → usada
+   para **duas** coisas ao mesmo tempo: o ultimo episodio assistido por serie (primeira
+   ocorrencia apos o sort) e a contagem de assistidos por temporada (progresso da temporada).
+5. `episode.findMany` pelos ids dos "proximos episodios" → `runtimeMinutes` (duracao).
+
+Tudo isso roda em paralelo (`Promise.all`) e e combinado em memoria com o resultado do Watch
+Next — nenhuma segunda passada pelo algoritmo de selecao.
+
+### Fase 3 — Ordenacao
+
+1. Atividade mais recente (`UserSeriesStatus.lastActivityAt` desc).
+2. Episodio pendente disponivel — automatico: todo item de `getWatchNextForUser` ja tem um
+   episodio pendente por construcao (series sem pendencia nunca entram no resultado).
+3. Acompanhada recentemente — desempate por `startedAt` desc.
+4. Fallback — ordem original do Watch Next (episodio pendente mais antigo primeiro).
+
+"Nunca mostrar series que o usuario nao acompanha" tambem e automatico: a fonte
+(`getWatchNextForUser`) ja filtra por `WATCHING`/`WANT_TO_WATCH`.
+
+### Fase 4/8 — UI no Dashboard
+
+`components/continue-watching/continue-watching-section.tsx` — primeira area do Dashboard
+(`components/dashboard/dashboard-home.tsx`), acima do grid de cards existente. Titulo
+"Continuar assistindo", subtitulo "Retome suas series exatamente de onde parou." Reaproveita
+o shelf `Carousel`/`CarouselItem`
+(ja existente desde INSERIES-LANDING-CINEMATIC-IMMERSION-01) — linha horizontal com setas no
+desktop, carrossel com scroll-snap nativo no mobile, sem nenhum mecanismo de layout novo.
+
+`components/continue-watching/continue-watching-card.tsx` — poster grande + backdrop
+esmaecido revelado no hover, badge "Novo episodio", codigo T/E, duracao, barra de progresso
+da serie e da temporada, episodios restantes, ultimo episodio assistido (com data relativa),
+e os dois botoes pedidos: "Continuar" (link para `/series/[slug]/episode/[id]`) e "Marcar
+como assistido" (reaproveita `WatchNextMarkButton` **sem nenhuma modificacao** — mesmo botao,
+mesma mutation, mesmo `router.refresh()`).
+
+### Fase 5 — Estado vazio
+
+Dois estados distintos (mesma distincao que o Watch Next ja fazia via
+`hasTrackedSeries`): usuario sem nenhuma serie acompanhada ve "Voce ainda nao comecou nenhuma
+serie" com CTA "Explorar catalogo"; usuario que acompanha series mas nao tem nada pendente ve
+"Voce esta em dia com suas series".
+
+### Fase 6/7 — Integracao com Watch Next e acoes
+
+Nenhuma regra paralela: `getContinueWatchingForUser` chama `getWatchNextForUser` diretamente.
+Se a logica de "proximo episodio" mudar no futuro, esta secao muda junto, automaticamente.
+"Marcar como assistido" usa o mesmo `POST /api/episodes/[id]/progress` (`toggleEpisodeProgress`)
+que todo outro botao "marcar assistido" do app usa; apos marcar, `router.refresh()` re-executa
+o Server Component do Dashboard, que re-chama `getContinueWatchingForUser` e portanto
+`getWatchNextForUser` — o card avanca para o proximo episodio ou desaparece (serie
+concluida/sem mais pendencias) automaticamente, sem nenhum estado otimista/paralelo no
+cliente.
+
+### Fase 9 — Performance
+
+- `getContinueWatchingForUser` roda dentro do mesmo `Promise.all` de todo o resto do
+  Dashboard (`dashboard-home.tsx`) — nunca depois, nunca um componente assincrono aninhado
+  que criaria um waterfall sequencial.
+- Toda query adicional e um unico `WHERE id IN (...)`, bounded pelo numero de series que o
+  usuario acompanha — nunca proporcional ao tamanho do catalogo.
+- Imagens (`PosterImage`/`BackdropImage`) reaproveitadas sem alteracao — lazy loading e
+  shimmer de carregamento ja embutidos; so os 2 primeiros cards recebem `priority`.
+
+### Decisoes arquiteturais
+
+- **O card compacto "Assistir a seguir" (dentro do grid do Dashboard) foi mantido.** O
+  ticket pede para *adicionar* a nova secao como primeira area — nao pede para remover nada
+  existente. "Continuar assistindo" e a nova superficie principal de retomada (maior, mais
+  rica, primeira dobra); o card compacto continua como atalho rapido para `/watch-next`.
+- **`lib/continue-watching` nunca importa Prisma para decidir qual e o proximo episodio** —
+  so para enriquecer com campos de exibicao. A unica fonte de verdade do algoritmo continua
+  sendo `lib/watch-next/queries.ts`.
+- **Nenhuma migration nesta sprint** — todos os campos necessarios (`lastActivityAt`,
+  `watchedAt`, `startedAt`, `completionPercent`, `runtimeMinutes`, `episodeCount`) ja
+  existiam no schema.
+
+### Limitacoes atuais
+
+- "Progresso da temporada" so aparece quando a temporada do proximo episodio ja tem pelo
+  menos 1 episodio assistido pelo usuario (senao a barra fica oculta, para nao mostrar 0%
+  vazio sem contexto).
+- O botao "Continuar" navega para a pagina do episodio (`/series/[slug]/episode/[id]`), que
+  ja tem seu proprio botao de marcar assistido (`EpisodeWatchButton`) — o inSeries nao
+  reproduz video, entao "Continuar" significa "ir para onde voce registra que assistiu",
+  nao iniciar playback.
+
 ## Comandos
 
 - `npm install`: instala dependencias
