@@ -1941,6 +1941,156 @@ cliente.
   reproduz video, entao "Continuar" significa "ir para onde voce registra que assistiu",
   nao iniciar playback.
 
+## Dashboard Premium — a Home real da plataforma (INSERIES-DASHBOARD-PREMIUM-01)
+
+O Dashboard autenticado deixa de ser uma grade de widgets soltos e passa a ser organizado
+como a Home de uma plataforma de streaming: uma ordem fixa de secoes, cada uma com
+identidade visual propria, todas reaproveitando servicos ja existentes.
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **Widget redundante identificado**: a antiga secao "Assistir a seguir" (grid de 2
+  colunas) e a nova "Continuar assistindo"
+  (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) mostram, na pratica, o mesmo dado (proximo
+  episodio pendente por serie) — ambas vem de `getWatchNextForUser`. O ticket desta sprint
+  mantem as duas explicitamente na "nova ordem" (posicoes 2 e 6), entao ambas foram
+  preservadas: "Continuar assistindo" como a superficie principal (cards grandes, topo da
+  pagina), "Watch Next" como lista compacta secundaria mais abaixo — nunca a mesma logica
+  duplicada, so duas apresentacoes do mesmo dado de `getWatchNextForUser`.
+- **Componentes que ja podiam consumir Smart Lists**: "Bombando Agora" ja existia (sprint
+  anterior); "Lancamentos" nao existia como secao do Dashboard, mas `listLancamentos`
+  (Smart List do Discovery Engine) ja existia em `lib/catalog/smart-lists.ts` sem nenhum
+  consumidor no Dashboard — oportunidade de reuso direto, zero logica nova.
+  Nao renderizadas ainda: "Colecoes", "Favoritos" — fora do escopo desta sprint (a lista
+  global de superficies que devem seguir a regra de grid inclui esses nomes para
+  padronizacao futura, nao exige criar as telas agora).
+- **Componentes que ja podiam consumir Discovery Score**: o motor de recomendacoes
+  (`lib/recommendations`) ja buscava `qualityScore`/`collectionTags` no candidato, mas
+  documentado explicitamente como "purely visual, no provider reads these" — nunca usado
+  para pontuar. Oportunidade direta para a Fase 4 desta sprint.
+- **Informacao pouco util identificada**: a antiga secao "Estatisticas" mostrava so 3
+  numeros em caixas simples (`StatTile`) sem nenhum icone/hierarquia — trocada por uma
+  secao dedicada com 7 metricas, icone por metrica e visual "nao administrativo".
+- **Sem funcionalidade nova removida**: Calendario/Conquistas/Recap/Notificacoes nao estao
+  entre as 10 secoes mandatadas pelo ticket, mas continuam no Dashboard (movidas para uma
+  grade secundaria, apos a ordem principal) — nenhuma funcionalidade existente foi cortada.
+
+### Fase 2 — Nova ordem
+
+`components/dashboard/dashboard-home.tsx` renderiza, nesta ordem exata: Saudacao →
+Continuar assistindo → Bombando Agora → Lancamentos → Recomendado para voce → Watch Next →
+Minha Lista → Suas Estatisticas → Atividade recente → Descobrir mais. Cada secao e um
+componente proprio (`components/dashboard/*`), cada um com seu proprio cabecalho/identidade
+visual — nunca o mesmo componente reaproveitado com conteudo diferente disfarcado de
+"identidade propria".
+
+### Fase 3 — Personalizacao (`components/dashboard/greeting-section.tsx`)
+
+Saudacao contextual por horario (Bom dia/Boa tarde/Boa noite/Boa madrugada), nome do
+usuario, e uma linha de fatos — series em andamento, episodios pendentes, ultima atividade,
+tempo desde o ultimo acesso — todos de campos ja existentes: `UserStats.overview`
+(`lib/analytics`), `UserStats.streaks.lastWatchedAt`, e `User.lastLoginAt` (ja mantido pela
+rota de login, so precisou ser adicionado ao `select` de `getCurrentUser`,
+`lib/auth/server.ts`). Nenhum schema novo, nenhuma query nova para esta secao especifica.
+
+### Fase 4 — Recomendado para voce: `editorialProvider`
+
+Novo provider (`lib/recommendations/providers/editorial-provider.ts`), plugado no motor de
+recomendacoes existente (mesma interface `RecommendationProvider`, mesmo
+`combineProviderSignals`, nenhuma logica de scoring duplicada). So gera sinal quando ha
+overlap real de Collection Tag ou Keyword entre o candidato e o "seed" do usuario (series
+concluidas/assistindo) — nunca generico, por construcao: sem overlap, o provider
+simplesmente nao vota naquele candidato. Discovery Score e Quality Score (normalizados 0-1)
+so ajustam o ranking *entre* candidatos que ja tem overlap — nunca sao, sozinhos, a razao de
+uma recomendacao aparecer. "Status das series" continua reaproveitado via os filtros ja
+existentes (`lib/recommendations/filters.ts`, inalterado).
+
+### Fase 5 — Minha Lista (`lib/my-list/`, `components/my-list/`)
+
+Resumo dos grupos Assistindo/Quero assistir/Concluidas/Pausadas/Favoritas. Sem campo de
+"favorito" em lugar nenhum do schema (`Rating` existe mas nunca e lido/escrito por nenhum
+codigo da aplicacao — auditado, zero usos) — "Favoritas" reaproveita `Review.rating >= 4`,
+o mesmo limiar que o motor de recomendacoes ja trata como "avaliacao positiva". Contagens
+via `groupBy`, preview de ate 6 series por grupo via uma query bounded por grupo — 6 queries
+no total, todas em paralelo, nenhuma proporcional ao catalogo.
+
+### Fase 6 — Estatisticas: provedor predominante
+
+`lib/analytics/providers.ts` (`computeProviderStats`) — nova metrica pura, derivada do
+mesmo `AnalyticsDataset` que todo o resto da camada de analytics ja usa (so precisou
+adicionar `watchProviders` ao `select` de `dataset.ts`). Conta quantas series (nao
+episodios) o usuario acompanha em cada streaming, uma vez por serie. `StatsSection`
+(`components/dashboard/stats-section.tsx`) mostra 7 metricas com icone + numero grande —
+"sem aparencia administrativa" no lugar da antiga grade de caixas simples.
+
+### Fase 7 — Atividade recente
+
+Reaproveita `ActivityCard` e `getRecentActivityForUser` sem nenhuma alteracao —
+`getRecentActivityForUser` ja filtra `where: { userId }` (so as proprias acoes do usuario,
+nunca de quem ele segue), exatamente o "Voce terminou/comecou/avaliou" do ticket.
+
+### Fase 8 — Padronizacao de cards
+
+Auditoria encontrou tres valores diferentes de hover-lift entre cards do app:
+`hover:-translate-y-0.5` (`Card` interactive, `ContinueWatchingCard`),
+`hover:-translate-y-1` (`SeriesCard`, `RecommendationCard`, tile de colecoes da Landing) e
+`group-hover:-translate-y-1.5` (`SeriesPosterCard`). Padronizado para `-translate-y-1` em
+todos (a maioria ja usava esse valor) — `components/ui/card.tsx`,
+`components/continue-watching/continue-watching-card.tsx`,
+`components/media/series-poster-card.tsx` e todos os componentes novos desta sprint.
+Borda/sombra (`hover:border-border-strong hover:shadow-raised`), raio (`rounded-2xl`/
+`rounded-3xl`) e duracao de transicao (`duration-200`/`duration-300 ease-out`) ja eram
+consistentes — mantidos como estavam.
+
+### Fase 9/12 — Performance
+
+Toda secao nova busca seus dados no mesmo `Promise.all` de nivel superior do
+`DashboardHome` — nenhum componente assincrono aninhado, nunca um waterfall sequencial.
+`getMyListSummaryForUser` e o `editorialProvider`'s query extra de seed tags/keywords
+seguem a mesma disciplina ja estabelecida (`lib/continue-watching`,
+`lib/discovery/engine.ts`): sempre `WHERE id IN (...)` bounded, nunca uma query por
+serie/episodio.
+
+### Fase 10 — Regra global de grids fixos
+
+`components/ui/fixed-grid.tsx` — todo grid de listagem usa uma quantidade FIXA de colunas
+por breakpoint (nunca `auto-fit`/`auto-fill`, nunca `flex-wrap` com largura variavel). Isso
+garante, por construcao (nao por logica de truncar/preencher), que nenhuma linha
+intermediaria fica incompleta: um CSS grid de N colunas fixas com itens sem `col-span`
+sempre preenche da esquerda para a direita — a unica linha que pode ficar com menos de N
+itens e a ultima. Aplicado em: `/series` (catalogo), `/recommendations`, e nas novas secoes
+do Dashboard (Bombando Agora, Lancamentos, Recomendado para voce, Minha Lista,
+Estatisticas, Descobrir mais). Contagens de itens escolhidas para serem divisiveis por
+todos os breakpoints usados (ex.: catalogo usa pageSize 12 com colunas 2/3/4; secoes do
+Dashboard usam 8 itens com colunas 2/4/4) — nunca uma linha parcial no meio de uma pagina
+"cheia". "Continuar assistindo" e "Watch Next" satisfazem a mesma regra por um mecanismo
+diferente: carrossel de largura de card fixa (um numero fixo de cards totalmente visiveis
+por vez, por breakpoint) e stack de coluna unica (`N=1` uniforme), respectivamente — ambos
+"itens fixos por linha", so que uma linha rola e a outra empilha.
+
+### Decisoes arquiteturais
+
+- **Nenhuma migration nesta sprint** — `Episode.runtimeMinutes`, `Season.episodeCount`,
+  `UserSeriesStatus.completionPercent`/`lastActivityAt`/`startedAt`, `User.lastLoginAt` e
+  `Review.rating` ja cobriam tudo que as Fases 3/5/6 precisavam.
+- **`editorialProvider` nunca substitui os providers existentes** (genre/similar/popular/
+  rating/trending) — soma-se a eles no mesmo `combineProviderSignals`, com seu proprio peso
+  configuravel (`RECOMMENDATION_WEIGHT_EDITORIAL`, default 0.9 — o mais alto, ja que so
+  vota quando ha sinal pessoal real).
+- **Calendario/Conquistas/Recap/Notificacoes mantidos, nao removidos** — nao fazem parte da
+  ordem mandatada, mas cortar funcionalidade existente nao foi pedido.
+
+### Limitacoes atuais
+
+- "Favoritas" e um proxy (`Review.rating >= 4`), nao um favorito explicito — nao existe
+  campo de favorito no schema, e criar um seria uma funcionalidade nova fora do escopo
+  ("nao criar funcionalidades paralelas").
+- A validacao de mobile/tablet/desktop foi feita via inspecao das classes Tailwind geradas
+  (`grid-cols-*` por breakpoint) e revisao manual do layout — este sandbox nao tem
+  Playwright/Puppeteer instalado para capturar screenshots reais em múltiplas resolucoes.
+
 ## Comandos
 
 - `npm install`: instala dependencias

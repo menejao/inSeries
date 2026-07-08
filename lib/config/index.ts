@@ -109,6 +109,7 @@ const envSchema = z.object({
   RECOMMENDATION_WEIGHT_POPULAR: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_RATING: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_TRENDING: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_EDITORIAL: optionalNonEmpty(),
   RECOMMENDATION_CANDIDATE_POOL_SIZE: optionalNonEmpty(),
   RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty()
 });
@@ -353,7 +354,10 @@ export const config = {
       similar: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_SIMILAR, 0.8),
       popular: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_POPULAR, 0.5),
       rating: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_RATING, 0.6),
-      trending: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_TRENDING, 0.4)
+      trending: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_TRENDING, 0.4),
+      // Fase 4 (INSERIES-DASHBOARD-PREMIUM-01) — weighted highest: only ever fires on a
+      // real personalized tag/keyword overlap (see editorial-provider.ts), never generic.
+      editorial: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_EDITORIAL, 0.9)
     },
     candidatePoolSize: parseNumberFlag(rawEnv.RECOMMENDATION_CANDIDATE_POOL_SIZE, 200),
     cacheTtlSeconds: parseNumberFlag(rawEnv.RECOMMENDATION_CACHE_TTL_SECONDS, 300)

@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/ui/empty-state";
 import { RecommendationCard } from "@/components/recommendations/recommendation-card";
+import { FixedGrid } from "@/components/ui/fixed-grid";
 import { CompassIcon } from "@/components/ui/icons";
 import { requireUser } from "@/lib/auth/server";
 import { getRecommendationsForUser } from "@/lib/recommendations";
@@ -25,11 +26,11 @@ export default async function RecommendationsPage() {
           copy="Assista episodios, conclua series e escreva reviews para receber sugestoes personalizadas."
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        <FixedGrid mobile={2} tablet={3} desktop={4} wide={6}>
           {result.items.map((recommendation) => (
             <RecommendationCard key={recommendation.series.id} recommendation={recommendation} />
           ))}
-        </div>
+        </FixedGrid>
       )}
     </div>
   );

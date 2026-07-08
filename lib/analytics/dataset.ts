@@ -47,6 +47,7 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
             id: true,
             title: true,
             genres: true,
+            watchProviders: true,
             seasons: { select: { episodeCount: true } }
           }
         }
@@ -77,6 +78,7 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
     seriesId: row.series.id,
     seriesTitle: row.series.title,
     seriesGenres: row.series.genres,
+    seriesWatchProviders: row.series.watchProviders,
     state: row.state,
     completionPercent: row.completionPercent,
     startedAt: row.startedAt,

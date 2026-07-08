@@ -1,6 +1,6 @@
 import type { GenreStats } from "@/lib/analytics";
 
-export type RecommendationProviderId = "genre" | "similar" | "popular" | "rating" | "trending";
+export type RecommendationProviderId = "genre" | "similar" | "popular" | "rating" | "trending" | "editorial";
 
 /** The catalog fields every provider needs — fetched once by the engine, never re-queried per provider. */
 export type CandidateSeries = {
@@ -16,18 +16,24 @@ export type CandidateSeries = {
   voteCount: number | null;
   firstAirYear: number | null;
   // INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 (Fase 9) — additive only, purely for the
-  // card's visual enrichment (tags/quality/logo). No provider/scoring logic reads these.
+  // card's visual enrichment (tags/quality/logo).
   qualityScore: number | null;
   collectionTags: string[];
   watchProviders: string[];
   logoUrl: string | null;
+  // INSERIES-DASHBOARD-PREMIUM-01 (Fase 4) — read by editorialProvider (providers/editorial-provider.ts).
+  discoveryScore: number | null;
+  keywords: string[];
 };
 
-/** One "seed" series the user has engaged with (completed or currently watching) — used by SimilarSeriesProvider. */
+/** One "seed" series the user has engaged with (completed or currently watching) — used by SimilarSeriesProvider and editorialProvider. */
 export type SeedSeries = {
   id: string;
   title: string;
   genres: string[];
+  // INSERIES-DASHBOARD-PREMIUM-01 (Fase 4) — the user's own collectionTags/keywords "fingerprint", read by editorialProvider.
+  collectionTags: string[];
+  keywords: string[];
 };
 
 /**

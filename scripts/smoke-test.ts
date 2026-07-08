@@ -30,6 +30,7 @@ import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
 import { pickHero } from "@/lib/catalog/hero-selection";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
+import { editorialProvider } from "@/lib/recommendations/providers";
 import { getWatchNextForUser } from "@/lib/watch-next";
 import { runDiscoveryEngine } from "@/lib/discovery/engine";
 import { computeDiscoveryScore } from "@/lib/discovery/discovery-score";
@@ -419,6 +420,55 @@ async function main() {
     "dashboard /me mostra secao Recomendado para voce quando ha recomendacoes",
     dashboardWithRecs.status === 200 && String(dashboardWithRecs.body).includes("Recomendado para voce"),
     dashboardWithRecs.status
+  );
+
+  // ---- editorialProvider (INSERIES-DASHBOARD-PREMIUM-01, Fase 4): Discovery/Quality ----
+  // ---- Score + Collection Tags/Keywords, nunca generico ----
+  const editorialContextBase = {
+    userId: "smoke-editorial",
+    seedSeries: [{ id: "seed-1", title: "Seed", genres: [], collectionTags: ["Maratona"], keywords: ["dystopia"] }],
+    genreAffinity: { ranking: [], topGenre: null },
+    genreCompletedCounts: new Map<string, number>(),
+    positivelyReviewedGenres: new Map<string, number>()
+  };
+  const editorialCandidateMatch = {
+    id: "match",
+    slug: "match",
+    title: "Match",
+    posterUrl: null,
+    backdropUrl: null,
+    genres: [],
+    status: "RETURNING",
+    popularityScore: 0,
+    voteAverage: 0,
+    voteCount: 0,
+    firstAirYear: null,
+    qualityScore: 90,
+    collectionTags: ["Maratona"],
+    watchProviders: [],
+    logoUrl: null,
+    discoveryScore: 90,
+    keywords: []
+  };
+  const editorialCandidateNoOverlap = { ...editorialCandidateMatch, id: "no-overlap", collectionTags: [], keywords: [], qualityScore: 100, discoveryScore: 100 };
+  const editorialSignalsMatch = editorialProvider.run({ ...editorialContextBase, candidates: [editorialCandidateMatch, editorialCandidateNoOverlap] });
+  check(
+    "Recomendacoes (Fase 4): editorialProvider so pontua series com overlap real de Collection Tag/Keyword com o historico (nunca generico)",
+    editorialSignalsMatch.length === 1 && editorialSignalsMatch[0].seriesId === "match",
+    editorialSignalsMatch
+  );
+
+  const editorialCandidateLowScore = { ...editorialCandidateMatch, id: "low-score", qualityScore: 10, discoveryScore: 10 };
+  const editorialSignalsRanking = editorialProvider.run({
+    ...editorialContextBase,
+    candidates: [editorialCandidateLowScore, editorialCandidateMatch]
+  });
+  const highScoreSignal = editorialSignalsRanking.find((signal) => signal.seriesId === "match");
+  const lowScoreSignal = editorialSignalsRanking.find((signal) => signal.seriesId === "low-score");
+  check(
+    "Recomendacoes (Fase 4): entre duas series com o mesmo overlap, Discovery/Quality Score mais alto pontua mais",
+    Boolean(highScoreSignal) && Boolean(lowScoreSignal) && highScoreSignal!.score > lowScoreSignal!.score,
+    { highScoreSignal, lowScoreSignal }
   );
 
   // ---- Recap: geracao mensal/anual, insights, privacidade, feature flag, validacao de periodo ----
@@ -2409,6 +2459,52 @@ async function main() {
     "Dashboard autenticado usa imagens reais do catalogo (posteres nos cards)",
     dashboardAuth.status === 200 && String(dashboardAuth.body).includes("poster.svg"),
     dashboardAuth.status
+  );
+
+  // ---- INSERIES-DASHBOARD-PREMIUM-01: Dashboard reorganizado, Minha Lista, ----
+  // ---- Estatisticas, Atividade recente, Descobrir mais, grids fixos ----
+  const dashboardBody = String(dashboardAuth.body);
+  const sectionIndex = {
+    continueWatching: dashboardBody.indexOf("Continuar assistindo"),
+    bombandoAgora: dashboardBody.indexOf("Bombando Agora"),
+    lancamentos: dashboardBody.indexOf("Lancamentos"),
+    recomendado: dashboardBody.indexOf("Recomendado para voce"),
+    watchNext: dashboardBody.indexOf(">Watch Next<"),
+    minhaLista: dashboardBody.indexOf("Minha Lista"),
+    estatisticas: dashboardBody.indexOf("Suas Estatisticas"),
+    atividade: dashboardBody.indexOf("Atividade recente"),
+    descobrirMais: dashboardBody.indexOf("Descobrir mais")
+  };
+  check(
+    "Dashboard (Fase 2) segue a nova ordem: Continuar assistindo -> Bombando Agora -> Lancamentos -> Recomendado -> Watch Next -> Minha Lista -> Estatisticas -> Atividade -> Descobrir mais",
+    Object.values(sectionIndex).every((index) => index !== -1) &&
+      sectionIndex.continueWatching < sectionIndex.bombandoAgora &&
+      sectionIndex.bombandoAgora < sectionIndex.lancamentos &&
+      sectionIndex.lancamentos < sectionIndex.recomendado &&
+      sectionIndex.recomendado < sectionIndex.watchNext &&
+      sectionIndex.watchNext < sectionIndex.minhaLista &&
+      sectionIndex.minhaLista < sectionIndex.estatisticas &&
+      sectionIndex.estatisticas < sectionIndex.atividade &&
+      sectionIndex.atividade < sectionIndex.descobrirMais,
+    sectionIndex
+  );
+  check(
+    "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < Math.min(sectionIndex.bombandoAgora, sectionIndex.minhaLista),
+    sectionIndex
+  );
+  check("Dashboard (Fase 5) exibe a secao Minha Lista", dashboardBody.includes("Minha Lista"), dashboardAuth.status);
+  check("Dashboard (Fase 6) exibe a secao Suas Estatisticas", dashboardBody.includes("Suas Estatisticas"), dashboardAuth.status);
+  check("Dashboard (Fase 7) exibe a secao Atividade recente", dashboardBody.includes("Atividade recente"), dashboardAuth.status);
+  check(
+    "Regra global de grids (Fase 10): nenhuma classe auto-fit/auto-fill e usada em nenhuma listagem",
+    !dashboardBody.includes("auto-fit") && !dashboardBody.includes("auto-fill"),
+    null
+  );
+  check(
+    "Regra global de grids (Fase 10): secoes do Dashboard usam colunas fixas por breakpoint (grid-cols-*)",
+    /grid-cols-\d/.test(dashboardBody) && /sm:grid-cols-\d|lg:grid-cols-\d/.test(dashboardBody),
+    null
   );
 
   const watchNextPosterCheck = await request(jarWatchNextDashboard, "/watch-next");

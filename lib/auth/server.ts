@@ -30,7 +30,10 @@ export const getCurrentUser = cache(async function getCurrentUser() {
       email: true,
       avatarUrl: true,
       bio: true,
-      role: true
+      role: true,
+      // INSERIES-DASHBOARD-PREMIUM-01 (Fase 3) — "tempo desde o ultimo acesso" on the
+      // Dashboard greeting; already maintained by the login route, never written here.
+      lastLoginAt: true
     }
   });
 });

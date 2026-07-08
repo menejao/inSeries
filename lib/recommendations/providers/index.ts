@@ -3,6 +3,7 @@ import { similarSeriesProvider } from "@/lib/recommendations/providers/similar-s
 import { popularProvider } from "@/lib/recommendations/providers/popular-provider";
 import { ratingProvider } from "@/lib/recommendations/providers/rating-provider";
 import { trendingProvider } from "@/lib/recommendations/providers/trending-provider";
+import { editorialProvider } from "@/lib/recommendations/providers/editorial-provider";
 import type { RecommendationProvider } from "@/lib/recommendations/types";
 
 /**
@@ -15,7 +16,8 @@ export const RECOMMENDATION_PROVIDERS: RecommendationProvider[] = [
   similarSeriesProvider,
   popularProvider,
   ratingProvider,
-  trendingProvider
+  trendingProvider,
+  editorialProvider
 ];
 
-export { genreProvider, similarSeriesProvider, popularProvider, ratingProvider, trendingProvider };
+export { genreProvider, similarSeriesProvider, popularProvider, ratingProvider, trendingProvider, editorialProvider };

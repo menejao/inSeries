@@ -29,7 +29,9 @@ const CANDIDATE_SELECT = {
   qualityScore: true,
   collectionTags: true,
   watchProviders: true,
-  logoUrl: true
+  logoUrl: true,
+  discoveryScore: true,
+  keywords: true
 } as const;
 
 /**
@@ -59,10 +61,22 @@ async function buildContext(userId: string): Promise<{ context: RecommendationCo
     watching: new Set(watching.map((s) => s.seriesId))
   };
 
+  // Fase 4 (INSERIES-DASHBOARD-PREMIUM-01) — the user's collectionTags/keywords
+  // "fingerprint" (editorialProvider), from the same completed+watching seed series
+  // already computed above. One bounded query (never per-series) since the seed set is
+  // always small (a user's own tracked series, not the catalog).
+  const seedSeriesIds = [...completed, ...watching].map((status) => status.seriesId);
+  const seedSeriesTagsRows = seedSeriesIds.length
+    ? await prisma.series.findMany({ where: { id: { in: seedSeriesIds } }, select: { id: true, collectionTags: true, keywords: true } })
+    : [];
+  const seedTagsById = new Map(seedSeriesTagsRows.map((row) => [row.id, row]));
+
   const seedSeries: SeedSeries[] = [...completed, ...watching].map((status) => ({
     id: status.seriesId,
     title: status.seriesTitle,
-    genres: status.seriesGenres
+    genres: status.seriesGenres,
+    collectionTags: seedTagsById.get(status.seriesId)?.collectionTags ?? [],
+    keywords: seedTagsById.get(status.seriesId)?.keywords ?? []
   }));
 
   const genreCompletedCounts = new Map<string, number>();

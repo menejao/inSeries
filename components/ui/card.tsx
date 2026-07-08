@@ -20,7 +20,11 @@ export function Card({ children, className, interactive = false, padding = "md",
       className={cn(
         "rounded-4xl border border-border bg-surface/70 shadow-card backdrop-blur-sm",
         paddingClasses[padding],
-        interactive && "transition duration-200 ease-out hover:-translate-y-0.5 hover:border-border-strong hover:shadow-raised",
+        // Fase 8 (INSERIES-DASHBOARD-PREMIUM-01) — -translate-y-1 is the standard hover
+        // lift for every interactive card in the app (series-card.tsx, recommendation-
+        // card.tsx, dashboard sections); this used to be a smaller -0.5 here, a real
+        // inconsistency the "padronizar cards" audit caught and fixed.
+        interactive && "transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised",
         className
       )}
       {...props}

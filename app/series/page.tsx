@@ -2,10 +2,14 @@ import { Filters } from "@/components/series/filters";
 import { Pagination } from "@/components/ui/pagination";
 import { SeriesCard } from "@/components/series/series-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FixedGrid } from "@/components/ui/fixed-grid";
 import { CompassIcon } from "@/components/ui/icons";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 
-const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality"];
+// "discovery" (INSERIES-TRENDING-DISCOVERY-ENGINE-01) was missing here, so "Ver tudo" links
+// from Bombando Agora (?sort=discovery) silently fell back to "popular" — fixed alongside
+// this sprint's Dashboard work since it's the same "Bombando Agora funciona" requirement.
+const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality", "discovery"];
 
 type SeriesPageSearchParams = {
   q?: string;
@@ -76,11 +80,15 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
       />
       {result.items.length ? (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {/* mobile/tablet/desktop column counts (2/3/4) are all exact divisors of the page
+              size (12, lib/discovery/search.ts's DEFAULT_PAGE_SIZE) — every non-last page
+              always fills complete rows at every breakpoint; only the catalog's true last
+              page can end with a partial row. */}
+          <FixedGrid mobile={2} tablet={3} desktop={4}>
             {result.items.map((item) => (
               <SeriesCard key={item.id} series={item} />
             ))}
-          </div>
+          </FixedGrid>
           <Pagination page={result.page} totalPages={result.totalPages} params={params} basePath="/series" />
         </>
       ) : (

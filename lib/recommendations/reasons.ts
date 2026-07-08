@@ -30,3 +30,10 @@ export function positiveReviewReason(): string {
 export function trendingReason(): string {
   return "Em alta agora (em exibicao).";
 }
+
+/** Fase 4 (INSERIES-DASHBOARD-PREMIUM-01) — only ever used when there's a real tag/keyword overlap with the user's own history (never a generic "high score" reason). */
+export function editorialReason(matchedTag: string | undefined, matchedKeyword: string | undefined): string {
+  if (matchedTag) return `Porque voce assiste series com a marca "${matchedTag}".`;
+  if (matchedKeyword) return `Porque voce assiste series sobre "${matchedKeyword}".`;
+  return "Selecionado com base no seu historico.";
+}

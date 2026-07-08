@@ -41,7 +41,7 @@ export function SeriesPosterCard({
 
   return (
     <Link href={`/series/${series.slug}`} className="group block">
-      <div className="relative aspect-[2/3] overflow-hidden rounded-3xl border border-border shadow-card transition duration-300 ease-out group-hover:-translate-y-1.5 group-hover:border-border-strong group-hover:shadow-raised">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-3xl border border-border shadow-card transition duration-300 ease-out group-hover:-translate-y-1 group-hover:border-border-strong group-hover:shadow-raised">
         <PosterImage
           src={series.posterUrl}
           alt={series.title}

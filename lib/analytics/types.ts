@@ -28,6 +28,8 @@ export type SeriesStatusRecord = {
   seriesId: string;
   seriesTitle: string;
   seriesGenres: string[];
+  // INSERIES-DASHBOARD-PREMIUM-01 (Fase 6) — "provedor predominante" (providers.ts).
+  seriesWatchProviders: string[];
   state: WatchState;
   completionPercent: number;
   startedAt: Date | null;
@@ -114,6 +116,13 @@ export type StreakStats = {
   lastWatchedAt: Date | null;
 };
 
+export type ProviderStat = { provider: string; seriesCount: number };
+
+export type ProviderStats = {
+  ranking: ProviderStat[];
+  topProvider: ProviderStat | null;
+};
+
 export type Insight = {
   id: string;
   text: string;
@@ -126,5 +135,6 @@ export type UserStats = {
   genres: GenreStats;
   timeline: TimelineStats;
   streaks: StreakStats;
+  providers: ProviderStats;
   insights: Insight[];
 };

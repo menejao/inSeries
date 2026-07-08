@@ -4,6 +4,7 @@ import { computeWatchTimeStats } from "@/lib/analytics/watch-time";
 import { computeGenreStats } from "@/lib/analytics/genres";
 import { computeTimelineStats } from "@/lib/analytics/timeline";
 import { computeStreakStats } from "@/lib/analytics/streaks";
+import { computeProviderStats } from "@/lib/analytics/providers";
 import { generateInsights } from "@/lib/analytics/insights";
 import type { UserStats } from "@/lib/analytics/types";
 
@@ -29,6 +30,7 @@ export async function getUserStats(userId: string): Promise<UserStats> {
   const genres = computeGenreStats(dataset.watchedEpisodes);
   const timeline = computeTimelineStats(dataset.watchedEpisodes);
   const streaks = computeStreakStats(dataset.watchedEpisodes);
+  const providers = computeProviderStats(dataset);
   const insights = generateInsights({ overview, watchTime, genres, streaks, watchedEpisodes: dataset.watchedEpisodes });
 
   return {
@@ -38,6 +40,7 @@ export async function getUserStats(userId: string): Promise<UserStats> {
     genres,
     timeline,
     streaks,
+    providers,
     insights
   };
 }
