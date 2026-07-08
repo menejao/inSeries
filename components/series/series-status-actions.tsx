@@ -4,14 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { WATCH_STATE_ORDER, getWatchStateLabel } from "@/lib/progress/labels";
 
-const labels: Array<{ value: "WANT_TO_WATCH" | "WATCHING" | "PAUSED" | "DROPPED" | "COMPLETED"; label: string }> = [
-  { value: "WANT_TO_WATCH", label: "Quero assistir" },
-  { value: "WATCHING", label: "Assistindo" },
-  { value: "PAUSED", label: "Pausada" },
-  { value: "DROPPED", label: "Abandonada" },
-  { value: "COMPLETED", label: "Concluida" }
-];
+const labels = WATCH_STATE_ORDER.map((value) => ({ value, label: getWatchStateLabel(value) }));
 
 export function SeriesStatusActions({
   seriesId,

@@ -61,6 +61,18 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
   return status;
 }
 
+/**
+ * Fase 7 (INSERIES-MY-LISTS-PREMIUM-01) — "Remover" da Minha Lista. Nao havia nenhum jeito
+ * de apagar um `UserSeriesStatus` (so criar/atualizar via `upsertSeriesStatus`); esta e a
+ * unica peca de CRUD que faltava, nao uma regra de negocio nova. Sem efeito de atividade/
+ * gamificacao — remover o status nao e um evento a ser comemorado ou registrado no feed,
+ * so a limpeza reversa de um `upsertSeriesStatus` anterior.
+ */
+export async function removeSeriesStatus(userId: string, seriesId: string) {
+  await prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } });
+  invalidateRecommendationCache(userId);
+}
+
 export async function toggleEpisodeProgress(userId: string, episodeId: string, watched: boolean) {
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },

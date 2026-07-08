@@ -4,20 +4,26 @@ import { FixedGrid } from "@/components/ui/fixed-grid";
 import { Badge } from "@/components/ui/badge";
 import type { MyListGroupKey, MyListSummary } from "@/lib/my-list";
 
-/** Only the 3 groups with a dedicated existing page get a real "Ver tudo" link — Paused/Favorites reuse the general "/me" overview (no new route invented for this sprint). */
+/**
+ * Fase 8 (INSERIES-MY-LISTS-PREMIUM-01) — todo grupo agora tem um destino real: a pagina
+ * completa "Minha Lista" (`/me/minha-lista`), na secao do proprio grupo. Antes, Pausadas e
+ * Favoritas nao tinham nenhuma pagina dedicada (caiam de volta para "/me").
+ */
 const GROUP_HREF: Record<MyListGroupKey, string> = {
-  WATCHING: "/me/watching",
-  WANT_TO_WATCH: "/me/watchlist",
-  COMPLETED: "/me/completed",
-  PAUSED: "/me",
-  FAVORITES: "/me"
+  WATCHING: "/me/minha-lista#grupo-watching",
+  WANT_TO_WATCH: "/me/minha-lista#grupo-want_to_watch",
+  COMPLETED: "/me/minha-lista#grupo-completed",
+  PAUSED: "/me/minha-lista#grupo-paused",
+  DROPPED: "/me/minha-lista#grupo-dropped",
+  FAVORITES: "/me/minha-lista#grupo-favorites"
 };
 
 /**
  * Fase 5 (INSERIES-DASHBOARD-PREMIUM-01) — "Minha Lista": one compact preview grid per
- * status group (Assistindo/Quero assistir/Concluidas/Pausadas/Favoritas), each with its own
- * total count and a small fixed-grid preview. Mobile/tablet/desktop column counts (2/3/6)
- * all divide the 6-item preview limit evenly, so a full preview never ends mid-row.
+ * status group (Assistindo/Quero assistir/Pausadas/Concluidas/Abandonadas/Favoritas), each
+ * with its own total count and a small fixed-grid preview. Mobile/tablet/desktop column
+ * counts (2/3/6) all divide the 6-item preview limit evenly, so a full preview never ends
+ * mid-row.
  */
 export function MyListSection({ summary }: { summary: MyListSummary }) {
   return (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getApiUser } from "@/lib/auth/server";
-import { upsertSeriesStatus } from "@/lib/progress/mutations";
+import { removeSeriesStatus, upsertSeriesStatus } from "@/lib/progress/mutations";
 import { withApiObservability } from "@/lib/http/api-handler";
 
 const statusSchema = z.object({
@@ -26,4 +26,16 @@ async function statusHandler(request: Request) {
   return NextResponse.json({ data: status });
 }
 
+async function deleteHandler(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getApiUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  await removeSeriesStatus(user.id, id);
+  return NextResponse.json({ data: { ok: true } });
+}
+
 export const POST = withApiObservability("series.status", statusHandler);
+export const DELETE = withApiObservability("series.status.delete", deleteHandler);

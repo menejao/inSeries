@@ -268,3 +268,10 @@ export const ShareIcon = createIcon(
     <path d="m8.2 10.7 7.6-4.4M8.2 13.3l7.6 4.4" />
   </>
 );
+
+export const ClockIcon = createIcon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3.5 2" />
+  </>
+);

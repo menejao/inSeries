@@ -2271,6 +2271,166 @@ em um unico `Promise.all` de nivel superior — nenhum componente assincrono ani
 - Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
   layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
 
+## Minha Lista Premium (INSERIES-MY-LISTS-PREMIUM-01)
+
+A area "Minha Lista" deixa de ser uma lista simples (3 paginas fragmentadas, sem cobrir
+todos os status) e passa a ser o centro de organizacao pessoal do usuario: uma unica pagina
+(`/me/minha-lista`) com 6 grupos, busca, filtros, ordenacao, acoes em lote, estatisticas e
+recomendacoes, reaproveitando exclusivamente servicos ja existentes.
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **Grupo "Abandonadas" ausente**: `getMyListSummaryForUser` (Dashboard Premium) consultava
+  4 estados de `UserSeriesStatus` (WATCHING/WANT_TO_WATCH/COMPLETED/PAUSED) mais Favoritas,
+  mas nunca `DROPPED` — o 5o valor do enum `WatchState` — apesar de a UI de status da serie
+  (`SeriesStatusActions`) ja ter o botao "Abandonada" havia sprints. Corrigido: a funcao
+  agora tambem consulta `DROPPED`, entao o Dashboard passa a mostrar esse grupo de graca.
+- **3 paginas fragmentadas, nenhuma completa**: `/me/watching`, `/me/watchlist` e
+  `/me/completed` cada uma cobria so 1 dos 5 estados (Pausadas e Favoritas nunca tiveram
+  pagina propria, caindo de volta para "/me" no link "Ver tudo" do Dashboard); nenhuma tinha
+  busca, filtro, ordenacao ou acao em lote.
+- **N+1 real nas 3 paginas antigas**: cada uma buscava os `UserSeriesStatus` do usuario e
+  depois chamava `getCatalogSeriesBySlug` (que inclui `seasons`/`episodes`) **uma vez por
+  serie**, via `Promise.all` de N queries independentes — nunca uma unica consulta batched.
+- **"Minha Lista" (grupos de status) vs. "Minhas Listas" (`/me/lists`)**: sao duas
+  funcionalidades genuinamente distintas — a primeira e `UserSeriesStatus` (o status que o
+  usuario da a uma serie), a segunda e o modelo `List`/`ListItem` (colecoes nomeadas que o
+  usuario cria). Mantidas separadas; "Adicionar as listas" (Fase 7) e a ponte entre as duas.
+- **Cabecalho/estatisticas nunca precisam de query propria**: `getUserStats` (lib/analytics)
+  ja calcula tudo que as Fases 3 e 9 pedem (series por status, tempo assistido, streak,
+  genero/provider predominante) a partir de duas queries reaproveitadas em toda a app —
+  zero calculo novo no banco, so duas pequenas funcoes puras (tempo restante estimado e
+  status predominante, `lib/my-list/stats.ts`) sobre numeros ja computados.
+
+### Fase 2 — Nova estrutura: 6 grupos independentes
+
+`lib/my-list/queries.ts` (`getMyListFullForUser`) busca, em paralelo, todos os
+`UserSeriesStatus` do usuario (os 5 estados) e todas as reviews com nota >= 4 — uma consulta
+batched cada, nunca uma por serie. `MyListGroup` (`components/my-list/my-list-group.tsx`)
+renderiza cada grupo (Assistindo, Quero assistir, Pausadas, Concluidas, Abandonadas,
+Favoritas) com contador, ultima atividade, expandir/recolher e empty state proprio. Uma
+serie favoritada por review mas **sem** `UserSeriesStatus` ainda aparece — so no grupo
+Favoritas, com um badge "Sem status" — o mesmo caso de borda que o resumo do Dashboard ja
+tratava consultando `Review` de forma independente do status.
+
+### Fase 3 — Cabecalho premium
+
+`MyListHeader` (`components/my-list/my-list-header.tsx`): Total de series, Em andamento,
+Concluidas, Tempo assistido, Ultima atividade e Sequencia atual — os 6 numeros direto de
+`getUserStats(userId)`, chamado uma unica vez no server component da pagina.
+
+### Fase 4 — Cards premium
+
+`MyListItemCard` (`components/my-list/my-list-item-card.tsx`): poster, logo oficial com
+fallback (`SeriesLogoOrTitle`), nota, Quality Score, Discovery Score, providers, Collection
+Tags, progresso, badge de status, ultima atividade/data de adicao, checkbox de selecao
+(Fase 7) e duas acoes rapidas individuais — mudar status (reaproveita
+`POST /api/series/[id]/status`, o mesmo endpoint de `SeriesStatusActions`) e remover
+(`DELETE /api/series/[id]/status`, novo — ver Fase 7). Hover premium padronizado
+(`-translate-y-1`), igual a todo outro card do app.
+
+### Fase 5/6/8 — Filtros, ordenacao e busca
+
+`lib/my-list/filter-sort.ts`: funcoes puras (`filterMyListItems`, `sortMyListItems`,
+`getMyListFilterOptions`) que operam inteiramente sobre o array ja carregado pelo server
+component — nenhuma filtragem, ordenacao ou busca dispara uma nova consulta. Filtros:
+genero, ano, idioma, pais, provider, Collection Tag e keyword (as opcoes de cada dropdown
+vem so dos valores presentes na propria lista do usuario, nunca do catalogo inteiro).
+Ordenacao: ultima atividade, ultima atualizacao, data adicionada, titulo, popularidade,
+Quality Score, Discovery Score, nota, episodios e temporadas — ascendente/descendente.
+Busca: titulo, keywords, Collection Tags e providers, tudo client-side
+(`MyListToolbar`/`MyListPageClient`), sem endpoint novo.
+
+### Fase 7 — Acoes em lote
+
+`MyListBulkBar` (`components/my-list/my-list-bulk-bar.tsx`) reaproveita as mutations
+existentes, uma chamada por serie selecionada em paralelo — o mesmo padrao ja usado por
+"marcar temporada inteira" (INSERIES-SERIES-PAGE-PREMIUM-01). Mover status/marcar
+concluidas reaproveitam `POST /api/series/[id]/status`; adicionar as listas reaproveita
+`POST /api/lists/[id]/items` (o mesmo endpoint do `AddToListButton`). "Remover" precisou de
+uma peca de CRUD que faltava — nao havia nenhum jeito de apagar um `UserSeriesStatus`
+(so criar/atualizar via `upsertSeriesStatus`) — adicionada como `removeSeriesStatus`
+(`lib/progress/mutations.ts`) e `DELETE /api/series/[id]/status`, sem efeito de
+atividade/gamificacao (remover nao e um evento a comemorar, so a limpeza reversa de um
+`upsertSeriesStatus` anterior).
+
+**"Favoritar" em lote nao foi implementado**: a unica forma de favoritar hoje e uma review
+com nota >= 4, e `reviewSchema` exige um `body` nao vazio — criar reviews com texto falso
+so para marcar favorito alteraria o significado de "review" (uma regra de negocio
+existente) e nao e uma boa pratica. Favoritar continua funcionando normalmente, um de cada
+vez, pela review de verdade na pagina da serie.
+
+### Fase 9 — Estatisticas
+
+`MyListStatsSection` (`components/my-list/my-list-stats-section.tsx`): Series, Temporadas
+concluidas, Episodios assistidos, Tempo assistido, Tempo restante estimado, Provider
+predominante, Genero favorito e Status predominante — tudo de `getUserStats`, os dois
+ultimos (tempo restante e status predominante) derivados por duas funcoes puras
+(`lib/my-list/stats.ts`) sobre numeros que a funcao ja retorna.
+
+### Fase 10 — Recomendacoes
+
+`lib/my-list/recommendations.ts` (`getMyListDiscovery`) monta 3 sub-secoes, cada uma
+inteiramente ocultada quando vazia:
+
+| Sub-secao | Fonte |
+| --- | --- |
+| Baseado na sua lista | `getRecommendationsForUser` (motor de recomendacoes existente, ja agregado sobre todo o historico do usuario) |
+| Complete sua colecao | Collection Tag mais frequente entre as series ja rastreadas + `searchSeries`, excluindo o que o usuario ja tem |
+| Porque voce assistiu {titulo} | `getSeriesRecommendations` (INSERIES-SERIES-PAGE-PREMIUM-01) para a serie de maior Discovery Score que o usuario acompanha |
+
+Nenhuma logica de similaridade nova — reaproveita o motor de recomendacoes, `searchSeries` e
+a propria funcao de recomendacoes da pagina da serie, os 3 ja existentes.
+
+### Fase 11/13 — UX e responsividade
+
+Todo grid novo (grupos, recomendacoes) usa `FixedGrid` — a mesma regra global de colunas
+fixas por breakpoint das sprints anteriores. `scroll-behavior: smooth` (ja global desde
+INSERIES-SERIES-PAGE-PREMIUM-01) beneficia os novos links-ancora `#grupo-<estado>` que o
+Dashboard e as rotas antigas usam para apontar direto para um grupo.
+
+**Drag-and-drop entre grupos nao foi implementado**: exigiria uma biblioteca de
+drag-and-drop nova (nenhuma no projeto) e uma decisao de UX sobre o que "arrastar uma serie
+para Concluidas" deveria fazer que nao e trivial de inferir sem alterar a regra de negocio
+de status — as acoes em lote (Fase 7) permanecem o mecanismo principal para mover series
+entre grupos, decisao explicitamente permitida pelo ticket ("caso drag-and-drop nao seja
+viavel... manter acoes em lote como mecanismo principal e documentar a decisao").
+
+### Fase 12 — Performance
+
+`getMyListFullForUser` faz exatamente 2 queries (uma `UserSeriesStatus.findMany`, uma
+`Review.findMany`), ambas em paralelo, cada `Series` selecionada com um `select` enxuto
+(sem `seasons`/`episodes` — corrigindo o N+1 identificado na Fase 1). As 3 rotas antigas
+(`/me/watching`, `/me/watchlist`, `/me/completed`) viraram redirects de uma linha, entao o
+N+1 que elas tinham simplesmente deixou de existir em vez de precisar ser corrigido in loco.
+
+### Decisoes arquiteturais
+
+- **Rotas antigas viram redirects, nao sao duplicadas nem apagadas** — `/me/watching`,
+  `/me/watchlist` e `/me/completed` agora so chamam `redirect("/me/minha-lista#grupo-...")`;
+  nenhum bookmark quebra, nenhuma logica de render fica duplicada.
+- **`redirect()` dentro de `/me/*` (Suspense automatico via `app/me/loading.tsx`) nao gera
+  mais um 3xx de HTTP puro** — o Next.js emite um digest `NEXT_REDIRECT` embutido no HTML
+  (200) que o React do cliente intercepta para navegar de verdade; documentado no smoke
+  test (que verifica o digest em vez do status HTTP para esses 3 redirects especificos).
+- **Nenhuma migration nesta sprint** — todos os campos usados (`WatchState.DROPPED`,
+  `Series.popularityScore`, `UserSeriesStatus.updatedAt`) ja existiam no schema.
+- **"Minha Lista" (status) permanece distinta de "Minhas Listas" (`/me/lists`)** — duas
+  features reais e diferentes, nao consolidadas artificialmente.
+
+### Limitacoes atuais
+
+- "Favoritar" em lote nao existe (ver Fase 7) — favoritar continua sendo uma review de
+  verdade, um de cada vez.
+- Drag-and-drop entre grupos nao foi implementado (ver Fase 11) — acoes em lote sao o
+  mecanismo principal para mover series entre status, conforme permitido pelo ticket.
+- Uma serie favoritada sem nenhum `UserSeriesStatus` mostra "Sem status" e nao tem
+  progresso/ultima atividade (so a data da review) — caso de borda esperado, nao um bug.
+- Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
+  layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
+
 ## Comandos
 
 - `npm install`: instala dependencias

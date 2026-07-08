@@ -3,9 +3,10 @@ import { Tabs } from "@/components/ui/tabs";
 export const ME_TABS = [
   { href: "/me", label: "Resumo" },
   { href: "/watch-next", label: "Assistir a seguir" },
-  { href: "/me/watching", label: "Assistindo" },
-  { href: "/me/completed", label: "Concluidas" },
-  { href: "/me/watchlist", label: "Watchlist" },
+  // INSERIES-MY-LISTS-PREMIUM-01 — substitui as 3 abas fragmentadas (Assistindo/Concluidas/
+  // Watchlist, que nunca cobriram Pausadas/Abandonadas/Favoritas) por uma unica aba com os
+  // 6 grupos completos. /me/watching, /me/watchlist e /me/completed viram redirects.
+  { href: "/me/minha-lista", label: "Minha Lista" },
   { href: "/me/lists", label: "Listas" },
   { href: "/me/stats", label: "Estatisticas" },
   { href: "/me/recap", label: "Recap" },

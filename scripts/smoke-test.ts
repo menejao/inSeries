@@ -2750,6 +2750,125 @@ async function main() {
     seriesCincoDetail.status
   );
 
+  // ---- INSERIES-MY-LISTS-PREMIUM-01 ----
+  const jarMyList: CookieJar = { value: "" };
+  await registerUser(jarMyList, "usermylist");
+
+  const myListSeriesIds: (string | undefined)[] = catalog.body?.data?.map((item: { id: string }) => item.id) ?? [];
+  const [myListSeries1, myListSeries2, myListSeries3] = myListSeriesIds;
+
+  if (myListSeries1) {
+    await request(jarMyList, `/api/series/${myListSeries1}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: myListSeries1, state: "WATCHING" })
+    });
+  }
+  if (myListSeries2) {
+    await request(jarMyList, `/api/series/${myListSeries2}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: myListSeries2, state: "DROPPED" })
+    });
+  }
+  if (myListSeries3) {
+    await request(jarMyList, `/api/series/${myListSeries3}/reviews`, {
+      method: "POST",
+      body: JSON.stringify({ rating: 5, body: "Serie favorita para o smoke test.", visibility: "PUBLIC" })
+    });
+  }
+
+  const myListPage = await request(jarMyList, "/me/minha-lista");
+  check(
+    "Minha Lista (Fase 3): cabecalho premium mostra Total de series/Em andamento/Concluidas/Sequencia atual",
+    myListPage.status === 200 &&
+      String(myListPage.body).includes("Total de series") &&
+      String(myListPage.body).includes("Em andamento") &&
+      String(myListPage.body).includes("Sequencia atual"),
+    myListPage.status
+  );
+  check(
+    "Minha Lista (Fase 2): 6 grupos independentes (Assistindo/Quero assistir/Pausadas/Concluidas/Abandonadas/Favoritas), cada um com seu proprio anchor",
+    ["grupo-watching", "grupo-want_to_watch", "grupo-paused", "grupo-completed", "grupo-dropped", "grupo-favorites"].every((anchor) =>
+      String(myListPage.body).includes(anchor)
+    ),
+    null
+  );
+  check(
+    "Minha Lista (Fase 4): card mostra Quality/Discovery Score, providers e Collection Tags reaproveitados do catalogo",
+    String(myListPage.body).includes("Sparkles") || String(myListPage.body).includes("Netflix"),
+    null
+  );
+  check(
+    "Minha Lista (Fase 4/Favoritas): serie favoritada por review (sem UserSeriesStatus) ainda aparece, com badge Sem status",
+    String(myListPage.body).includes("Sem status"),
+    null
+  );
+  check(
+    "Minha Lista (Fase 5/6/8): toolbar com busca, filtros e ordenacao renderizada",
+    String(myListPage.body).includes("Buscar na Minha Lista") &&
+      String(myListPage.body).includes("Ultima atividade") &&
+      String(myListPage.body).includes("Genero"),
+    null
+  );
+  check(
+    "Minha Lista (Fase 9): estatisticas reaproveitam getUserStats (tempo restante, provider e status predominante)",
+    String(myListPage.body).includes("Suas estatisticas") &&
+      String(myListPage.body).includes("Tempo restante estimado") &&
+      String(myListPage.body).includes("Status predominante"),
+    null
+  );
+  check(
+    "Minha Lista (Fase 10): recomendacoes (baseado na lista/complete sua colecao/porque assistiu) nunca genericas",
+    String(myListPage.body).includes("Baseado na sua lista") ||
+      String(myListPage.body).includes("Complete sua colecao") ||
+      String(myListPage.body).includes("Porque voce assistiu"),
+    null
+  );
+  check(
+    "Minha Lista (Fase 11/13): grids seguem a regra global de colunas fixas por breakpoint",
+    String(myListPage.body).includes("grid-cols-1 sm:grid-cols-2 lg:grid-cols-3") ||
+      String(myListPage.body).includes("grid-cols-2 sm:grid-cols-4 lg:grid-cols-4"),
+    null
+  );
+
+  if (myListSeries1) {
+    const removeStatus = await request(jarMyList, `/api/series/${myListSeries1}/status`, { method: "DELETE" });
+    check("Minha Lista (Fase 7): DELETE /api/series/[id]/status remove a serie da lista (200)", removeStatus.status === 200, removeStatus.body);
+
+    const myListAfterRemoval = await request(jarMyList, "/me/minha-lista");
+    check(
+      "Minha Lista (Fase 7): apos remover, a serie some da secao Assistindo",
+      myListAfterRemoval.status === 200,
+      myListAfterRemoval.status
+    );
+  }
+
+  // `app/me/loading.tsx` envolve toda a secao /me/* num Suspense boundary automatico do
+  // Next.js; um redirect() disparado durante o streaming dessa secao nao vira mais um 3xx
+  // de HTTP puro (o framework ja comecou a enviar a resposta 200) — ele e propagado como um
+  // digest NEXT_REDIRECT embutido no HTML (`data-dgst="NEXT_REDIRECT;replace;<path>;307;"`),
+  // que o React do cliente intercepta e usa para navegar de verdade. Middleware (que roda
+  // antes desse streaming) continua emitindo 307 reais, como os demais redirects ja testados
+  // neste arquivo — so os 3 redirects desta sprint (dentro de paginas envolvidas por
+  // loading.tsx) usam esse mecanismo, entao o check verifica o digest em vez do status HTTP.
+  const watchingRedirect = await request(jarMyList, "/me/watching");
+  check(
+    "Minha Lista: /me/watching (rota antiga) redireciona para /me/minha-lista (nao duplica logica)",
+    watchingRedirect.status === 200 && String(watchingRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
+    watchingRedirect.status
+  );
+  const watchlistRedirect = await request(jarMyList, "/me/watchlist");
+  check(
+    "Minha Lista: /me/watchlist (rota antiga) redireciona para /me/minha-lista",
+    watchlistRedirect.status === 200 && String(watchlistRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
+    watchlistRedirect.status
+  );
+  const completedRedirect = await request(jarMyList, "/me/completed");
+  check(
+    "Minha Lista: /me/completed (rota antiga) redireciona para /me/minha-lista",
+    completedRedirect.status === 200 && String(completedRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
+    completedRedirect.status
+  );
+
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
 
   // ---- Encerramento ----
