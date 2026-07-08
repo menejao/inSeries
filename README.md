@@ -2091,6 +2091,186 @@ por vez, por breakpoint) e stack de coluna unica (`N=1` uniforme), respectivamen
   (`grid-cols-*` por breakpoint) e revisao manual do layout — este sandbox nao tem
   Playwright/Puppeteer instalado para capturar screenshots reais em múltiplas resolucoes.
 
+## Pagina da Serie Premium (INSERIES-SERIES-PAGE-PREMIUM-01)
+
+A pagina de detalhes de uma serie (`app/series/[id]/page.tsx`) deixa de ser uma lista de
+cards soltos e passa a ser a tela mais rica do app: resumir onde o usuario parou, mostrar
+tudo sobre a serie, navegar temporadas/episodios, acompanhar progresso, descobrir
+recomendacoes, organizar listas, ver reviews e achar conteudo relacionado — tudo em uma
+unica pagina, reaproveitando exclusivamente servicos ja existentes.
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **Ambiguidade "proximo episodio"**: a pagina ja tinha um card "Proximo episodio" baseado
+  no calendario de estreias (`getNextEpisodeForSeries`, `lib/calendar/queries.ts` — proximo
+  a *estrear*, independente de assistido). O ticket pede uma nova secao "Continuar
+  Assistindo" baseada em Watch Next (proximo a *assistir*, ja lancado). Sao dois conceitos
+  diferentes que passariam a coexistir na mesma pagina — o card do calendario foi renomeado
+  para "Proximo lancamento" (nenhuma logica alterada, so o rotulo) para nunca ser confundido
+  com a nova secao.
+- **Consulta duplicada identificada**: a pagina ja buscava `series` (com temporadas +
+  episodios) e `UserEpisodeProgress` para montar a lista de episodios; separadamente,
+  `calculateSeriesProgress` (usado por outras rotas) refaz exatamente essas duas consultas
+  para calcular percentual/proximo episodio. Corrigido na Fase 12 (ver abaixo) sem alterar o
+  comportamento de `calculateSeriesProgress` para nenhum outro chamador.
+- **Dados sincronizados e nunca exibidos**: `Series.discoveryScore`, `tagline`,
+  `productionCountries`, `numberOfSeasons`/`numberOfEpisodes` existiam no schema/pipeline
+  (sprints anteriores) mas nunca apareciam nesta pagina.
+- **Recomendacoes ad-hoc**: nao havia nenhuma secao de "series parecidas" na pagina — a
+  Fase 9 monta isso reaproveitando o motor de descoberta/recomendacoes existente
+  (`searchSeries`, `listMaratonas`, `getRecommendationsForUser`), nunca uma query nova de
+  similaridade.
+- **Campos genuinamente indisponiveis** (documentados como limitacao, nao implementados):
+  nota por episodio (TMDb episode `vote_average` nunca foi capturado pelo pipeline nem existe
+  coluna para isso em `Episode`) e curtir/responder em reviews (`Review` nao tem contagem de
+  likes nem relacao de thread no schema).
+
+### Fase 2 — Hero Premium
+
+Backdrop full-width com overlay em gradiente, logo oficial com fallback textual
+(`SeriesLogoOrTitle`, ja existente), tagline (novo, condicional), badges de status/nota/
+Quality Score/**Discovery Score** (novo — `Badge variant="secondary"` com `FlameIcon`),
+generos, `CollectionTagList` e `ProviderList` (limitado a 5). Quatro acoes na mesma linha,
+sem poluir visualmente: **Continuar assistindo** (link-ancora para a secao da Fase 3,
+condicional a existir um `WatchNextItem` para esta serie), **Adicionar a lista**
+(`AddToListButton`, novo componente client-side que reaproveita o mesmo endpoint
+`POST /api/lists/[id]/items` do `ListItemManager`), **Avaliar** (link-ancora para `#reviews`)
+e **Compartilhar** (`ShareButton`, novo — Web Share API com fallback de copiar link,
+puramente de UI).
+
+### Fase 3 — Continuar Assistindo
+
+`components/series/series-continue-watching.tsx` reaproveita **exatamente**
+`getWatchNextForUser` (`lib/watch-next`, o mesmo algoritmo usado por `/watch-next` e pelo
+Dashboard), filtrado no server para o item desta serie
+(`watchNextResult.items.find((item) => item.series.id === series.id)`). Nenhuma logica
+paralela de "proximo episodio desta serie" foi criada. Mostra codigo do episodio, titulo,
+progresso da serie (via a mesma funcao pura da Fase 12), ultimo episodio assistido, quantos
+faltam depois deste, botao **Continuar** (link direto para o player do episodio) e o
+`WatchNextMarkButton` ja existente para marcar como assistido sem sair da pagina.
+
+### Fase 4/5 — Temporadas e Episodios
+
+`SeasonCard` (`components/series/season-card.tsx`, client component): poster, nome, ano,
+contagem de episodios, barra de progresso da temporada, expandir/recolher
+(`aria-expanded`, primeira temporada expandida por padrao). "Marcar temporada inteira como
+assistida" **nunca criou um endpoint em lote** — dispara a mutation existente
+`POST /api/episodes/[id]/progress` uma vez por episodio nao assistido, todas em paralelo
+(`Promise.all`), preservando de graca todos os efeitos colaterais que
+`toggleEpisodeProgress` ja tem por episodio (feed de atividades, gamificacao,
+notificacoes) — um endpoint em lote de verdade teria que replicar tudo isso manualmente.
+
+`EpisodeRow` (`components/series/episode-row.tsx`) ganhou imagem sempre visivel (antes
+escondida no mobile), hover premium padronizado (`-translate-y-1`) e badge "Assistido"
+quando ja visto. Nota por episodio foi **omitida** (ver Fase 1 — dado nao existe no
+pipeline).
+
+### Fase 6 — Producao reorganizada
+
+`ProductionSection` (`components/series/production-section.tsx`): tagline, tipo, status,
+criadores, networks, produtoras, **paises de producao** (novo — nunca exibido antes),
+idiomas falados, keywords (badges clicaveis) e site oficial — cada campo com sua propria
+condicional; a secao inteira retorna `null` se nao houver nenhum dado, nunca um campo vazio
+renderizado.
+
+### Fase 7 — Onde Assistir
+
+`WhereToWatchCard` (`components/series/where-to-watch-card.tsx`) — card dedicado, retorna
+`null` se a serie nao tiver nenhum provider sincronizado. `ProviderList` (componente
+compartilhado) passou a ordenar os providers alfabeticamente antes de renderizar/limitar —
+"ordem consistente" pedida pelo ticket, sem alterar a logica de quais providers aparecem.
+
+### Fase 8 — Reviews aprimoradas
+
+`ReviewsSection` (`components/series/reviews-section.tsx`) calcula nota media e contagem a
+partir do mesmo array `reviews` que a pagina ja buscava via `getSeriesReviews`
+(`lib/social/reviews.ts`, inalterado) — nenhuma query nova. Cards com hover premium
+padronizado. **Curtir/Responder nao foram implementados**: o schema de `Review` nao tem
+contagem de likes nem relacao de resposta/thread, e o ticket pede explicitamente para
+"preparar arquitetura para futuras respostas em thread" (nao para implementar de fato) e
+para "nao alterar a regra de review existente" — criar esses campos seria alterar
+schema/regra de negocio fora do escopo desta sprint. Documentado aqui como limitacao
+deliberada, nao uma funcionalidade meio-pronta.
+
+### Fase 9 — Recomendacoes enriquecidas
+
+`lib/series-page/recommendations.ts` (`getSeriesRecommendations`) monta 4 sub-secoes, cada
+uma **inteiramente ocultada quando vazia** (nunca uma lista generica de preenchimento):
+
+| Sub-secao | Fonte | Sinal usado |
+| --- | --- | --- |
+| Series parecidas | `searchSeries` por Collection Tag e Keyword do topo da propria serie | Discovery Score (ordenacao) |
+| Voce tambem pode gostar | `getRecommendationsForUser` (motor de recomendacoes existente) | todos os providers combinados (genero/similar/popular/rating/trending/editorial) |
+| Mais da mesma categoria | `searchSeries` por genero | Quality Score (ordenacao) |
+| Maratonas | `listMaratonas` (Smart List reaproveitada) | tag "Maratona" |
+
+Nenhuma consulta nova de "similaridade" foi inventada — tudo reaproveita `searchSeries`
+(descoberta), `listMaratonas` (Smart Lists) e o motor de recomendacoes, todos ja existentes.
+"Voce tambem pode gostar" usa `RecommendationCard` (ja construido para o formato
+`ScoredRecommendation`) em vez de `SeriesPosterCard`, ja que o item de recomendacao carrega
+um tipo `CandidateSeries` mais estreito que `Series`. Grid: `FixedGrid mobile={2} tablet={4}
+desktop={4}` em todas as 4 sub-secoes, alinhado ao limite de 8 itens por secao.
+
+### Fase 10 — Linha do tempo do usuario
+
+`lib/series-page/timeline.ts` (`computeSeriesTimeline`) — funcao pura, sem I/O proprio:
+recebe dados que a pagina ja buscou para outras secoes (status, episodios assistidos com
+timestamp, review propria) mais uma unica query pequena e aditiva
+(`getSeriesAddedToListAt`, `lib/series-page/queries.ts`). Eventos possiveis: Comecou a
+assistir, Assistiu [episodio], Concluiu a Temporada [N], Avaliou a serie, Adicionou a uma
+lista — ordenados do mais recente ao mais antigo. `SeriesTimeline`
+(`components/series/series-timeline.tsx`) so renderiza se houver pelo menos um evento.
+
+**Limitacao conhecida**: `UserSeriesStatus.startedAt` existe no schema mas nunca e escrito
+por nenhuma mutation da aplicacao (`upsertSeriesStatus`/`toggleEpisodeProgress`,
+`lib/progress/mutations.ts`) — o evento "Comecou a assistir" esta implementado e pronto,
+mas so vai aparecer de fato quando uma sprint futura passar a popular esse campo. Corrigir
+isso agora exigiria alterar uma mutation de regra de negocio compartilhada, fora do escopo
+("nao alterar regras de negocio") desta sprint.
+
+### Fase 11/13 — UX e responsividade
+
+`scroll-behavior: smooth` adicionado globalmente (`app/globals.css`) para os novos links-
+ancora (`#continuar-assistindo`, `#reviews`) — a media query `prefers-reduced-motion` ja
+existente sobrescreve para `auto` automaticamente, sem nenhum ajuste adicional necessario.
+Todo grid novo desta pagina (recomendacoes, "Aparece nestas listas") usa `FixedGrid` — a
+mesma regra global de colunas fixas por breakpoint das sprints anteriores.
+
+### Fase 12 — Performance
+
+`calculateSeriesProgress` (`lib/progress/calculate.ts`) teve sua computacao pura extraida
+para uma nova funcao exportada, `computeSeriesProgressFromEpisodes(allEpisodes,
+watchedIds)`, sem alterar o comportamento/assinatura da funcao original para nenhum outro
+chamador. A pagina da serie agora chama a funcao pura diretamente com dados que ja tinha
+buscado para renderizar a lista de episodios/temporadas — eliminando o que seria uma segunda
+consulta a `series` (com temporadas/episodios) e uma segunda consulta a
+`UserEpisodeProgress` para o mesmo usuario/serie. Toda a busca de dados da pagina continua
+em um unico `Promise.all` de nivel superior — nenhum componente assincrono aninhado.
+
+### Decisoes arquiteturais
+
+- **Nenhuma migration nesta sprint** — todos os campos usados (`discoveryScore`, `tagline`,
+  `productionCountries`, `numberOfSeasons`/`numberOfEpisodes`, `ListItem.createdAt`) ja
+  existiam no schema.
+- **"Marcar temporada" via loop de chamadas existentes, nunca um endpoint em lote novo** —
+  ver Fase 4/5.
+- **"Proximo episodio" renomeado para "Proximo lancamento"** — mesma logica de calendario,
+  so o rotulo mudou, para coexistir sem ambiguidade com a nova secao "Continuar Assistindo".
+- **Curtir/Responder em reviews: arquitetura preparada, nada implementado** — ver Fase 8.
+
+### Limitacoes atuais
+
+- Nota por episodio nao existe (TMDb `vote_average` de episodio nunca foi sincronizado nem
+  tem coluna no schema) — omitida da UI, nao inventada.
+- "Comecou a assistir" na linha do tempo esta implementado mas estruturalmente nunca vai
+  disparar ate uma sprint futura popular `UserSeriesStatus.startedAt` (ver Fase 10).
+- Curtir/Responder em reviews sao apenas preparacao de arquitetura (ver Fase 8) — nenhum
+  botao funcional foi adicionado.
+- Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
+  layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
+
 ## Comandos
 
 - `npm install`: instala dependencias

@@ -22,11 +22,12 @@ export function ProviderBadge({ provider, className }: { provider: string; class
   );
 }
 
-/** Renders every provider a series is available on, or nothing if none are synced yet. */
+/** Renders every provider a series is available on, or nothing if none are synced yet. Fase 7 (INSERIES-SERIES-PAGE-PREMIUM-01) — always alphabetical, so the same series shows providers in the same order everywhere ("ordem consistente"). */
 export function ProviderList({ providers, limit, className }: { providers: string[]; limit?: number; className?: string }) {
   if (!providers.length) return null;
-  const visible = limit ? providers.slice(0, limit) : providers;
-  const hiddenCount = providers.length - visible.length;
+  const sorted = [...providers].sort((a, b) => a.localeCompare(b));
+  const visible = limit ? sorted.slice(0, limit) : sorted;
+  const hiddenCount = sorted.length - visible.length;
 
   return (
     <div className={className ?? "flex flex-wrap gap-1.5"}>

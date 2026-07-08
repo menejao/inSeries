@@ -1,5 +1,28 @@
 ﻿import { prisma } from "@/lib/db/prisma";
 
+/**
+ * Fase 12 (INSERIES-SERIES-PAGE-PREMIUM-01) — the pure computation `calculateSeriesProgress`
+ * always did, extracted so a caller that already has `allEpisodes`/`watchedIds` in hand
+ * (e.g. the series detail page, which already fetches both for its own episode list) can
+ * get the identical result without `calculateSeriesProgress`'s two queries re-fetching the
+ * same series/progress rows a second time. `calculateSeriesProgress` itself is unchanged
+ * for every other caller — same signature, same queries, same return shape.
+ */
+export function computeSeriesProgressFromEpisodes(allEpisodes: Array<{ id: string }>, watchedIds: Set<string>) {
+  const totalEpisodes = allEpisodes.length;
+  const watchedEpisodes = allEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
+  const percentage = totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0;
+  const nextEpisode = allEpisodes.find((episode) => !watchedIds.has(episode.id)) ?? null;
+
+  return {
+    totalEpisodes,
+    watchedEpisodes,
+    percentage,
+    nextEpisode,
+    completed: totalEpisodes > 0 && watchedEpisodes === totalEpisodes
+  };
+}
+
 export async function calculateSeriesProgress(userId: string, seriesId: string) {
   const series = await prisma.series.findUnique({
     where: { id: seriesId },
@@ -20,7 +43,6 @@ export async function calculateSeriesProgress(userId: string, seriesId: string) 
   }
 
   const allEpisodes = series.seasons.flatMap((season) => season.episodes);
-  const totalEpisodes = allEpisodes.length;
 
   const watchedProgress = await prisma.userEpisodeProgress.findMany({
     where: {
@@ -33,15 +55,6 @@ export async function calculateSeriesProgress(userId: string, seriesId: string) 
   });
 
   const watchedIds = new Set(watchedProgress.map((item) => item.episodeId));
-  const watchedEpisodes = watchedProgress.length;
-  const percentage = totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0;
-  const nextEpisode = allEpisodes.find((episode) => !watchedIds.has(episode.id)) ?? null;
 
-  return {
-    totalEpisodes,
-    watchedEpisodes,
-    percentage,
-    nextEpisode,
-    completed: totalEpisodes > 0 && watchedEpisodes === totalEpisodes
-  };
+  return computeSeriesProgressFromEpisodes(allEpisodes, watchedIds);
 }

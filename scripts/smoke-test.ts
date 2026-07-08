@@ -959,8 +959,10 @@ async function main() {
 
   const nextEpisodeSeriesPage = await request(jarA, `/series/${seriesId}`);
   check(
-    "pagina da serie mostra secao Proximo episodio",
-    nextEpisodeSeriesPage.status === 200 && String(nextEpisodeSeriesPage.body).includes("Proximo episodio"),
+    // INSERIES-SERIES-PAGE-PREMIUM-01 — renomeado para "Proximo lancamento" (calendario)
+    // para nao ser confundido com a nova secao "Continuar assistindo" (Fase 3, Watch Next).
+    "pagina da serie mostra secao Proximo lancamento",
+    nextEpisodeSeriesPage.status === 200 && String(nextEpisodeSeriesPage.body).includes("Proximo lancamento"),
     nextEpisodeSeriesPage.status
   );
 
@@ -2464,16 +2466,20 @@ async function main() {
   // ---- INSERIES-DASHBOARD-PREMIUM-01: Dashboard reorganizado, Minha Lista, ----
   // ---- Estatisticas, Atividade recente, Descobrir mais, grids fixos ----
   const dashboardBody = String(dashboardAuth.body);
+  // Ancorado no "<" de fechamento do no de texto: o RSC do Next serializa o mesmo texto
+  // tambem dentro de um payload de hidratacao (`self.__next_f.push(...)`, formato JSON) que
+  // pode aparecer ANTES do HTML real na resposta bruta. Um indexOf sem ancora casa com essa
+  // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
-    continueWatching: dashboardBody.indexOf("Continuar assistindo"),
-    bombandoAgora: dashboardBody.indexOf("Bombando Agora"),
-    lancamentos: dashboardBody.indexOf("Lancamentos"),
-    recomendado: dashboardBody.indexOf("Recomendado para voce"),
-    watchNext: dashboardBody.indexOf(">Watch Next<"),
-    minhaLista: dashboardBody.indexOf("Minha Lista"),
-    estatisticas: dashboardBody.indexOf("Suas Estatisticas"),
-    atividade: dashboardBody.indexOf("Atividade recente"),
-    descobrirMais: dashboardBody.indexOf("Descobrir mais")
+    continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
+    bombandoAgora: dashboardBody.indexOf("Bombando Agora<"),
+    lancamentos: dashboardBody.indexOf("Lancamentos<"),
+    recomendado: dashboardBody.indexOf("Recomendado para voce<"),
+    watchNext: dashboardBody.indexOf("Watch Next<"),
+    minhaLista: dashboardBody.indexOf("Minha Lista<"),
+    estatisticas: dashboardBody.indexOf("Suas Estatisticas<"),
+    atividade: dashboardBody.indexOf("Atividade recente<"),
+    descobrirMais: dashboardBody.indexOf("Descobrir mais<")
   };
   check(
     "Dashboard (Fase 2) segue a nova ordem: Continuar assistindo -> Bombando Agora -> Lancamentos -> Recomendado -> Watch Next -> Minha Lista -> Estatisticas -> Atividade -> Descobrir mais",
@@ -2639,6 +2645,100 @@ async function main() {
       String(seriesUmDetail.body).includes("Networks") &&
       String(seriesUmDetail.body).includes("Produtoras"),
     null
+  );
+
+  // ---- INSERIES-SERIES-PAGE-PREMIUM-01 ----
+  check(
+    // React insere um comentario de hidratacao entre texto e expressao adjacentes
+    // ("Discovery<!-- -->88"), entao o check busca o rotulo isoladamente (mesma convencao
+    // ja usada pelo check de Quality Score acima).
+    "Pagina da serie (Fase 2): Discovery Score aparece no Hero premium",
+    String(seriesUmDetail.body).includes("Discovery"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 7): secao Onde assistir aparece quando ha provider sincronizado",
+    String(seriesUmDetail.body).includes("Onde assistir"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 9): secao Series parecidas usa Collection Tags (Maratona) e Discovery Score, nunca lista generica",
+    String(seriesUmDetail.body).includes("Series parecidas") && String(seriesUmDetail.body).includes("Serie Teste Quatro"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 9): secao Maratonas reaproveita a smart list MARATONAS existente",
+    String(seriesUmDetail.body).includes("Maratonas"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 11/13): recomendacoes obedecem a regra global de grid fixo (mobile=2/tablet=4/desktop=4)",
+    String(seriesUmDetail.body).includes("grid-cols-2") &&
+      String(seriesUmDetail.body).includes("sm:grid-cols-4") &&
+      String(seriesUmDetail.body).includes("lg:grid-cols-4"),
+    null
+  );
+
+  // jarA ja assistiu T01E01 de serie-teste-um (linha ~261) e continua autenticado: a mesma
+  // serie deve mostrar Continuar Assistindo (Watch Next reaproveitado), temporada expansivel
+  // com marcacao em lote, e o episodio ja assistido com seu badge.
+  const seriesPageAuthenticated = await request(jarA, `/series/${seriesId}`);
+  check(
+    "Pagina da serie (Fase 3): secao Continuar Assistindo aparece para usuario com progresso pendente (reaproveita Watch Next)",
+    seriesPageAuthenticated.status === 200 &&
+      String(seriesPageAuthenticated.body).includes("Continuar assistindo") &&
+      String(seriesPageAuthenticated.body).includes('id="continuar-assistindo"'),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 4): primeira temporada vem expandida (aria-expanded true) e permite marcar toda a temporada assistida",
+    String(seriesPageAuthenticated.body).includes('aria-expanded="true"') &&
+      String(seriesPageAuthenticated.body).includes("Marcar temporada como assistida"),
+    null
+  );
+  check(
+    "Pagina da serie (Fase 5): episodio ja assistido exibe badge Assistido",
+    String(seriesPageAuthenticated.body).includes("Assistido"),
+    null
+  );
+
+  // Fase 10 (Timeline) — usuario dedicado e isolado, ja que jarA tem sua propria review de
+  // seriesId apagada mais adiante neste arquivo (o que tornaria um assert de REVIEWED fragil).
+  const jarTimeline: CookieJar = { value: "" };
+  await registerUser(jarTimeline, "usertimeline");
+
+  if (episodeId) {
+    await request(jarTimeline, `/api/episodes/${episodeId}/progress`, {
+      method: "POST",
+      body: JSON.stringify({ episodeId, watched: true })
+    });
+  }
+
+  await request(jarTimeline, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 5, body: "Otima serie, adorei a jornada.", visibility: "PUBLIC" })
+  });
+
+  const timelineList = await request(jarTimeline, "/api/lists", {
+    method: "POST",
+    body: JSON.stringify({ title: "Minha lista de teste" })
+  });
+  const timelineListId: string | undefined = timelineList.body?.data?.id;
+  if (timelineListId) {
+    await request(jarTimeline, `/api/lists/${timelineListId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId })
+    });
+  }
+
+  const seriesPageWithTimeline = await request(jarTimeline, `/series/${seriesId}`);
+  check(
+    "Pagina da serie (Fase 10): timeline do usuario mostra jornada (episodio assistido, avaliacao, lista)",
+    seriesPageWithTimeline.status === 200 &&
+      String(seriesPageWithTimeline.body).includes("Sua jornada com esta serie") &&
+      String(seriesPageWithTimeline.body).includes("Avaliou a serie") &&
+      String(seriesPageWithTimeline.body).includes("Adicionou a uma lista"),
+    seriesPageWithTimeline.status
   );
 
   const seriesCincoDetail = await request(jarShell, "/series/serie-teste-cinco");

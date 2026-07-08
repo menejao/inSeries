@@ -13,14 +13,19 @@ export default function SeriesDetailsLoading() {
           </div>
         </div>
       </div>
+      <Skeleton className="h-24 rounded-4xl" />
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <Skeleton className="h-48 rounded-4xl" />
         <div className="space-y-4">
+          <Skeleton className="h-48 rounded-4xl" />
           <Skeleton className="h-40 rounded-4xl" />
-          <Skeleton className="h-40 rounded-4xl" />
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-32 rounded-4xl" />
+          <Skeleton className="h-32 rounded-4xl" />
         </div>
       </section>
       <SkeletonCarouselRow count={6} />
+      <SkeletonCarouselRow count={4} />
     </div>
   );
 }

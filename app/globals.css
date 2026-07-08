@@ -104,6 +104,10 @@ html {
     radial-gradient(circle at top, rgb(var(--c-primary) / 0.16), transparent 32%),
     linear-gradient(180deg, rgb(var(--c-canvas)) 0%, rgb(var(--c-canvas)) 100%);
   scrollbar-gutter: stable;
+  /* Fase 11 (INSERIES-SERIES-PAGE-PREMIUM-01) — anchor links (#continuar-assistindo,
+     #reviews) scroll smoothly; the existing prefers-reduced-motion override above already
+     forces this back to `auto` for anyone who needs it. */
+  scroll-behavior: smooth;
 }
 
 :root[data-theme="light"] html {

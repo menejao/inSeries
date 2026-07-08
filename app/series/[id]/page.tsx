@@ -1,34 +1,51 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { EpisodeRow } from "@/components/series/episode-row";
-import { SeriesStatusActions } from "@/components/series/series-status-actions";
-import { ReviewForm } from "@/components/reviews/review-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { buttonVariants } from "@/components/ui/button";
 import { BackdropImage, PosterImage } from "@/components/media/poster-image";
-import { Carousel, CarouselItem } from "@/components/media/carousel";
-import { SeriesPosterCard } from "@/components/media/series-poster-card";
 import { SeriesLogoOrTitle } from "@/components/media/series-logo";
 import { CollectionTagList } from "@/components/media/collection-tag-badge";
 import { ProviderList } from "@/components/media/provider-badge";
-import { CalendarIcon, FilmIcon, ListIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
+import { SeriesStatusActions } from "@/components/series/series-status-actions";
+import { SeriesContinueWatching } from "@/components/series/series-continue-watching";
+import { SeasonCard } from "@/components/series/season-card";
+import { ProductionSection } from "@/components/series/production-section";
+import { WhereToWatchCard } from "@/components/series/where-to-watch-card";
+import { ReviewsSection } from "@/components/series/reviews-section";
+import { SeriesRecommendationsSection } from "@/components/series/series-recommendations";
+import { SeriesTimeline } from "@/components/series/series-timeline";
+import { AddToListButton } from "@/components/series/add-to-list-button";
+import { ShareButton } from "@/components/series/share-button";
+import { ReviewForm } from "@/components/reviews/review-form";
+import { FixedGrid } from "@/components/ui/fixed-grid";
+import { CalendarIcon, FlameIcon, ListIcon, PlayIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
+import { buttonVariants } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
-import { calculateSeriesProgress } from "@/lib/progress/calculate";
+import { computeSeriesProgressFromEpisodes } from "@/lib/progress/calculate";
 import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
 import { getPublicListsContainingSeries } from "@/lib/social/lists";
 import { getNextEpisodeForSeries } from "@/lib/calendar/queries";
-import { searchSeries } from "@/lib/discovery/search";
+import { getWatchNextForUser } from "@/lib/watch-next";
+import { getSeriesAddedToListAt, getUserListsForSeries } from "@/lib/series-page/queries";
+import { getSeriesRecommendations } from "@/lib/series-page/recommendations";
+import { computeSeriesTimeline } from "@/lib/series-page/timeline";
 import { formatShortDate } from "@/lib/calendar/dates";
-import { formatEpisodeCode, formatDate, getInitials } from "@/lib/utils";
+import { formatEpisodeCode, formatDate } from "@/lib/utils";
 
+/**
+ * INSERIES-SERIES-PAGE-PREMIUM-01 — the series detail page as the app's richest, most
+ * central screen: discover, resume, track progress, manage lists, review and find related
+ * content, all in one place. Every section reuses an existing service (Watch Next,
+ * recommendations engine, Smart Lists, catalog search) — nothing here recomputes an
+ * algorithm that already lives elsewhere. See README for the full Fase 1 audit and
+ * per-section decisions.
+ */
 export default async function SeriesDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const series = await getCatalogSeriesBySlug(id);
@@ -37,61 +54,72 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
   const user = await getCurrentUser();
   const dbAvailable = await canUseDatabase();
-  const status = user && dbAvailable
-    ? await prisma.userSeriesStatus.findUnique({
-        where: {
-          userId_seriesId: {
-            userId: user.id,
-            seriesId: series.id
-          }
-        }
-      })
-    : null;
-  const watchedMap = user && dbAvailable
-    ? new Set(
-        (
-          await prisma.userEpisodeProgress.findMany({
-            where: {
-              userId: user.id,
-              episodeId: {
-                in: series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id))
-              },
-              watched: true
-            }
+  const allEpisodeIds = series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id));
+
+  const [statusRow, watchedRows, reviews, ownReview, nextEpisode, listsWithSeries, watchNextResult, addedToListAt, userLists, recommendations] =
+    await Promise.all([
+      user && dbAvailable
+        ? prisma.userSeriesStatus.findUnique({ where: { userId_seriesId: { userId: user.id, seriesId: series.id } } })
+        : Promise.resolve(null),
+      user && dbAvailable
+        ? prisma.userEpisodeProgress.findMany({
+            where: { userId: user.id, episodeId: { in: allEpisodeIds }, watched: true },
+            select: { episodeId: true, watchedAt: true }
           })
-        ).map((item) => item.episodeId)
-      )
-    : new Set<string>();
-  const progress = user && dbAvailable ? await calculateSeriesProgress(user.id, series.id) : null;
-  const reviews = dbAvailable ? await getSeriesReviews(series.id, user?.id) : [];
-  const ownReview = user && dbAvailable ? await getOwnReview(user.id, series.id) : null;
-  const nextEpisode = dbAvailable ? await getNextEpisodeForSeries(series.id) : null;
-  const listsWithSeries = dbAvailable ? await getPublicListsContainingSeries(series.id) : [];
-  const similar = dbAvailable && series.genres[0]
-    ? await searchSeries({ genre: series.genres[0], sort: "popular", pageSize: 12 })
-    : { items: [] };
-  const similarSeries = similar.items.filter((item) => item.id !== series.id).slice(0, 10);
+        : Promise.resolve([]),
+      dbAvailable ? getSeriesReviews(series.id, user?.id) : Promise.resolve([]),
+      user && dbAvailable ? getOwnReview(user.id, series.id) : Promise.resolve(null),
+      dbAvailable ? getNextEpisodeForSeries(series.id) : Promise.resolve(null),
+      dbAvailable ? getPublicListsContainingSeries(series.id) : Promise.resolve([]),
+      user && dbAvailable ? getWatchNextForUser(user.id) : Promise.resolve(null),
+      user && dbAvailable ? getSeriesAddedToListAt(user.id, series.id) : Promise.resolve(null),
+      user && dbAvailable ? getUserListsForSeries(user.id, series.id) : Promise.resolve([]),
+      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameCategory: [], marathons: [], personalized: null })
+    ]);
+
+  // Fase 12 — watchedMap keeps timestamps (not just membership) so this page can derive
+  // progress/last-watched-episode/completed-seasons locally instead of re-fetching the
+  // same series+progress rows a second time via calculateSeriesProgress.
+  const watchedMap = new Map(watchedRows.filter((row) => row.watchedAt).map((row) => [row.episodeId, row.watchedAt as Date]));
 
   const hydratedSeasons = series.seasons.map((season) => ({
     ...season,
-    episodes: season.episodes.map((episode) => ({
-      ...episode,
-      watched: watchedMap.has(episode.id)
-    }))
+    episodes: season.episodes.map((episode) => ({ ...episode, watched: watchedMap.has(episode.id) }))
   }));
 
+  const allEpisodesFlat = hydratedSeasons.flatMap((season) => season.episodes.map((episode) => ({ ...episode, seasonNumber: season.number })));
   const totalEpisodes = hydratedSeasons.reduce((sum, item) => sum + item.episodeCount, 0);
-  const hasProductionDetails = Boolean(
-    series.createdBy.length ||
-      series.networks.length ||
-      series.productionCompanies.length ||
-      series.spokenLanguages.length ||
-      series.keywords.length ||
-      series.homepage
-  );
+  const progress = user ? computeSeriesProgressFromEpisodes(allEpisodesFlat, new Set(watchedMap.keys())) : null;
+
+  const lastWatchedEntry = [...watchedMap.entries()].sort((a, b) => b[1].getTime() - a[1].getTime())[0];
+  const lastWatchedEpisode = lastWatchedEntry
+    ? (() => {
+        const episode = allEpisodesFlat.find((item) => item.id === lastWatchedEntry[0]);
+        return episode ? { seasonNumber: episode.seasonNumber, number: episode.number, title: episode.title, watchedAt: lastWatchedEntry[1] } : null;
+      })()
+    : null;
+
+  const completedSeasons = hydratedSeasons
+    .filter((season) => season.episodeCount > 0 && season.episodes.length > 0 && season.episodes.every((episode) => episode.watched))
+    .map((season) => ({
+      number: season.number,
+      completedAt: new Date(Math.max(...season.episodes.map((episode) => watchedMap.get(episode.id)?.getTime() ?? 0)))
+    }));
+
+  const timelineEvents = user
+    ? computeSeriesTimeline({
+        startedAt: statusRow?.startedAt ?? null,
+        lastWatchedEpisode,
+        completedSeasons,
+        reviewedAt: ownReview?.updatedAt ?? null,
+        addedToListAt
+      })
+    : [];
+
+  const watchNextItemForSeries = watchNextResult?.items.find((item) => item.series.id === series.id) ?? null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
         <div className="relative aspect-[3/4] sm:aspect-[16/8] lg:aspect-[16/6]">
           <BackdropImage src={series.backdropUrl || series.posterUrl} alt={series.title} priority sizes="100vw" />
@@ -117,6 +145,11 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                   <SparklesIcon className="h-3 w-3" /> Quality {Math.round(series.qualityScore)}
                 </Badge>
               ) : null}
+              {typeof series.discoveryScore === "number" ? (
+                <Badge variant="secondary">
+                  <FlameIcon className="h-3 w-3" /> Discovery {Math.round(series.discoveryScore)}
+                </Badge>
+              ) : null}
             </div>
             <SeriesLogoOrTitle
               title={series.title}
@@ -125,6 +158,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
               textClassName="max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-5xl"
               logoClassName="h-16 max-w-[280px] sm:h-20"
             />
+            {series.tagline ? <p className="max-w-2xl text-sm italic text-ink/80">&ldquo;{series.tagline}&rdquo;</p> : null}
             {series.originalTitle && series.originalTitle !== series.title ? (
               <p className="text-sm text-muted">{series.originalTitle}</p>
             ) : null}
@@ -137,13 +171,36 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
               ))}
             </div>
             <CollectionTagList tags={series.collectionTags} />
-            <ProviderList providers={series.watchProviders} />
+            <ProviderList providers={series.watchProviders} limit={5} />
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {watchNextItemForSeries ? (
+                <Link href="#continuar-assistindo" className={buttonVariants({ variant: "primary", size: "md" })}>
+                  <PlayIcon className="h-4 w-4" />
+                  Continuar assistindo
+                </Link>
+              ) : null}
+              <AddToListButton seriesId={series.id} lists={userLists} authenticated={Boolean(user)} />
+              <Link href="#reviews" className={buttonVariants({ variant: "secondary", size: "md" })}>
+                <StarIcon className="h-4 w-4" />
+                Avaliar
+              </Link>
+              <ShareButton title={series.title} />
+            </div>
             <div className="pt-1">
-              <SeriesStatusActions seriesId={series.id} initialState={status?.state ?? null} authenticated={Boolean(user)} />
+              <SeriesStatusActions seriesId={series.id} initialState={statusRow?.state ?? null} authenticated={Boolean(user)} />
             </div>
           </div>
         </div>
       </section>
+
+      {watchNextItemForSeries ? (
+        <SeriesContinueWatching
+          item={watchNextItemForSeries}
+          seriesSlug={series.slug}
+          seriesProgressPercent={progress?.percentage ?? 0}
+          lastWatchedLabel={lastWatchedEpisode ? formatShortDate(lastWatchedEpisode.watchedAt) : null}
+        />
+      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-6">
@@ -152,9 +209,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <InfoRow label="Idioma" value={series.language || "Nao informado"} />
               <InfoRow label="Plataforma" value={series.platform || "Nao informado"} />
-              <InfoRow label="Temporadas" value={String(hydratedSeasons.length)} />
-              <InfoRow label="Episodios" value={String(totalEpisodes)} />
-              <InfoRow label="Tipo" value={series.type || "Nao informado"} />
+              <InfoRow label="Temporadas" value={String(series.numberOfSeasons ?? hydratedSeasons.length)} />
+              <InfoRow label="Episodios" value={String(series.numberOfEpisodes ?? totalEpisodes)} />
               <InfoRow label="Pais de origem" value={series.originCountry.length ? series.originCountry.join(", ") : "Nao informado"} />
             </dl>
             {user ? (
@@ -174,7 +230,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
           <Card className="space-y-3">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
               <CalendarIcon className="h-5 w-5 text-subtle" />
-              Proximo episodio
+              Proximo lancamento
             </h2>
             {nextEpisode ? (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -196,73 +252,21 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             )}
           </Card>
 
-          {hasProductionDetails ? (
-            <Card className="space-y-3">
-              <h2 className="text-lg font-semibold text-ink">Producao</h2>
-              <dl className="space-y-3 text-sm">
-                {series.createdBy.length ? <InfoRow label="Criadores" value={series.createdBy.join(", ")} /> : null}
-                {series.networks.length ? <InfoRow label="Networks" value={series.networks.join(", ")} /> : null}
-                {series.productionCompanies.length ? (
-                  <InfoRow label="Produtoras" value={series.productionCompanies.join(", ")} />
-                ) : null}
-                {series.spokenLanguages.length ? (
-                  <InfoRow label="Idiomas falados" value={series.spokenLanguages.join(", ")} />
-                ) : null}
-              </dl>
-              {series.keywords.length ? (
-                <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
-                  {series.keywords.slice(0, 8).map((keyword) => (
-                    <Link key={keyword} href={`/series?keyword=${encodeURIComponent(keyword)}`}>
-                      <Badge variant="outline">{keyword}</Badge>
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
-              {series.homepage ? (
-                <a href={series.homepage} target="_blank" rel="noreferrer" className="link-accent block text-sm">
-                  Site oficial
-                </a>
-              ) : null}
-            </Card>
-          ) : null}
+          <WhereToWatchCard providers={series.watchProviders} />
+
+          <ProductionSection series={series} />
+
+          {user ? <SeriesTimeline events={timelineEvents} /> : null}
         </div>
 
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-ink">Temporadas</h2>
           {hydratedSeasons.length ? (
-            hydratedSeasons.map((season) => {
-              const watchedInSeason = season.episodes.filter((episode) => episode.watched).length;
-              return (
-                <Card key={season.id} className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-semibold text-ink">{season.title}</p>
-                      <p className="text-sm text-muted">
-                        {season.year || "Ano n/d"} · {season.episodeCount} episodios
-                      </p>
-                    </div>
-                    <Badge variant="outline">Temporada {season.number}</Badge>
-                  </div>
-                  {user && season.episodeCount > 0 ? (
-                    <Progress value={(watchedInSeason / season.episodeCount) * 100} label={`Progresso da temporada ${season.number}`} />
-                  ) : null}
-                  <div className="space-y-3">
-                    {season.episodes.length ? (
-                      season.episodes.slice(0, 3).map((episode) => (
-                        <EpisodeRow key={episode.id} episode={episode} seasonNumber={season.number} authenticated={Boolean(user)} />
-                      ))
-                    ) : (
-                      <EmptyState title="Episodios nao importados" copy="Temporada existe, mas episodios ainda nao foram sincronizados." />
-                    )}
-                    {season.episodes.length > 3 ? (
-                      <Link href={`/series/${series.slug}/season/${season.number}`} className="link-accent block text-sm">
-                        Ver todos os {season.episodes.length} episodios
-                      </Link>
-                    ) : null}
-                  </div>
-                </Card>
-              );
-            })
+            <div className="space-y-4">
+              {hydratedSeasons.map((season, index) => (
+                <SeasonCard key={season.id} season={season} authenticated={Boolean(user)} defaultExpanded={index === 0} />
+              ))}
+            </div>
           ) : (
             <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
           )}
@@ -273,42 +277,9 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
         <ReviewForm
           seriesId={series.id}
           authenticated={Boolean(user)}
-          initialReview={
-            ownReview ? { rating: ownReview.rating, body: ownReview.body, visibility: ownReview.visibility } : null
-          }
+          initialReview={ownReview ? { rating: ownReview.rating, body: ownReview.body, visibility: ownReview.visibility } : null}
         />
-        <div className="space-y-3">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-            <FilmIcon className="h-5 w-5 text-subtle" />
-            Reviews
-          </h2>
-          {reviews.length ? (
-            reviews.map((review) => (
-              <Card key={review.id} className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Link href={`/profile/${review.user.username}`} className="flex items-center gap-2.5 font-semibold text-ink">
-                    <Avatar
-                      label={getInitials(review.user.name)}
-                      name={review.user.name}
-                      src={review.user.avatarUrl}
-                      size="sm"
-                    />
-                    @{review.user.username}
-                  </Link>
-                  <Badge variant="warning">
-                    <StarIcon className="h-3 w-3 fill-current" /> {review.rating}/5
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted">{review.body}</p>
-                {user && review.userId === user.id && review.visibility !== "PUBLIC" ? (
-                  <Badge variant="default">Somente voce</Badge>
-                ) : null}
-              </Card>
-            ))
-          ) : (
-            <EmptyState title="Nenhuma review ainda" copy="Seja o primeiro a avaliar esta serie." />
-          )}
-        </div>
+        <ReviewsSection reviews={reviews} viewerId={user?.id} />
       </section>
 
       {listsWithSeries.length ? (
@@ -317,7 +288,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             <ListIcon className="h-5 w-5 text-subtle" />
             Aparece nestas listas
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <FixedGrid mobile={1} tablet={2} desktop={3}>
             {listsWithSeries.map((list) => (
               <Link key={list.id} href={`/lists/${list.id}`}>
                 <Card interactive padding="sm" className="space-y-1.5">
@@ -331,22 +302,11 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                 </Card>
               </Link>
             ))}
-          </div>
+          </FixedGrid>
         </section>
       ) : null}
 
-      {similarSeries.length ? (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-ink">Series semelhantes</h2>
-          <Carousel>
-            {similarSeries.map((item) => (
-              <CarouselItem key={item.id}>
-                <SeriesPosterCard series={item} />
-              </CarouselItem>
-            ))}
-          </Carousel>
-        </section>
-      ) : null}
+      <SeriesRecommendationsSection recommendations={recommendations} />
     </div>
   );
 }

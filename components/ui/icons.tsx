@@ -259,3 +259,12 @@ export const BookIcon = createIcon(
     <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20" />
   </>
 );
+
+export const ShareIcon = createIcon(
+  <>
+    <circle cx="18" cy="5" r="2.5" />
+    <circle cx="6" cy="12" r="2.5" />
+    <circle cx="18" cy="19" r="2.5" />
+    <path d="m8.2 10.7 7.6-4.4M8.2 13.3l7.6 4.4" />
+  </>
+);
