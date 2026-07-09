@@ -2869,6 +2869,112 @@ async function main() {
     completedRedirect.status
   );
 
+  // ---- INSERIES-PROFILE-PREMIUM-01 ----
+  const jarProfile: CookieJar = { value: "" };
+  const profileUser = await registerUser(jarProfile, "userprofile");
+
+  const profileSeriesIds: (string | undefined)[] = catalog.body?.data?.map((item: { id: string }) => item.id) ?? [];
+  const [profileSeries1, profileSeries2] = profileSeriesIds;
+
+  if (episodeId) {
+    await request(jarProfile, `/api/episodes/${episodeId}/progress`, {
+      method: "POST",
+      body: JSON.stringify({ episodeId, watched: true })
+    });
+  }
+  if (profileSeries1) {
+    await request(jarProfile, `/api/series/${profileSeries1}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: profileSeries1, state: "WATCHING" })
+    });
+    await request(jarProfile, `/api/series/${profileSeries1}/reviews`, {
+      method: "POST",
+      body: JSON.stringify({ rating: 5, body: "Serie favorita para o smoke test do perfil.", visibility: "PUBLIC" })
+    });
+  }
+  if (profileSeries2) {
+    await request(jarProfile, `/api/series/${profileSeries2}/status`, {
+      method: "POST",
+      body: JSON.stringify({ seriesId: profileSeries2, state: "COMPLETED" })
+    });
+  }
+
+  const ownProfilePage = await request(jarProfile, `/profile/${profileUser.username}`);
+  check(
+    "Perfil (Fase 2): cabecalho premium mostra sequencia atual, series acompanhadas/concluidas, episodios e tempo assistido",
+    ownProfilePage.status === 200 &&
+      String(ownProfilePage.body).includes("Sequencia atual") &&
+      String(ownProfilePage.body).includes("Series acompanhadas") &&
+      String(ownProfilePage.body).includes("Episodios assistidos"),
+    ownProfilePage.status
+  );
+  check(
+    "Perfil (Fase 3): estatisticas mostram media de conclusao, tempo restante e Discovery/Quality medio",
+    String(ownProfilePage.body).includes("Media de conclusao") &&
+      String(ownProfilePage.body).includes("Tempo restante") &&
+      (String(ownProfilePage.body).includes("Discovery medio") || String(ownProfilePage.body).includes("Quality medio")),
+    null
+  );
+  check(
+    "Perfil (Fase 4): timeline mostra atividades reais (assistiu/avaliou/concluiu) e os filtros da Fase 7",
+    String(ownProfilePage.body).includes("assistiu") &&
+      String(ownProfilePage.body).includes("avaliou") &&
+      String(ownProfilePage.body).includes("concluiu") &&
+      String(ownProfilePage.body).includes("Favoritos") &&
+      String(ownProfilePage.body).includes("Conclusoes"),
+    null
+  );
+  check(
+    "Perfil (Fase 5): dono ve Continuar assistindo/Watch Next (colecoes pessoais, nunca expostas a visitantes)",
+    String(ownProfilePage.body).includes("Continuar assistindo"),
+    null
+  );
+  check(
+    "Perfil (Fase 5): Favoritas e Reviews recentes reaproveitam os mesmos dados de review ja buscados",
+    String(ownProfilePage.body).includes("Favoritas") && String(ownProfilePage.body).includes("Reviews recentes"),
+    null
+  );
+  check(
+    "Perfil (Fase 6): destaques mostram Maior Discovery Score, Maior Quality Score e Melhor serie avaliada",
+    String(ownProfilePage.body).includes("Destaques") &&
+      String(ownProfilePage.body).includes("Maior Discovery Score") &&
+      String(ownProfilePage.body).includes("Melhor serie avaliada"),
+    null
+  );
+  check(
+    "Perfil (Fase 8): novas secoes seguem a regra global de grids (grid-cols-2 fixo)",
+    String(ownProfilePage.body).includes("grid-cols-2"),
+    null
+  );
+
+  const jarProfileViewer: CookieJar = { value: "" };
+  await registerUser(jarProfileViewer, "userprofileviewer");
+  const visitorProfilePage = await request(jarProfileViewer, `/profile/${profileUser.username}`);
+  check(
+    "Perfil (Fase 5): visitante nunca ve Continuar assistindo/Watch Next de outro usuario (sem flag de privacidade para isso, decisao deliberada)",
+    visitorProfilePage.status === 200 && !String(visitorProfilePage.body).includes("Continuar assistindo"),
+    null
+  );
+  check(
+    "Perfil (Fase 1/6): visitante ainda ve estatisticas/destaques num perfil publico com as flags padrao",
+    String(visitorProfilePage.body).includes("Media de conclusao") && String(visitorProfilePage.body).includes("Destaques"),
+    null
+  );
+
+  await request(jarProfile, "/api/profile", { method: "PATCH", body: JSON.stringify({ showWatchingSeries: false, showWatchedSeries: false }) });
+  const visitorAfterHidingStats = await request(jarProfileViewer, `/profile/${profileUser.username}`);
+  check(
+    "Perfil (Fase 1): sem flag dedicada, estatisticas/destaques reaproveitam showWatchingSeries/showWatchedSeries (escondidas quando ambas desligadas)",
+    !String(visitorAfterHidingStats.body).includes("Media de conclusao") && !String(visitorAfterHidingStats.body).includes("Destaques"),
+    null
+  );
+  check(
+    "Perfil (Fase 1): Reviews/Favoritas continuam visiveis mesmo com estatisticas escondidas (flags independentes)",
+    String(visitorAfterHidingStats.body).includes("Favoritas") || String(visitorAfterHidingStats.body).includes("Reviews recentes"),
+    null
+  );
+  await request(jarProfile, "/api/profile", { method: "PATCH", body: JSON.stringify({ showWatchingSeries: true, showWatchedSeries: true }) });
+
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
 
   // ---- Encerramento ----

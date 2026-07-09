@@ -30,6 +30,11 @@ export async function isFollowing(followerId: string, followingId: string) {
   return Boolean(follow);
 }
 
+/**
+ * Fase 1/6 (INSERIES-PROFILE-PREMIUM-01) — aditivo: alem da serie, agora tambem devolve
+ * `completionPercent`/`lastActivityAt` (ja existiam em `UserSeriesStatus`, so nao eram
+ * selecionados). Unico consumidor e a pagina de perfil; nenhuma assinatura publica quebrada.
+ */
 export async function getWatchStateSeries(userId: string, state: "WATCHING" | "COMPLETED") {
   const statuses = await prisma.userSeriesStatus.findMany({
     where: { userId, state },
@@ -38,7 +43,11 @@ export async function getWatchStateSeries(userId: string, state: "WATCHING" | "C
     take: 12
   });
 
-  return statuses.map((status) => status.series);
+  return statuses.map((status) => ({
+    ...status.series,
+    completionPercent: status.completionPercent,
+    lastActivityAt: status.lastActivityAt
+  }));
 }
 
 export async function getPublicListsForUser(userId: string) {
@@ -49,10 +58,11 @@ export async function getPublicListsForUser(userId: string) {
   });
 }
 
+/** Fase 1/5 (INSERIES-PROFILE-PREMIUM-01) — `posterUrl` aditivo, para as novas secoes "Favoritas"/"Reviews recentes" mostrarem o poster sem uma query extra. */
 export async function getPublicReviewsForUser(userId: string) {
   return prisma.review.findMany({
     where: { userId, visibility: "PUBLIC", hiddenByAdminAt: null },
-    include: { series: { select: { id: true, slug: true, title: true } } },
+    include: { series: { select: { id: true, slug: true, title: true, posterUrl: true } } },
     orderBy: { updatedAt: "desc" },
     take: 12
   });

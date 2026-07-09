@@ -2431,6 +2431,143 @@ N+1 que elas tinham simplesmente deixou de existir em vez de precisar ser corrig
 - Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
   layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
 
+## Perfil Premium (INSERIES-PROFILE-PREMIUM-01)
+
+O Perfil deixa de mostrar so identidade + 4 secoes basicas (Assistindo/Concluidas/Listas/
+Reviews) e passa a ser uma vitrine completa da jornada do usuario: cabecalho com numeros,
+estatisticas, destaques, colecoes pessoais e uma timeline filtravel — tudo reaproveitando
+servicos ja existentes e preservando integralmente o modelo de privacidade granular ja
+estabelecido (`isProfilePrivate` + `showWatchingSeries`/`showWatchedSeries`/`showLists`/
+`showReviews`/`showActivity`).
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **`getWatchStateSeries` perdia dados que ja existiam**: retornava so a `Series`, descartando
+  `completionPercent`/`lastActivityAt` de `UserSeriesStatus` (usados pelas novas secoes de
+  Destaques/Concluidas recentemente) — estendido aditivamente (mesma consulta, mais dois
+  campos no retorno), unico consumidor e a propria pagina de perfil.
+- **`getProfileActivity` (lib/social/activity.ts) ja e privacy-aware**: reaproveitada
+  integralmente para a nova Timeline (Fase 4) — ja aplica a mesma regra granular
+  (`showActivity` + a flag especifica de cada tipo de evento) quando o visitante nao e o
+  dono, sem precisar de nenhuma logica nova.
+- **Nao existe `ActivityType` para "favorito"**: o schema so tem `EPISODE_WATCHED`,
+  `SERIES_STATUS_CHANGED`, `SERIES_COMPLETED`, `REVIEW_CREATED`, `LIST_CREATED`,
+  `USER_FOLLOWED` — "Favoritos" (Fase 7) e derivado como um filtro sobre
+  `REVIEW_CREATED` com `review.rating >= 4`, o mesmo criterio ja estabelecido para
+  "Favoritas" desde a Minha Lista Premium.
+- **Nenhuma flag de privacidade cobre estatisticas/destaques (agregados novos)**: decisao —
+  tratar como extensao dos dois toggles que ja controlam as listas equivalentes
+  (`showWatchingSeries`/`showWatchedSeries`); se o usuario escondeu as duas, os agregados
+  derivados delas tambem ficam ocultos, em vez de inventar uma flag nova (`canSeeStats`,
+  ver Decisoes arquiteturais).
+- **Continue Watching/Watch Next nao tem nenhuma flag de privacidade dedicada**: decisao —
+  torna-los exclusivos do dono do perfil (nunca exibidos a visitantes, mesmo em perfil
+  publico), por serem um conceito pessoal de "retomar de onde parei" sem nenhuma regra
+  existente que sancione mostra-lo a terceiros.
+- **`getMyListFullForUser` (Minha Lista Premium) e a fonte mais rica ja disponivel** para
+  Discovery/Quality medio e Destaques (discoveryScore/qualityScore/collectionTags/
+  completionPercent por serie rastreada, ja num unico array) — reaproveitada em vez de
+  qualquer consulta nova, com um filtro adicional por estado (WATCHING/COMPLETED) quando o
+  visitante nao e o dono, para nunca vazar mais dado do que as flags ja autorizam em
+  qualquer outro lugar do perfil.
+
+### Fase 2 — Cabecalho premium
+
+`ProfileHeader` (`components/profile/profile-header.tsx`): avatar/nome/username/data de
+cadastro/bio sempre visiveis (identico a antes); a nova linha de numeros (sequencia atual,
+series acompanhadas, series concluidas, episodios assistidos, tempo assistido) so aparece
+quando a pagina passa `stats` (isto e, quando `canSeeStats` e verdadeiro) — nunca para um
+perfil oculto ou com as duas flags de series desligadas.
+
+### Fase 3 — Estatisticas
+
+`ProfileStatsSection` (`components/profile/profile-stats-section.tsx`), mesmo padrao de
+tile (icone + numero grande + rotulo) ja usado no Dashboard e na Minha Lista: series,
+temporadas concluidas, episodios, tempo assistido, tempo restante e media de conclusao vem
+direto de `getUserStats` (nenhuma query nova); Discovery medio e Quality medio sao a unica
+coisa que `UserStats` nao tem — calculados em `lib/profile-page/highlights.ts`
+(`computeAverageScore`) sobre o mesmo array de `getMyListFullForUser` que a Fase 6 tambem
+usa.
+
+### Fase 4/7 — Timeline com filtros
+
+`ProfileTimeline` (`components/profile/profile-timeline.tsx`, client component) reaproveita
+`getProfileActivity` (a mesma consulta ja privacy-aware da secao "Atividade" anterior) e
+`ActivityCard` (o mesmo card do feed global, sem duplicar o mapeamento tipo→texto) — so
+adiciona filtros client-side por cima do array ja buscado: Tudo, Reviews
+(`REVIEW_CREATED`), Series (`SERIES_STATUS_CHANGED`), Episodios (`EPISODE_WATCHED`),
+Favoritos (`REVIEW_CREATED` com nota >= 4) e Conclusoes (`SERIES_COMPLETED`) — nenhuma
+consulta nova por filtro.
+
+### Fase 5 — Colecoes
+
+`ProfileCollections` (`components/profile/profile-collections.tsx`):
+
+| Secao | Fonte | Visibilidade |
+| --- | --- | --- |
+| Continuar assistindo | `getContinueWatchingForUser` + `ContinueWatchingCard` | so o dono |
+| Watch Next | `getWatchNextForUser` + `WatchNextCard` | so o dono |
+| Favoritas | mesmo array `reviews` ja buscado, filtrado por nota >= 4 | `canSeeReviews` |
+| Concluidas recentemente | mesmo array `completedSeries` (`getWatchStateSeries`) | `canSeeCompleted` |
+| Reviews recentes | mesmo array `reviews` ja buscado | `canSeeReviews` |
+
+Nenhuma consulta nova: Favoritas/Reviews recentes reaproveitam o mesmo array de reviews que
+a secao "Reviews" ja buscava; Concluidas recentemente reaproveita o mesmo array de
+"Concluidas".
+
+### Fase 6 — Destaques
+
+`lib/profile-page/highlights.ts` (`computeProfileHighlights`) — funcao pura, um `max()` por
+criterio sobre o mesmo array de series rastreadas (`getMyListFullForUser`, filtrado por
+privacidade quando o visitante nao e o dono): Melhor serie avaliada (maior `reviewRating`),
+Maior maratona (Collection Tag "Maratona" + mais episodios), Maior Discovery Score, Maior
+Quality Score, Maior progresso (`completionPercent`). "Ultima atividade" reaproveita
+`streaks.lastWatchedAt` de `getUserStats`, sem calculo proprio. Cada destaque so aparece se
+houver um candidato real — nunca um card vazio ou generico.
+
+### Fase 8 — Regra global de grids e responsividade
+
+Toda listagem nova (estatisticas, destaques, colecoes) usa `FixedGrid` — a mesma regra
+global de colunas fixas por breakpoint das sprints anteriores. As secoes "Assistindo"/
+"Concluidas"/"Listas", que antes usavam um grid ad-hoc (`grid gap-3 sm:grid-cols-2`, sem
+regra de coluna fixa por breakpoint), tambem passaram a usar `FixedGrid` nesta sprint —
+correcao incidental encontrada na Fase 1/8, nao uma regra de negocio alterada.
+
+### Fase 9 — Performance
+
+Toda a busca de dados da pagina continua em um unico `Promise.all` de nivel superior (9
+chamadas em paralelo, cada uma condicionada pela flag de privacidade correspondente) —
+nenhum componente assincrono aninhado, nenhuma consulta disparada por secao individualmente.
+
+### Decisoes arquiteturais
+
+- **`canSeeStats` e uma extensao dos toggles existentes, nao uma flag nova**:
+  `isOwner || (!isProfilePrivate && (showWatchingSeries || showWatchedSeries))` — cobre
+  cabecalho (Fase 2), estatisticas (Fase 3) e destaques (Fase 6) com uma unica regra
+  coerente, sem alterar o schema.
+- **Continue Watching/Watch Next sao exclusivos do dono** — como nao ha nenhuma regra
+  existente que autorize mostrar isso a terceiros, a opcao mais segura e nao inventar uma
+  nova exposicao publica; fica como uma lacuna documentada para uma sprint futura que
+  queira resolver isso explicitamente.
+- **`getMyListFullForUser` filtrado por estado para visitantes**: usado para Destaques e
+  medias, mas restrito a `WATCHING`/`COMPLETED` (as unicas com flag propria) quando quem
+  ve nao e o dono — nunca vaza mais dado do que `canSeeWatching`/`canSeeCompleted` ja
+  autorizam.
+- **Nenhuma migration nesta sprint** — todos os campos usados ja existiam no schema.
+
+### Limitacoes atuais
+
+- Nao existe uma flag de privacidade dedicada para estatisticas/destaques/colecoes; elas
+  reaproveitam os toggles de series existentes (ver Decisoes arquiteturais) — um usuario
+  que queira esconder so os destaques, mantendo as listas de series visiveis, nao consegue
+  fazer essa distincao fina hoje.
+- Continue Watching/Watch Next no perfil sao exclusivos do dono — nunca aparecem para
+  visitantes, mesmo em um perfil publico.
+- Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
+  layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
+
 ## Comandos
 
 - `npm install`: instala dependencias
