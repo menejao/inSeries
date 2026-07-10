@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { FixedGrid } from "@/components/ui/fixed-grid";
-import { BookIcon, ChartIcon, CheckCircleIcon, FilmIcon, FlameIcon, MonitorIcon, TvIcon } from "@/components/ui/icons";
+import { BookIcon, ChartIcon, CheckCircleIcon, FilmIcon, FlameIcon, MonitorIcon, StarIcon, TvIcon } from "@/components/ui/icons";
 import type { UserStats } from "@/lib/analytics";
 
 /**
  * Fase 6 (INSERIES-DASHBOARD-PREMIUM-01) — "sem aparencia administrativa": icon + big
  * number + label per stat (never a plain bordered number tile like the old dashboard
  * card), reusing `getUserStats` (lib/analytics) end to end — no number computed here.
+ * Fase 8 (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) — `reviewCount` aditivo, vindo de
+ * `getUserReviewStats` (lib/social/review-stats.ts), a mesma funcao reutilizada no Perfil.
  */
-export function StatsSection({ stats }: { stats: UserStats }) {
+export function StatsSection({ stats, reviewCount }: { stats: UserStats; reviewCount: number }) {
   const hasAnyStats = stats.overview.episodesWatched > 0;
 
   const tiles = [
@@ -17,6 +19,7 @@ export function StatsSection({ stats }: { stats: UserStats }) {
     { icon: FilmIcon, label: "Temporadas concluidas", value: stats.overview.seasonsCompleted },
     { icon: ChartIcon, label: "Horas assistidas", value: stats.watchTime.hoursWatched },
     { icon: FlameIcon, label: "Sequencia atual", value: `${stats.streaks.currentStreakDays}d` },
+    { icon: StarIcon, label: "Reviews escritas", value: reviewCount },
     { icon: BookIcon, label: "Genero favorito", value: stats.genres.topGenre?.genre ?? "—" },
     { icon: MonitorIcon, label: "Streaming predominante", value: stats.providers.topProvider?.provider ?? "—" }
   ];

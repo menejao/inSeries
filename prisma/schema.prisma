@@ -46,6 +46,9 @@ enum ActivityType {
   REVIEW_CREATED
   LIST_CREATED
   USER_FOLLOWED
+  // Fase 3/8 (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) — aditivo, alimenta a Timeline do Perfil
+  // (getProfileActivity/ActivityCard, ja reutilizados sem alteracao).
+  COMMENT_CREATED
 }
 
 enum CatalogSyncType {
@@ -124,6 +127,7 @@ model User {
   followers          Follow[]              @relation("followers")
   following          Follow[]              @relation("following")
   reviews            Review[]
+  comments           Comment[]
   ratings            Rating[]
   lists              List[]
   activities         Activity[]            @relation("ActivityUser")
@@ -295,14 +299,43 @@ model Review {
   body            String
   visibility      Visibility     @default(PUBLIC)
   hiddenByAdminAt DateTime?
+  // Fase 2 (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) — aditivo, default false preserva todas as
+  // reviews existentes exatamente como estavam.
+  containsSpoiler Boolean        @default(false)
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   series          Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   activities      Activity[]
   notifications   Notification[]
+  comments        Comment[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   @@unique([userId, seriesId])
+}
+
+/**
+ * Fase 3/4 (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) — comentarios em uma review, com um nivel
+ * de resposta via auto-relacao `parentId` (`parent`/`replies`). `hiddenByAdminAt` espelha o
+ * mesmo campo/padrao de moderacao ja usado por `Review` (ver `lib/admin/moderation.ts`),
+ * ainda que a UI de moderacao de comentarios fique fora do escopo desta sprint.
+ */
+model Comment {
+  id              String     @id @default(cuid())
+  userId          String
+  reviewId        String
+  parentId        String?
+  body            String
+  hiddenByAdminAt DateTime?
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review          Review     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  parent          Comment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies         Comment[]  @relation("CommentReplies")
+  activities      Activity[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([reviewId])
+  @@index([parentId])
 }
 
 model Rating {
@@ -385,6 +418,7 @@ model Activity {
   episodeId    String?
   reviewId     String?
   listId       String?
+  commentId    String?
   targetUserId String?
   metadata     Json?
   visibility   Visibility   @default(PUBLIC)
@@ -393,6 +427,7 @@ model Activity {
   episode      Episode?     @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   review       Review?      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   list         List?        @relation(fields: [listId], references: [id], onDelete: Cascade)
+  comment      Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
   targetUser   User?        @relation("ActivityTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

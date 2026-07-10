@@ -46,7 +46,7 @@ export default async function AdminReviewsPage() {
                   <TableRow key={review.id}>
                     <Td className="text-muted">@{review.user.username}</Td>
                     <Td className="text-muted">{review.series.title}</Td>
-                    <Td className="text-muted">{review.rating}/10</Td>
+                    <Td className="text-muted">{review.rating}/5</Td>
                     <Td className="text-muted">{formatDate(review.updatedAt)}</Td>
                     <Td>
                       <Badge variant={review.visibility === "PUBLIC" ? "secondary" : "default"}>{review.visibility}</Badge>

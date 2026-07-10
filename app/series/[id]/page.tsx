@@ -277,9 +277,20 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
         <ReviewForm
           seriesId={series.id}
           authenticated={Boolean(user)}
-          initialReview={ownReview ? { rating: ownReview.rating, body: ownReview.body, visibility: ownReview.visibility } : null}
+          initialReview={
+            ownReview
+              ? { rating: ownReview.rating, body: ownReview.body, visibility: ownReview.visibility, containsSpoiler: ownReview.containsSpoiler }
+              : null
+          }
         />
-        <ReviewsSection reviews={reviews} viewerId={user?.id} />
+        <ReviewsSection
+          reviews={reviews}
+          viewerId={user?.id}
+          authenticated={Boolean(user)}
+          seriesQualityScore={series.qualityScore}
+          seriesDiscoveryScore={series.discoveryScore}
+          seriesCollectionTags={series.collectionTags}
+        />
       </section>
 
       {listsWithSeries.length ? (

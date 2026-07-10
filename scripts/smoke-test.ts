@@ -1077,6 +1077,68 @@ async function main() {
     seriesPageAfterReviews.status
   );
 
+  // ---- Comentarios e respostas (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) ----
+  const reviewIdForComments = createReview.body?.data?.id;
+
+  const commentByB = await request(jarB, `/api/reviews/${reviewIdForComments}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body: "Comentario do smoke test" })
+  });
+  check(
+    "usuario B comenta na review de A",
+    commentByB.status === 201 && commentByB.body?.data?.body === "Comentario do smoke test",
+    commentByB.body
+  );
+
+  const commentId = commentByB.body?.data?.id;
+
+  const replyByA = await request(jarA, `/api/reviews/${reviewIdForComments}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body: "Resposta do smoke test", parentId: commentId })
+  });
+  check(
+    "usuario A responde ao comentario de B",
+    replyByA.status === 201 && replyByA.body?.data?.parentId === commentId,
+    replyByA.body
+  );
+
+  const bEditsOwnComment = await request(jarB, `/api/reviews/${reviewIdForComments}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body: "Comentario editado pelo smoke test" })
+  });
+  check(
+    "usuario B edita o proprio comentario",
+    bEditsOwnComment.status === 200 && bEditsOwnComment.body?.data?.body === "Comentario editado pelo smoke test",
+    bEditsOwnComment.body
+  );
+
+  const aEditsBComment = await request(jarA, `/api/reviews/${reviewIdForComments}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body: "Hackeado" })
+  });
+  check("usuario A nao consegue editar comentario de B (403)", aEditsBComment.status === 403, aEditsBComment.body);
+
+  const seriesPageWithComments = await request(jarA, `/series/${seriesId}`);
+  check(
+    "pagina da serie mostra comentario e resposta",
+    seriesPageWithComments.status === 200 &&
+      String(seriesPageWithComments.body).includes("Comentario editado pelo smoke test") &&
+      String(seriesPageWithComments.body).includes("Resposta do smoke test"),
+    seriesPageWithComments.status
+  );
+
+  const bDeletesOwnComment = await request(jarB, `/api/reviews/${reviewIdForComments}/comments/${commentId}`, { method: "DELETE" });
+  check("usuario B apaga o proprio comentario (cascata apaga a resposta)", bDeletesOwnComment.status === 200, bDeletesOwnComment.body);
+
+  const seriesPageAfterCommentDelete = await request(jarA, `/series/${seriesId}`);
+  check(
+    "comentario e resposta desaparecem apos exclusao em cascata",
+    seriesPageAfterCommentDelete.status === 200 &&
+      !String(seriesPageAfterCommentDelete.body).includes("Comentario editado pelo smoke test") &&
+      !String(seriesPageAfterCommentDelete.body).includes("Resposta do smoke test"),
+    seriesPageAfterCommentDelete.status
+  );
+
   const deleteReview = await request(jarA, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
   check("usuario A apaga a propria review", deleteReview.status === 200, deleteReview.body);
 

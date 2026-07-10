@@ -24,6 +24,7 @@ import { listNotifications, countUnreadNotifications } from "@/lib/notifications
 import { listBombandoAgora, listLancamentos } from "@/lib/catalog/smart-lists";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { getMyListSummaryForUser } from "@/lib/my-list";
+import { getUserReviewStats } from "@/lib/social/review-stats";
 import { formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -54,7 +55,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     bombandoAgora,
     lancamentos,
     continueWatching,
-    myList
+    myList,
+    reviewStats
   ] = await Promise.all([
     getWatchNextForUser(user.id, { limit: 4 }),
     getUpcomingEpisodesForUser(user.id, 3),
@@ -75,7 +77,9 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     // Dashboard no mesmo Promise.all, nunca depois (sem waterfall sequencial).
     getContinueWatchingForUser(user.id, { limit: 10 }),
     // Fase 5/9 (INSERIES-DASHBOARD-PREMIUM-01) — idem: mesmo Promise.all, sem waterfall.
-    getMyListSummaryForUser(user.id)
+    getMyListSummaryForUser(user.id),
+    // Fase 8 (INSERIES-REVIEWS-COMMENTS-PREMIUM-01) — mesmo Promise.all, sem waterfall.
+    getUserReviewStats(user.id)
   ]);
 
   const currentYearRecap = recapAvailability.enabled ? recapAvailability.availability.years.find((y) => y.year === currentYear) : undefined;
@@ -117,7 +121,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
       <MyListSection summary={myList} />
 
       {/* 8. Suas Estatisticas */}
-      <StatsSection stats={stats} />
+      <StatsSection stats={stats} reviewCount={reviewStats.count} />
 
       {/* 9. Atividade recente */}
       <ActivitySection activity={activity} />

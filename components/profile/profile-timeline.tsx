@@ -6,13 +6,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import type { ActivityFeedItem } from "@/lib/social/activity";
 
-type TimelineFilter = "ALL" | "REVIEWS" | "SERIES" | "EPISODES" | "FAVORITES" | "COMPLETIONS";
+type TimelineFilter = "ALL" | "REVIEWS" | "COMMENTS" | "SERIES" | "EPISODES" | "FAVORITES" | "COMPLETIONS";
 
 const FAVORITE_MIN_RATING = 4;
 
 const FILTERS: Array<{ key: TimelineFilter; label: string }> = [
   { key: "ALL", label: "Tudo" },
   { key: "REVIEWS", label: "Reviews" },
+  { key: "COMMENTS", label: "Comentarios" },
   { key: "SERIES", label: "Series" },
   { key: "EPISODES", label: "Episodios" },
   { key: "FAVORITES", label: "Favoritos" },
@@ -25,6 +26,8 @@ function matchesFilter(activity: ActivityFeedItem, filter: TimelineFilter): bool
       return true;
     case "REVIEWS":
       return activity.type === "REVIEW_CREATED";
+    case "COMMENTS":
+      return activity.type === "COMMENT_CREATED";
     case "SERIES":
       return activity.type === "SERIES_STATUS_CHANGED";
     case "EPISODES":

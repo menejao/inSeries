@@ -12,6 +12,7 @@ import { ProfileStatsSection } from "@/components/profile/profile-stats-section"
 import { ProfileHighlights } from "@/components/profile/profile-highlights";
 import { ProfileCollections } from "@/components/profile/profile-collections";
 import { ProfileTimeline } from "@/components/profile/profile-timeline";
+import { ReviewsStatsSection } from "@/components/reviews/reviews-stats-section";
 import { getCurrentUser } from "@/lib/auth/server";
 import {
   getProfileByUsername,
@@ -21,6 +22,7 @@ import {
   isFollowing
 } from "@/lib/social/profile";
 import { getProfileActivity } from "@/lib/social/activity";
+import { getMostReviewedSeries, getUserReviewStats } from "@/lib/social/review-stats";
 import { getUserStats } from "@/lib/analytics";
 import { getMyListFullForUser } from "@/lib/my-list";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
@@ -63,7 +65,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   // agregados derivados delas, em vez de inventar uma flag nova.
   const canSeeStats = isOwner || (!profile.isProfilePrivate && (profile.showWatchingSeries || profile.showWatchedSeries));
 
-  const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, watchNext] = await Promise.all([
+  const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, watchNext, reviewStats, mostReviewedSeries] =
+    await Promise.all([
     canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING") : Promise.resolve([]),
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
     canSeeLists
@@ -89,7 +92,9 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     canSeeStats ? getUserStats(profile.id) : Promise.resolve(null),
     canSeeStats ? getMyListFullForUser(profile.id) : Promise.resolve(null),
     isOwner ? getContinueWatchingForUser(profile.id, { limit: 6 }) : Promise.resolve(null),
-    isOwner ? getWatchNextForUser(profile.id, { limit: 6 }) : Promise.resolve(null)
+    isOwner ? getWatchNextForUser(profile.id, { limit: 6 }) : Promise.resolve(null),
+    canSeeReviews ? getUserReviewStats(profile.id) : Promise.resolve(null),
+    canSeeReviews ? getMostReviewedSeries() : Promise.resolve(null)
   ]);
 
   // Fase 1/6 — "Destaques"/medias (Discovery/Quality) usam getMyListFullForUser, que
@@ -259,6 +264,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
               <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir reviews." />
             )}
           </section>
+
+          {canSeeReviews && reviewStats ? <ReviewsStatsSection stats={reviewStats} mostReviewed={mostReviewedSeries} /> : null}
 
           {canSeeActivity ? (
             <ProfileTimeline activities={activity} />

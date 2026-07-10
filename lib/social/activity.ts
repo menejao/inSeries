@@ -9,6 +9,7 @@ type CreateActivityInput = {
   episodeId?: string;
   reviewId?: string;
   listId?: string;
+  commentId?: string;
   targetUserId?: string;
   metadata?: Prisma.InputJsonValue;
   visibility?: Visibility;
@@ -23,6 +24,7 @@ export async function recordActivity(input: CreateActivityInput) {
       episodeId: input.episodeId,
       reviewId: input.reviewId,
       listId: input.listId,
+      commentId: input.commentId,
       targetUserId: input.targetUserId,
       metadata: input.metadata,
       visibility: input.visibility ?? "PUBLIC"
@@ -52,6 +54,7 @@ const activityInclude = {
   },
   review: { select: { id: true, rating: true, body: true, seriesId: true } },
   list: { select: { id: true, title: true } },
+  comment: { select: { id: true, body: true, reviewId: true } },
   targetUser: { select: { id: true, username: true, name: true } }
 } satisfies Prisma.ActivityInclude;
 
@@ -63,6 +66,7 @@ function typeVisibilityBranches(selfUserId?: string) {
     { type: "SERIES_STATUS_CHANGED", user: { isProfilePrivate: false, showActivity: true, showWatchingSeries: true } },
     { type: "SERIES_COMPLETED", user: { isProfilePrivate: false, showActivity: true, showWatchedSeries: true } },
     { type: "REVIEW_CREATED", user: { isProfilePrivate: false, showActivity: true, showReviews: true } },
+    { type: "COMMENT_CREATED", user: { isProfilePrivate: false, showActivity: true, showReviews: true } },
     { type: "LIST_CREATED", user: { isProfilePrivate: false, showActivity: true, showLists: true } },
     { type: "USER_FOLLOWED", user: { isProfilePrivate: false, showActivity: true } }
   ];

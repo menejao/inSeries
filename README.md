@@ -2568,6 +2568,208 @@ nenhum componente assincrono aninhado, nenhuma consulta disparada por secao indi
 - Validacao de responsividade feita via inspecao de classes Tailwind e revisao manual do
   layout — este sandbox nao tem Playwright/Puppeteer para screenshots reais.
 
+## Reviews e Comentarios Premium (INSERIES-REVIEWS-COMMENTS-PREMIUM-01)
+
+As Reviews deixam de ser uma lista simples de nota+texto e passam a ser o principal ponto de
+interacao social do inSeries: cards enriquecidos, comentarios e respostas reais, ordenacao e
+filtros, estatisticas e integracao com Perfil/Dashboard/Timeline — a base explicita para o
+futuro Feed Social e Gamificacao social citados no roadmap do produto.
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **`ReviewsSection`/`ReviewForm` ja existiam** (INSERIES-SERIES-PAGE-PREMIUM-01) mas eram
+  minimos: card com avatar+username+nota+data+corpo, sem spoiler, sem comentarios, sem
+  ordenacao/filtro. `getSeriesReviews`/`getOwnReview`/`upsertReview`/`deleteReview`
+  (`lib/social/reviews.ts`) ja cobriam toda a regra de negocio de CRUD de review e foram
+  reaproveitados integralmente.
+- **Nao existia nenhuma tabela de comentario ou curtida no schema.** `Review` nao tinha
+  `containsSpoiler`. `ActivityType` nao tinha um valor para "comentou".
+- **`recordActivity`/`activityInclude`/`typeVisibilityBranches`
+  (`lib/social/activity.ts`) e `ActivityCard`/`ProfileTimeline` ja sao genericos o
+  suficiente** para receber um novo `ActivityType` aditivo sem quebrar nada — confirmado
+  meia hora depois quando `COMMENT_CREATED` foi adicionado ao enum e o unico ponto que
+  quebrou de fato foi um `Record<ActivityType, ...>` em `activity-card.tsx` (ver
+  Decisoes/riscos abaixo).
+- **Bug pre-existente encontrado e corrigido**: `app/admin/reviews/page.tsx` mostrava
+  `{review.rating}/10`, mas a nota e sempre 1-5 em toda a interface publica — correcao
+  trivial de exibicao, nao uma regra de negocio alterada.
+- **`lib/analytics/dataset.ts` (o motor de estatisticas do Dashboard/Perfil) nunca buscou
+  reviews** — so progresso de episodio e status de serie. Estatisticas de review (Fase 7)
+  precisaram de um modulo novo (`lib/social/review-stats.ts`), nao uma extensao do
+  pipeline de analytics existente, para nao misturar dois dominios de dados que hoje sao
+  independentes.
+- **Reaproveitamento identificado para Comentarios**: o padrao de mutacao client
+  (`useTransition` + `fetch` + toast + `router.refresh()`) usado em toda a Minha Lista/
+  Perfil (ex.: `my-list-item-card.tsx`) e o padrao de rota aninhada com dois parametros
+  (`app/api/lists/[id]/items/[itemId]/route.ts`) foram reaproveitados integralmente para
+  `app/api/reviews/[id]/comments/[commentId]/route.ts`.
+
+### Fase 2 — Schema (aditivo)
+
+Migration `reviews_comments_premium`, puramente aditiva (nenhuma coluna/constraint
+existente alterada ou removida):
+
+- `Review.containsSpoiler Boolean @default(false)` — preserva todas as reviews existentes
+  exatamente como estavam.
+- Novo model `Comment` (`id`, `userId`, `reviewId`, `parentId?` para uma camada de
+  resposta via auto-relacao, `body`, `hiddenByAdminAt?`, timestamps), com
+  `onDelete: Cascade` em `userId`/`reviewId`/`parentId` — apagar uma review ou um
+  comentario-pai tambem apaga os comentarios/respostas dependentes.
+  `hiddenByAdminAt` espelha o mesmo campo de moderacao ja usado por `Review`/`List`,
+  preparando o terreno para uma futura tela de moderacao de comentarios — que **nao** foi
+  construida nesta sprint (fora de escopo, ver Limitacoes).
+- `ActivityType` ganhou `COMMENT_CREATED`; `Activity` ganhou `commentId?` + relacao
+  `comment?` — mesmo padrao exato de `reviewId`/`listId`/etc.
+
+### Fase 2/8 — Reviews Premium (cards enriquecidos)
+
+`ReviewsSection` (`components/series/reviews-section.tsx`) agora mostra, por review:
+avatar, nome, username, data relativa, nota, badge "Contem spoiler" (com o corpo ocultado
+ate o leitor clicar para revelar), badge "Somente voce" (reaproveitado), contagem de
+comentarios+respostas, e um atalho "Editar sua review" que rola ate o `ReviewForm` (ancora
+`#review-form`) — nenhuma logica de edicao nova, so um link para o formulario que ja
+existe. O cabecalho da secao mostra Quality Score/Discovery Score/Collection Tags da
+propria serie (`series.qualityScore`/`series.discoveryScore`/`series.collectionTags`, ja
+carregados pela pagina — nenhuma query nova), no mesmo estilo de badge usado em
+`my-list-item-card.tsx`.
+
+`ReviewForm` (`components/reviews/review-form.tsx`) ganhou um `Checkbox` "Contem spoiler"
+(`components/ui/checkbox.tsx`, ja existente) que viaja no mesmo POST de sempre.
+
+### Fase 3/4 — Comentarios e Respostas (implementados de verdade)
+
+`lib/social/comments.ts`: `createComment`/`updateComment`/`deleteComment`/
+`getCommentsForReview`, todas reaproveitando o mesmo padrao `{ ok, error }` de
+`lib/social/reviews.ts`/`lib/social/lists.ts`:
+
+- **Permissao herdada da review, nao duplicada**: `canViewReview` (privada ao modulo) so
+  permite comentar em uma review que o autor do comentario ja pode ver (dono da review, ou
+  review `PUBLIC` e nao oculta por moderacao) — a mesma regra de `getSeriesReviews`, sem
+  reimplementa-la.
+- **Uma camada de resposta**: `createComment` recusa `parentId` de um comentario que ja e
+  ele proprio uma resposta (`parent.parentId` truthy) — respostas nao podem ter
+  sub-respostas, mantendo a UI de "expandir/ocultar respostas" simples.
+- **Apagar com cascata**: apagar um comentario com respostas apaga as respostas junto
+  (`onDelete: Cascade` no schema, nao uma checagem manual em codigo).
+- Rotas: `POST /api/reviews/[id]/comments` (criar, aceita `parentId` opcional),
+  `PATCH /api/reviews/[id]/comments/[commentId]` (editar, so o autor),
+  `DELETE /api/reviews/[id]/comments/[commentId]` (apagar, so o autor) — todas usando
+  `getApiUser`/`withApiObservability`, o mesmo padrao de toda rota da aplicacao.
+- `components/reviews/comment-section.tsx` (client): compositor de comentario, editar/
+  apagar o proprio (com `ConfirmDialog`, reaproveitado de `review-form.tsx`), responder,
+  expandir/ocultar respostas — tudo com o padrao `useTransition` + `fetch` + toast +
+  `router.refresh()` ja estabelecido.
+- **Sem N+1**: `getSeriesReviews` (`lib/social/reviews.ts`) traz comentarios+respostas
+  aninhados na mesma consulta via `include` — a pagina da serie nunca busca comentarios
+  review por review.
+
+### Fase 5 — Curtidas (decisao deliberada: NAO implementadas)
+
+Curtidas em Reviews e em Comentarios **nao foram implementadas**, por instrucao explicita
+e incondicional do ticket ("nao criar tabelas ou regras fora do escopo desta sprint").
+Nenhuma coluna de contagem, nenhuma tabela `Like`, nenhum botao "Curtir" foi adicionado a
+nenhum componente — a mesma decisao ja tomada para "Curtir"/"Responder" na
+INSERIES-SERIES-PAGE-PREMIUM-01, agora reafirmada e estendida explicitamente para cobrir
+tambem os novos Comentarios. A opcao de ordenacao "Mais curtidas" (Fase 6) permanece
+visivel na UI (o ticket a lista como obrigatoria), mas e um no-op funcional — ver Fase 6.
+
+### Fase 6 — Ordenacao e filtros
+
+`lib/social/review-sort-filter.ts` — funcoes puras sobre o array de reviews ja buscado
+(nenhuma query nova por troca de opcao):
+
+| Ordenacao | Criterio |
+| --- | --- |
+| Mais recentes | `updatedAt` decrescente |
+| Mais relevantes | numero de comentarios+respostas decrescente — um sinal real, so possivel porque esta sprint introduziu Comentarios (nao uma heuristica inventada) |
+| Melhor avaliadas | `rating` decrescente |
+| Mais curtidas | **no-op documentado**: sem dado de curtida (Fase 5), ordena por recencia de forma estavel |
+
+| Filtro | Criterio |
+| --- | --- |
+| Todas | sem filtro |
+| Somente com spoiler | `containsSpoiler === true` |
+| Sem spoiler | `containsSpoiler === false` |
+| Somente minhas | `userId === viewerId` |
+
+"Somente amigos" (mencionado no ticket como filtro futuro condicional) nao foi
+implementado: o inSeries nao tem um conceito de "amigo" (so `Follow` unidirecional) e o
+ticket explicitamente marca esse filtro como "quando aplicavel futuramente".
+
+### Fase 7 — Estatisticas
+
+`lib/social/review-stats.ts`:
+
+- `getUserReviewStats(userId)`: quantidade de reviews, nota media, reviews este mes,
+  reviews este ano — uma unica query (`prisma.review.findMany` so com `rating`/
+  `createdAt`) seguida de computo puro em memoria.
+- `getMostReviewedSeries()`: a serie com mais reviews publicas, um agregado **GLOBAL**
+  (`prisma.review.groupBy`) — nao por usuario. O `@@unique([userId, seriesId])` de
+  `Review` torna uma versao "por usuario" sempre 0 ou 1, entao "serie mais avaliada"
+  so faz sentido como um destaque cross-usuario.
+- "Media das notas" e "nota media do usuario" (dois itens distintos no ticket) sao
+  tratados como o mesmo numero neste contexto por-usuario — nao ha uma segunda media
+  distinta para mostrar sem inventar um segundo conceito.
+
+`ReviewsStatsSection` (`components/reviews/reviews-stats-section.tsx`) renderiza os quatro
+numeros pessoais + o destaque global de serie mais avaliada, no mesmo padrao de tile
+(icone + numero grande + rotulo) usado por `ProfileStatsSection`/`StatsSection`.
+
+### Fase 8 — Integracao
+
+| Superficie | Integracao |
+| --- | --- |
+| Pagina da Serie | cards enriquecidos + comentarios/respostas + ordenacao/filtro (Fases 2-6) |
+| Perfil | `ReviewsStatsSection` apos a secao "Reviews" existente, sob a mesma flag `canSeeReviews` |
+| Dashboard | `StatsSection` ganhou uma tile "Reviews escritas" (`getUserReviewStats(user.id).count`, no mesmo `Promise.all` de nivel superior, sem waterfall) |
+| Timeline (Perfil/Feed) | `COMMENT_CREATED` flui por `recordActivity`/`getProfileActivity`/`ActivityCard` sem nenhum sistema de atividade paralelo; `ProfileTimeline` ganhou o filtro "Comentarios" |
+| Notificacoes | **fora de escopo** — nenhuma notificacao nova para comentario/resposta recebido (ver Limitacoes) |
+| Admin/Moderacao | bug de exibicao `/10` corrigido para `/5` (Fase 1); nenhuma tela de moderacao de comentario construida (schema preparado via `hiddenByAdminAt`, ver Limitacoes) |
+
+### Fase 9/10/11 — UX, performance e responsividade
+
+- Hover premium (`hover:-translate-y-1 hover:shadow-raised`), skeletons/empty states
+  (`EmptyState`) e toasts de sucesso/erro reaproveitam os componentes de UI ja existentes
+  — nenhum componente visual novo alem do `MessageCircleIcon` (`components/ui/icons.tsx`)
+  e do checkbox de spoiler.
+- Zero N+1: comentarios+respostas vem aninhados numa unica consulta (`getSeriesReviews`);
+  ordenacao/filtro/estatisticas pessoais operam em memoria sobre dados ja buscados.
+- Reviews/comentarios continuam uma lista vertical (`space-y-3`), o mesmo padrao de
+  "stream" ja usado por Timeline/Feed/Notificacoes — a regra global de grid fixo
+  (`FixedGrid`) se aplica a `ReviewsStatsSection` (grades de tile), nao a listas de
+  conteudo de largura total.
+
+### Riscos e decisoes tecnicas
+
+- **`Record<ActivityType, ...>` nao e aditivo por si so**: `typeIcons` em
+  `activity-card.tsx` e um `Record` sobre o union completo de `ActivityType` — adicionar
+  `COMMENT_CREATED` ao enum quebrou a tipagem ate a chave ser adicionada (o `switch` com
+  `default` em `getActionContent` nao quebrou). Corrigido adicionando a chave; vale lembrar
+  essa diferenca (`Record` completo vs. `switch`+`default`) para qualquer futura extensao de
+  enum neste arquivo.
+- **Rota nova `/api/reviews/[id]/comments`**: nao existia nenhuma rota `/api/reviews/*`
+  antes (reviews sempre viviam sob `/api/series/[id]/reviews`); comentarios pertencem
+  conceitualmente a review, entao ganharam seu proprio namespace em vez de aninhar ainda
+  mais sob `/api/series`.
+
+### Limitacoes atuais (funcionalidades preparadas so arquiteturalmente)
+
+- **Curtidas (Reviews e Comentarios)**: nenhuma tabela, nenhuma coluna, nenhum componente —
+  decisao deliberada desta sprint (Fase 5), nao uma lacuna acidental.
+- **Moderacao de comentarios**: o schema ja tem `Comment.hiddenByAdminAt` (mesmo padrao de
+  `Review`/`List`), mas nenhuma tela `/admin/comments` ou rota `hide`/`restore` foi
+  construida — preparado estruturalmente, fora do escopo desta sprint.
+- **Notificacoes de comentario/resposta**: nenhum evento novo em `lib/notifications/events.ts`
+  — comentar na review de outro usuario, ou receber uma resposta, nao gera notificacao.
+- **"Somente amigos" (filtro)**: nao implementado — o inSeries nao tem conceito de
+  "amigo" (so `Follow` unidirecional); o proprio ticket marca esse filtro como aplicavel
+  "futuramente".
+- Validacao de responsividade feita via inspecao de classes Tailwind/`FixedGrid` e
+  requisicoes HTTP diretas — este sandbox nao tem Playwright/Puppeteer instalado como
+  dependencia do projeto para screenshots reais.
+
 ## Comandos
 
 - `npm install`: instala dependencias

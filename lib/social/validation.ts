@@ -45,5 +45,15 @@ export const reorderListItemSchema = z.object({
 export const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   body: z.string().trim().min(1).max(2000),
-  visibility: listVisibilitySchema.optional()
+  visibility: listVisibilitySchema.optional(),
+  containsSpoiler: z.boolean().optional()
+});
+
+export const commentSchema = z.object({
+  body: z.string().trim().min(1).max(1000),
+  parentId: z.string().min(1).optional()
+});
+
+export const updateCommentSchema = z.object({
+  body: z.string().trim().min(1).max(1000)
 });

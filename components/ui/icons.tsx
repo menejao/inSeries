@@ -275,3 +275,7 @@ export const ClockIcon = createIcon(
     <path d="M12 7v5l3.5 2" />
   </>
 );
+
+export const MessageCircleIcon = createIcon(
+  <path d="M21 12a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.9-.9L3 21l1.5-5.1A8.4 8.4 0 0 1 3.5 12 8.5 8.5 0 0 1 12 3.5 8.5 8.5 0 0 1 21 12Z" />
+);

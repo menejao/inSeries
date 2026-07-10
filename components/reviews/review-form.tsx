@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StarIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
@@ -38,13 +39,14 @@ export function ReviewForm({
 }: {
   seriesId: string;
   authenticated: boolean;
-  initialReview: { rating: number; body: string; visibility: "PUBLIC" | "PRIVATE" | "FOLLOWERS" } | null;
+  initialReview: { rating: number; body: string; visibility: "PUBLIC" | "PRIVATE" | "FOLLOWERS"; containsSpoiler: boolean } | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const bodyId = useId();
   const [rating, setRating] = useState(initialReview?.rating ?? 5);
   const [body, setBody] = useState(initialReview?.body ?? "");
+  const [containsSpoiler, setContainsSpoiler] = useState(initialReview?.containsSpoiler ?? false);
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">(
     initialReview?.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC"
   );
@@ -60,7 +62,7 @@ export function ReviewForm({
   }
 
   return (
-    <Card className="space-y-3">
+    <Card id="review-form" className="space-y-3">
       <h2 className="text-lg font-semibold text-ink">{initialReview ? "Sua review" : "Escrever review"}</h2>
       <form
         className="space-y-3"
@@ -71,7 +73,7 @@ export function ReviewForm({
             const response = await fetch(`/api/series/${seriesId}/reviews`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ rating, body, visibility })
+              body: JSON.stringify({ rating, body, visibility, containsSpoiler })
             });
 
             const result = (await response.json().catch(() => ({}))) as { error?: string };
@@ -104,6 +106,12 @@ export function ReviewForm({
             required
           />
         </div>
+        <Checkbox
+          label="Contem spoiler"
+          description="Sua review sera exibida com um aviso e ocultada ate quem ler decidir revelar."
+          checked={containsSpoiler}
+          onChange={(event) => setContainsSpoiler(event.target.checked)}
+        />
         <Select value={visibility} onChange={(event) => setVisibility(event.target.value as "PUBLIC" | "PRIVATE")} aria-label="Visibilidade da review">
           <option value="PUBLIC">Publica</option>
           <option value="PRIVATE">Somente eu</option>
@@ -132,6 +140,7 @@ export function ReviewForm({
             }
             setBody("");
             setRating(5);
+            setContainsSpoiler(false);
             setConfirmingDelete(false);
             toast({ title: "Review apagada", variant: "success" });
             router.refresh();

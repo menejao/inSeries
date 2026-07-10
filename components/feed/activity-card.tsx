@@ -3,7 +3,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PosterImage } from "@/components/media/poster-image";
-import { CheckCircleIcon, FilmIcon, HeartIcon, ListIcon, StarIcon, TvIcon } from "@/components/ui/icons";
+import { CheckCircleIcon, FilmIcon, HeartIcon, ListIcon, MessageCircleIcon, StarIcon, TvIcon } from "@/components/ui/icons";
 import { formatEpisodeCode, formatRelativeDate, getInitials } from "@/lib/utils";
 import type { ActivityFeedItem } from "@/lib/social/activity";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,8 @@ const typeIcons: Record<ActivityFeedItem["type"], typeof FilmIcon> = {
   SERIES_COMPLETED: StarIcon,
   REVIEW_CREATED: StarIcon,
   LIST_CREATED: ListIcon,
-  USER_FOLLOWED: HeartIcon
+  USER_FOLLOWED: HeartIcon,
+  COMMENT_CREATED: MessageCircleIcon
 };
 
 function getActionContent(activity: ActivityFeedItem) {
@@ -107,6 +108,18 @@ function getActionContent(activity: ActivityFeedItem) {
         )
       };
     }
+    case "COMMENT_CREATED": {
+      return {
+        text: (
+          <>
+            comentou na review de{" "}
+            <Link href={`/series/${activity.series?.slug ?? ""}`} className="font-semibold text-ink">
+              {activity.series?.title}
+            </Link>
+          </>
+        )
+      };
+    }
     default:
       return { text: "" };
   }
@@ -139,6 +152,9 @@ export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
         </p>
         {activity.type === "REVIEW_CREATED" && activity.review ? (
           <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
+        ) : null}
+        {activity.type === "COMMENT_CREATED" && activity.comment ? (
+          <p className="line-clamp-2 text-sm text-muted">{activity.comment.body}</p>
         ) : null}
         <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
       </div>
