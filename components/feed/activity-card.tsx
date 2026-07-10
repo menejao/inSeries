@@ -109,10 +109,11 @@ function getActionContent(activity: ActivityFeedItem) {
       };
     }
     case "COMMENT_CREATED": {
+      const isReply = Boolean(activity.comment?.parentId);
       return {
         text: (
           <>
-            comentou na review de{" "}
+            {isReply ? "respondeu a um comentario na review de" : "comentou na review de"}{" "}
             <Link href={`/series/${activity.series?.slug ?? ""}`} className="font-semibold text-ink">
               {activity.series?.title}
             </Link>
@@ -125,12 +126,20 @@ function getActionContent(activity: ActivityFeedItem) {
   }
 }
 
+/**
+ * Fase 3 (INSERIES-SOCIAL-FEED-01) — "contexto" (preview do corpo, respeitando spoiler),
+ * badges (contagem de comentarios da thread) e um atalho rapido para a review continuam
+ * server-renderizados: nenhum estado de "revelar spoiler" aqui (isso ja existe na Pagina da
+ * Serie) — um card de feed so precisa avisar que ha spoiler, nunca revelar o corpo.
+ */
 export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
   const action = getActionContent(activity);
   const Icon = typeIcons[activity.type] ?? FilmIcon;
+  const isReviewLinked = activity.type === "REVIEW_CREATED" || activity.type === "COMMENT_CREATED";
+  const threadCount = activity.review?._count.comments ?? 0;
 
   return (
-    <Card className="flex gap-3">
+    <Card className="flex gap-3 transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised">
       <div className="relative shrink-0">
         <Link href={`/profile/${activity.user.username}`}>
           <Avatar label={getInitials(activity.user.name)} name={activity.user.name} src={activity.user.avatarUrl} size="sm" />
@@ -143,7 +152,7 @@ export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
           <Icon className="h-3 w-3" />
         </span>
       </div>
-      <div className="min-w-0 flex-1 space-y-1">
+      <div className="min-w-0 flex-1 space-y-1.5">
         <p className="text-sm leading-6 text-ink/90">
           <Link href={`/profile/${activity.user.username}`} className="font-semibold text-ink">
             {activity.user.name}
@@ -151,11 +160,28 @@ export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
           {action.text}
         </p>
         {activity.type === "REVIEW_CREATED" && activity.review ? (
-          <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
+          activity.review.containsSpoiler ? (
+            <p className="text-sm italic text-subtle">Contem spoiler — abra a serie para ler.</p>
+          ) : (
+            <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
+          )
         ) : null}
         {activity.type === "COMMENT_CREATED" && activity.comment ? (
           <p className="line-clamp-2 text-sm text-muted">{activity.comment.body}</p>
         ) : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activity.type === "REVIEW_CREATED" && activity.review?.containsSpoiler ? <Badge variant="danger">Spoiler</Badge> : null}
+          {isReviewLinked && threadCount > 0 ? (
+            <Badge variant="secondary">
+              <MessageCircleIcon className="h-3 w-3" /> {threadCount}
+            </Badge>
+          ) : null}
+          {isReviewLinked && activity.series ? (
+            <Link href={`/series/${activity.series.slug}#reviews`} className="text-xs font-semibold text-primary hover:underline">
+              Ver review
+            </Link>
+          ) : null}
+        </div>
         <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
       </div>
       {activity.series ? (

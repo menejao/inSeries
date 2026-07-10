@@ -52,9 +52,18 @@ const activityInclude = {
       season: { select: { number: true } }
     }
   },
-  review: { select: { id: true, rating: true, body: true, seriesId: true } },
+  review: {
+    select: {
+      id: true,
+      rating: true,
+      body: true,
+      seriesId: true,
+      containsSpoiler: true,
+      _count: { select: { comments: true } }
+    }
+  },
   list: { select: { id: true, title: true } },
-  comment: { select: { id: true, body: true, reviewId: true } },
+  comment: { select: { id: true, body: true, reviewId: true, parentId: true } },
   targetUser: { select: { id: true, username: true, name: true } }
 } satisfies Prisma.ActivityInclude;
 

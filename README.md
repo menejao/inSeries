@@ -2770,6 +2770,167 @@ numeros pessoais + o destaque global de serie mais avaliada, no mesmo padrao de 
   requisicoes HTTP diretas — este sandbox nao tem Playwright/Puppeteer instalado como
   dependencia do projeto para screenshots reais.
 
+## Feed Social Premium (INSERIES-SOCIAL-FEED-01)
+
+O Feed (ja existia como uma lista simples de `ActivityCard`, Para voce/Global) passa a ser o
+centro de descoberta e interacao entre usuarios: cards premium, filtro/ordenacao e 4 blocos
+de descoberta — tudo derivado do MESMO sistema de atividades ja existente
+(`lib/social/activity.ts`), preparando o terreno para a futura Gamificacao.
+
+### Fase 1 — Auditoria
+
+Findings antes de qualquer mudanca:
+
+- **O Feed ja existia** (`app/feed/page.tsx`, `components/feed/activity-card.tsx`): abas
+  Para voce/Global reaproveitando `getPersonalFeed`/`getGlobalFeed`
+  (`lib/social/activity.ts`, ja privacy-aware via `typeVisibilityBranches`). Faltavam cards
+  enriquecidos, filtro/ordenacao e blocos de descoberta — nao faltava nenhum sistema de
+  atividades novo.
+  - Iniciou/pausou/abandonou uma serie: `SERIES_STATUS_CHANGED` (`metadata.to`).
+  - Concluiu: `SERIES_COMPLETED`. Review publicada: `REVIEW_CREATED`. Episodio assistido:
+    `EPISODE_WATCHED`. Comentario/resposta: `COMMENT_CREATED` (a mesma atividade serve para
+    os dois — uma resposta e so um `Comment` com `parentId`, ver Fase 3).
+- **`Dashboard`'s `ActivitySection` ja linkava para `/feed`** ("Ver feed") — a integracao
+  Dashboard -> Feed (Fase 6) ja existia, nenhuma mudanca necessaria ali.
+- **`activityInclude` nao trazia `review._count.comments` nem `comment.parentId`**:
+  necessarios para "Mais comentados" (Fase 4) e para distinguir "comentou" de "respondeu"
+  (Fase 3) — adicionados aditivamente (mais dois campos `select`, mesma query).
+- **Nao ha (e nao deveria haver) uma query dedicada para "trending"/"discussoes"/"usuarios
+  ativos"**: o ticket exige reaproveitar dados existentes e nunca duplicar consultas — a
+  unica forma de fazer isso sem tocar a privacidade e derivar os 4 blocos EM MEMORIA do
+  mesmo batch de atividades que a lista principal ja busca (ver Fase 5).
+
+### Fase 2 — Feed (agregacao)
+
+Nenhum evento novo precisou ser criado — `getPersonalFeed`/`getGlobalFeed` ja agregam todos
+os tipos listados no ticket. A unica mudanca foi buscar um batch maior por requisicao
+(`FEED_BATCH_SIZE = 150`, em vez do `limit=30` usado pelas paginas antigas) para que o MESMO
+resultado alimente a lista principal E os 4 blocos de descoberta — nunca duas consultas para
+a mesma tela (Fase 6/8).
+
+### Fase 3 — Cards premium
+
+`ActivityCard` (`components/feed/activity-card.tsx`) ganhou, sem deixar de ser um Server
+Component:
+
+- **Contexto**: preview do corpo da review/comentario — respeitando spoiler (`containsSpoiler`
+  suprime o preview, mostra so um aviso, nunca revela o texto no feed).
+- **Badges**: "Spoiler" quando aplicavel; contagem da thread (`review._count.comments`) para
+  reviews e comentarios.
+- **Atalho rapido**: link "Ver review" para `/series/{slug}#reviews` (a mesma ancora que a
+  Pagina da Serie ja usa para a secao de reviews).
+- **Comentario vs. resposta**: `activity.comment.parentId` distingue "comentou na review de"
+  de "respondeu a um comentario na review de" — nenhum `ActivityType` novo, so uma leitura
+  condicional do mesmo campo aditivo.
+- **Hover premium**: `hover:-translate-y-1 hover:shadow-raised`, o mesmo padrao de elevação
+  usado em todos os cards do app.
+
+### Fase 4 — Organizacao
+
+`lib/social/feed-sort-filter.ts` — funcoes puras sobre o array de atividades ja buscado
+(mesmo padrao de `review-sort-filter.ts`/`ProfileTimeline`, nenhuma query nova por troca de
+opcao):
+
+| Filtro | Criterio |
+| --- | --- |
+| Tudo / Reviews / Comentarios / Series / Episodios / Conclusoes | `activity.type` |
+
+| Ordenacao | Criterio |
+| --- | --- |
+| Recentes | `createdAt` decrescente |
+| Relevantes | peso por tipo (reviews/comentarios > conclusoes/listas > follows/status > episodios), empatado por recencia |
+| Mais comentados | `review._count.comments` decrescente (0 para atividades sem review associada), empatado por recencia |
+
+`components/feed/feed-activity-list.tsx` (client) tambem inclui uma revelacao progressiva
+("Carregar mais", 15 por vez) sobre o mesmo array ja em memoria — ver Fase 7/limitacoes para
+a diferenca entre isso e scroll infinito real.
+
+### Fase 5 — Descoberta
+
+`lib/social/feed-discovery.ts` — os 4 blocos são funções puras que agregam o MESMO batch de
+atividades (privacy-filtrado por `getGlobalFeed`/`getPersonalFeed`) já em memória, nunca uma
+query nova em `Review`/`Comment`/`User` diretamente — isso é o que garante que os blocos
+herdam automaticamente a mesma política de privacidade das atividades:
+
+- **Trending entre usuarios**: contagem de atividades por serie no batch, top N com poster.
+- **Reviews em destaque**: atividades `REVIEW_CREATED` deduplicadas por review, ordenadas por
+  numero de comentarios e depois nota.
+- **Discussoes recentes**: atividades `COMMENT_CREATED`, na ordem em que ja vem (o batch já é
+  `createdAt desc`).
+- **Usuarios ativos**: contagem de atividades por usuario no batch, top N.
+
+`components/feed/feed-discovery-panel.tsx` (Server Component) renderiza os 4 blocos; "nunca
+listas genericas" — cada bloco só aparece se tiver pelo menos um item real, nunca um
+placeholder vazio.
+
+### Fase 6 — Integracao
+
+| Superficie | Integracao |
+| --- | --- |
+| Dashboard | `ActivitySection` ja linkava para `/feed` (pre-existente, sem mudanca) |
+| Pagina da Serie | "Ver review" (Fase 3) linka para `/series/{slug}#reviews` |
+| Reviews/Comentarios | `getSeriesReviews`/`lib/social/comments.ts` inalterados — o Feed so LÊ `Activity`, nunca duplica a logica de CRUD |
+| Timeline (Perfil) | mesma `getProfileActivity`/`ActivityCard`, agora com os badges/contexto da Fase 3 tambem la |
+| Perfil | nenhuma mudanca necessaria — `ProfileTimeline` ja usa o mesmo `ActivityCard` |
+
+Nenhuma consulta duplicada: o Feed sempre le de `getPersonalFeed`/`getGlobalFeed`
+(`lib/social/activity.ts`), o mesmo modulo que ja alimentava Timeline/Dashboard.
+
+### Fase 7 — UX
+
+Hover premium (Fase 3), skeletons (`app/feed/loading.tsx`, ja existia), empty states
+(`EmptyState`, reaproveitado com copy especifico por aba/filtro), feedback visual (badges/
+contagens ja atualizadas a cada render). "Scroll infinito quando viavel" foi interpretado
+como **revelacao progressiva sobre o array ja buscado** ("Carregar mais", Fase 4) — nao um
+`IntersectionObserver` com paginacao server-side nova, para nao introduzir uma segunda forma
+de paginar atividades (`getGlobalFeed`/`getPersonalFeed` usam `take`/`limit`, nao cursor).
+
+### Fase 8 — Performance
+
+- Zero N+1: um unico batch (`getGlobalFeed`/`getPersonalFeed`) alimenta lista + descoberta;
+  os 4 blocos de descoberta sao `Array.reduce`/`sort` em memoria, nao consultas.
+  `review._count.comments` e um agregado do Prisma no mesmo `include`, nao uma subquery por
+  atividade.
+- Cache/RSC preservados: `FeedDiscoveryPanel` continua Server Component; so
+  `FeedActivityList` (filtro/ordenacao/paginacao) precisa ser client.
+- Sem regressao: `getGlobalFeed`/`getPersonalFeed`/`getRecentActivityForUser`/
+  `getProfileActivity` mantem a mesma assinatura e comportamento — so o `activityInclude`
+  compartilhado ganhou 2 campos aditivos.
+
+### Fase 9 — Responsividade
+
+Lista principal continua uma pilha vertical (`space-y-3`, o mesmo padrao de Timeline/
+Notificacoes); os blocos "Trending"/"Usuarios ativos" (grades de tile) usam `FixedGrid` —
+a mesma regra global de colunas fixas por breakpoint do resto do app.
+
+### Riscos e decisoes tecnicas
+
+- **Objetos `ActivityFeedItem` completos cruzam a fronteira client/server**:
+  `FeedActivityList` e um Client Component que recebe o array inteiro (mesmo padrao ja
+  usado por `ProfileTimeline` desde a Perfil Premium) — o payload RSC serializado inclui
+  campos nao renderizados na tela (ex.: `review.body` de uma atividade de comentario).
+  Avaliado e considerado seguro: toda atividade que chega ao array ja passou pelo filtro de
+  privacidade de `typeVisibilityBranches` (`visibility: "PUBLIC"` + flags do dono da
+  atividade), entao nenhum campo de uma review/comentario efetivamente PRIVADO atravessa essa
+  fronteira — o unico conteudo "extra" serializado e sempre de algo que a query ja autorizou
+  mostrar a este viewer.
+- **"Relevantes" (Fase 4) usa um peso fixo por tipo de atividade**, nao um calculo
+  aprendido/dinamico — é uma heuristica simples e documentada (reviews/comentarios geram mais
+  conversa que um episodio assistido), nao uma tentativa de replicar um algoritmo de feed
+  real.
+
+### Limitacoes atuais
+
+- "Carregar mais" e uma revelacao progressiva sobre o array ja buscado (ate
+  `FEED_BATCH_SIZE`), nao scroll infinito com paginacao server-side ilimitada — atividades
+  alem do batch inicial (150) so aparecem num proximo carregamento de pagina.
+- Os blocos de descoberta refletem apenas o batch já buscado (as mesmas ~150 atividades mais
+  recentes), não uma janela de tempo fixa (ex.: "últimos 7 dias") — em um feed com pouco
+  volume, os 4 blocos podem parecer parecidos com a lista principal.
+- Validacao de responsividade feita via inspecao de classes Tailwind/`FixedGrid` e
+  requisicoes HTTP diretas — este sandbox nao tem Playwright/Puppeteer instalado como
+  dependencia do projeto para screenshots reais.
+
 ## Comandos
 
 - `npm install`: instala dependencias

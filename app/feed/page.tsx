@@ -1,47 +1,67 @@
 import Link from "next/link";
-import { ActivityCard } from "@/components/feed/activity-card";
 import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { FilmIcon } from "@/components/ui/icons";
+import { FeedActivityList } from "@/components/feed/feed-activity-list";
+import { FeedDiscoveryPanel } from "@/components/feed/feed-discovery-panel";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getGlobalFeed, getPersonalFeed } from "@/lib/social/activity";
+import { getActiveUsers, getFeaturedReviews, getRecentDiscussions, getTrendingSeries } from "@/lib/social/feed-discovery";
 
 type FeedSearchParams = { view?: string };
 
-async function PersonalFeedList({ userId }: { userId: string }) {
-  const activities = await getPersonalFeed(userId);
+// Fase 2/6 (INSERIES-SOCIAL-FEED-01) — um unico batch por view alimenta a lista principal
+// (filtro/ordenacao client-side) E os 4 blocos de descoberta (agregacao em memoria) — nunca
+// duas consultas para a mesma tela.
+const FEED_BATCH_SIZE = 150;
 
-  return activities.length ? (
-    <div className="space-y-3">
-      {activities.map((activity) => (
-        <ActivityCard key={activity.id} activity={activity} />
-      ))}
+async function PersonalFeed({ userId }: { userId: string }) {
+  const activities = await getPersonalFeed(userId, FEED_BATCH_SIZE);
+
+  return (
+    <div className="space-y-8">
+      <FeedDiscoveryPanel
+        trending={getTrendingSeries(activities)}
+        featuredReviews={getFeaturedReviews(activities)}
+        discussions={getRecentDiscussions(activities)}
+        activeUsers={getActiveUsers(activities)}
+      />
+      <FeedActivityList
+        activities={activities}
+        emptyTitle="Seu feed esta vazio"
+        emptyCopy="Siga outros usuarios ou registre atividades para ver novidades aqui."
+      />
     </div>
-  ) : (
-    <EmptyState
-      icon={<FilmIcon className="h-6 w-6" />}
-      title="Seu feed esta vazio"
-      copy="Siga outros usuarios ou registre atividades para ver novidades aqui."
-    />
   );
 }
 
-async function GlobalFeedList({ viewerId }: { viewerId: string | null }) {
-  const activities = await getGlobalFeed(viewerId);
+async function GlobalFeed({ viewerId }: { viewerId: string | null }) {
+  const activities = await getGlobalFeed(viewerId, FEED_BATCH_SIZE);
 
-  return activities.length ? (
-    <div className="space-y-3">
-      {activities.map((activity) => (
-        <ActivityCard key={activity.id} activity={activity} />
-      ))}
+  return (
+    <div className="space-y-8">
+      <FeedDiscoveryPanel
+        trending={getTrendingSeries(activities)}
+        featuredReviews={getFeaturedReviews(activities)}
+        discussions={getRecentDiscussions(activities)}
+        activeUsers={getActiveUsers(activities)}
+      />
+      <FeedActivityList
+        activities={activities}
+        emptyTitle="Nada por aqui ainda"
+        emptyCopy="Atividades publicas recentes da comunidade aparecem aqui."
+      />
     </div>
-  ) : (
-    <EmptyState icon={<FilmIcon className="h-6 w-6" />} title="Nada por aqui ainda" copy="Atividades publicas recentes da comunidade aparecem aqui." />
   );
 }
 
+/**
+ * INSERIES-SOCIAL-FEED-01 — o Feed Social como centro de descoberta e interacao entre
+ * usuarios: a mesma lista de atividades (getGlobalFeed/getPersonalFeed, ja privacy-aware)
+ * agora alimenta cards premium, filtro/ordenacao e 4 blocos de descoberta, tudo derivado do
+ * mesmo batch buscado uma unica vez por view. Ver README para o audit completo da Fase 1 e
+ * as decisoes de cada bloco de descoberta.
+ */
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedSearchParams> }) {
   const params = await searchParams;
   const user = await getCurrentUser();
@@ -66,7 +86,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
       {view === "personal" ? (
         user ? (
-          <PersonalFeedList userId={user.id} />
+          <PersonalFeed userId={user.id} />
         ) : (
           <Card className="space-y-3 text-center">
             <p className="text-lg font-semibold text-ink">Entre para ver seu feed</p>
@@ -77,7 +97,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
           </Card>
         )
       ) : (
-        <GlobalFeedList viewerId={user?.id ?? null} />
+        <GlobalFeed viewerId={user?.id ?? null} />
       )}
     </div>
   );

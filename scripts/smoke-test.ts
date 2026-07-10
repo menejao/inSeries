@@ -1234,6 +1234,56 @@ async function main() {
     feedPersonalA.status
   );
 
+  // ---- Feed Social Premium (INSERIES-SOCIAL-FEED-01): cards/filtros/ordenacao/descoberta ----
+  check(
+    "Feed (Fase 4): toolbar de filtro e ordenacao presente",
+    String(feedPersonalA.body).includes("Filtrar feed") && String(feedPersonalA.body).includes("Ordenar feed"),
+    feedPersonalA.status
+  );
+  check(
+    "Feed (Fase 4): opcao de ordenacao Mais comentados presente",
+    String(feedPersonalA.body).includes("Mais comentados") && String(feedPersonalA.body).includes("Relevantes"),
+    feedPersonalA.status
+  );
+  check(
+    "Feed (Fase 5): blocos de descoberta (Trending/Reviews em destaque/Usuarios ativos) aparecem",
+    String(feedPersonalA.body).includes("Trending entre usuarios") &&
+      String(feedPersonalA.body).includes("Reviews em destaque") &&
+      String(feedPersonalA.body).includes("Usuarios ativos"),
+    feedPersonalA.status
+  );
+
+  // Comentario de teste na PROPRIA review de A (nao na de B) — mantem este bloco isolado da
+  // asserção de privacidade de B mais abaixo (a review de B e PUBLIC e continua legitimamente
+  // legivel na pagina da serie mesmo apos B ficar privado; o que a asserção de privacidade
+  // testa e a AUSENCIA da atividade de B no feed, nao o sigilo do texto da review em si).
+  const commentTestReviewMarker = `Review de A para testar comentario no feed de ${userA.username}`;
+  const aReviewForComment = await request(jarA, `/api/series/${seriesId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: 4, body: commentTestReviewMarker, visibility: "PUBLIC" })
+  });
+  check("usuario A cria review propria para testar comentario no feed", aReviewForComment.status === 200, aReviewForComment.body);
+
+  const commentMarker = `Comentario de ${userA.username} para o feed`;
+  const aReviewIdForFeed = aReviewForComment.body?.data?.id;
+  const commentOnOwnReview = await request(jarA, `/api/reviews/${aReviewIdForFeed}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body: commentMarker })
+  });
+  check("usuario A comenta na propria review (gera atividade)", commentOnOwnReview.status === 201, commentOnOwnReview.body);
+
+  const feedPersonalAAfterComment = await request(jarA, "/feed");
+  check(
+    "Feed (Fase 3): card de comentario mostra 'comentou' e o contexto da review",
+    feedPersonalAAfterComment.status === 200 &&
+      String(feedPersonalAAfterComment.body).includes("comentou na review de") &&
+      String(feedPersonalAAfterComment.body).includes(commentMarker),
+    feedPersonalAAfterComment.status
+  );
+
+  const deleteAReviewForComment = await request(jarA, `/api/series/${seriesId}/reviews`, { method: "DELETE" });
+  check("usuario A apaga a review de teste de comentario (limpeza)", deleteAReviewForComment.status === 200, deleteAReviewForComment.body);
+
   const feedGlobalBefore = await request({ value: "" }, "/feed?view=global");
   check(
     "feed global mostra atividades publicas de B",
