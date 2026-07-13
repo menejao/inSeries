@@ -415,7 +415,7 @@ async function main() {
     recsPersonalData?.items
   );
 
-  const dashboardWithRecs = await request(jarRecsPersonal, "/me");
+  const dashboardWithRecs = await request(jarRecsPersonal, "/");
   check(
     "dashboard /me mostra secao Recomendado para voce quando ha recomendacoes",
     dashboardWithRecs.status === 200 && String(dashboardWithRecs.body).includes("Recomendado para voce"),
@@ -570,8 +570,8 @@ async function main() {
     recapMonthlyPage.status
   );
 
-  const meWithRecapCta = await request(jarA, "/me");
-  check("dashboard /me mostra CTA Seu Recap", meWithRecapCta.status === 200 && String(meWithRecapCta.body).includes("Seu Recap"), meWithRecapCta.status);
+  // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — CTA de Recap no Dashboard foi removido
+  // (Recap agora vive apenas em /me/recap, acessivel pela Sidebar/Atalhos rapidos).
 
   // ---- Gamificacao: engine, conquistas iniciais, notificacao, nivel, dashboard, privacidade ----
   const achievementsGuestPage = await request({ value: "" }, "/me/achievements");
@@ -673,14 +673,8 @@ async function main() {
     followerAchievementsPage.status
   );
 
-  const meWithAchievementsCta = await request(jarGameA, "/me");
-  check(
-    "dashboard /me mostra secao Conquistas com ultima/proxima conquista e nivel",
-    meWithAchievementsCta.status === 200 &&
-      String(meWithAchievementsCta.body).includes("Ultima conquista") &&
-      String(meWithAchievementsCta.body).includes("Proxima conquista"),
-    meWithAchievementsCta.status
-  );
+  // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — secao de Conquistas no Dashboard foi
+  // removida (Conquistas agora vive apenas em /me/achievements).
 
   // ---- Assistir a seguir: query layer, formato T05|E01+N, marcar assistido, exclusoes, dashboard, privacidade ----
   const watchNextGuestPage = await request({ value: "" }, "/watch-next");
@@ -831,14 +825,8 @@ async function main() {
     method: "POST",
     body: JSON.stringify({ seriesId, state: "WATCHING" })
   });
-  const meWithWatchNextCta = await request(jarWatchNextDashboard, "/me");
-  check(
-    "dashboard /me mostra secao Assistir a seguir com link Ver todos",
-    meWithWatchNextCta.status === 200 &&
-      String(meWithWatchNextCta.body).includes("Assistir a seguir") &&
-      String(meWithWatchNextCta.body).includes("Ver todos"),
-    meWithWatchNextCta.status
-  );
+  // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — secao Assistir a seguir no Dashboard
+  // foi removida (redundante com Continuar assistindo); acessivel via atalho rapido para /watch-next.
 
   // ---- Continuar assistindo (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) ----
   const jarWatchNextDashboardMe = await request(jarWatchNextDashboard, "/api/auth/me");
@@ -847,7 +835,7 @@ async function main() {
   const dashboardHomeWithContinueWatching = await request(jarWatchNextDashboard, "/");
   const dashboardHomeBody = String(dashboardHomeWithContinueWatching.body);
   const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar assistindo");
-  const dashboardGridIndex = dashboardHomeBody.indexOf("Proximos lancamentos");
+  const dashboardGridIndex = dashboardHomeBody.indexOf("Proximos episodios");
   check(
     "Dashboard exibe a secao Continuar assistindo",
     dashboardHomeWithContinueWatching.status === 200 &&
@@ -966,7 +954,7 @@ async function main() {
     nextEpisodeSeriesPage.status
   );
 
-  const dashboard = await request(jarA, "/me");
+  const dashboard = await request(jarA, "/");
   check(
     "dashboard /me mostra secao Proximos episodios",
     dashboard.status === 200 && String(dashboard.body).includes("Proximos episodios"),
@@ -1186,7 +1174,7 @@ async function main() {
   });
   check("usuario B marca episodio assistido (gera atividade)", bMarkWatched.status === 200, bMarkWatched.body);
 
-  const meBAfterMark = await request(jarB, "/me");
+  const meBAfterMark = await request(jarB, "/");
   const episodeWatchedCountAfterMark = countOccurrences(String(meBAfterMark.body), "S01E01");
 
   const bUnmarkWatched = await request(jarB, `/api/episodes/${episodeId}/progress`, {
@@ -1195,7 +1183,7 @@ async function main() {
   });
   check("usuario B desmarca episodio (200, sem erro)", bUnmarkWatched.status === 200, bUnmarkWatched.body);
 
-  const meBAfterUnmark = await request(jarB, "/me");
+  const meBAfterUnmark = await request(jarB, "/");
   const episodeWatchedCountAfterUnmark = countOccurrences(String(meBAfterUnmark.body), "S01E01");
   check(
     "desmarcar episodio nao cria atividade duplicada (contagem identica antes/depois do desmarcar)",
@@ -1312,9 +1300,9 @@ async function main() {
     feedPersonalAAfterPrivate.status
   );
 
-  const meBOwnActivity = await request(jarB, "/me");
+  const meBOwnActivity = await request(jarB, "/");
   check(
-    "/me de B continua mostrando a propria atividade mesmo com perfil privado",
+    "Dashboard de B continua mostrando a propria atividade mesmo com perfil privado",
     meBOwnActivity.status === 200 && String(meBOwnActivity.body).includes(listMarker),
     meBOwnActivity.status
   );
@@ -1467,15 +1455,28 @@ async function main() {
     cNotificationsAfterMarkAll.body
   );
 
-  const guestTriesNotifications = await request({ value: "" }, "/notifications");
+  const guestTriesNotificationsApi = await request({ value: "" }, "/api/notifications");
   check(
-    "usuario nao autenticado e redirecionado ao acessar /notifications",
-    guestTriesNotifications.status === 307 || guestTriesNotifications.status === 302,
-    guestTriesNotifications.status
+    "usuario nao autenticado nao acessa /api/notifications (401, sem pagina dedicada para redirecionar)",
+    guestTriesNotificationsApi.status === 401,
+    guestTriesNotificationsApi.status
   );
 
-  const cNotificationsPage = await request(jarC, "/notifications");
-  check("usuario autenticado acessa /notifications", cNotificationsPage.status === 200, cNotificationsPage.status);
+  const notificationsPageRemoved = await request(jarC, "/notifications");
+  check(
+    "pagina dedicada /notifications foi removida (Fase 7 — sino do Header vira o unico centro de notificacoes)",
+    notificationsPageRemoved.status === 404,
+    notificationsPageRemoved.status
+  );
+
+  const cDashboardWithBell = await request(jarC, "/");
+  check(
+    "Header (Fase 7/8): sino renderiza como gatilho de Dropdown (aria-haspopup=menu)",
+    cDashboardWithBell.status === 200 &&
+      String(cDashboardWithBell.body).includes('aria-haspopup="menu"') &&
+      /Notifica..es/.test(String(cDashboardWithBell.body)),
+    cDashboardWithBell.status
+  );
 
   const firstEpisodeScriptRun = await generateNewEpisodeAvailableNotifications();
   const secondEpisodeScriptRun = await generateNewEpisodeAvailableNotifications();
@@ -2565,18 +2566,13 @@ async function main() {
   );
 
   check(
-    "Dashboard (Fase 9): secao Bombando Agora alimentada pelo Discovery Engine (nunca Popular diretamente)",
-    dashboardAuth.status === 200 && String(dashboardAuth.body).includes("Bombando Agora") && String(dashboardAuth.body).includes("sort=discovery"),
-    dashboardAuth.status
-  );
-  check(
     "Dashboard autenticado usa imagens reais do catalogo (posteres nos cards)",
     dashboardAuth.status === 200 && String(dashboardAuth.body).includes("poster.svg"),
     dashboardAuth.status
   );
 
-  // ---- INSERIES-DASHBOARD-PREMIUM-01: Dashboard reorganizado, Minha Lista, ----
-  // ---- Estatisticas, Atividade recente, Descobrir mais, grids fixos ----
+  // ---- INSERIES-DASHBOARD-UX-AND-NAVIGATION-01 (Fase 2/3): Dashboard reduzido a ----
+  // ---- painel de acompanhamento diario, sem secoes redundantes, grids fixos ----
   const dashboardBody = String(dashboardAuth.body);
   // Ancorado no "<" de fechamento do no de texto: o RSC do Next serializa o mesmo texto
   // tambem dentro de um payload de hidratacao (`self.__next_f.push(...)`, formato JSON) que
@@ -2584,36 +2580,38 @@ async function main() {
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
     continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
-    bombandoAgora: dashboardBody.indexOf("Bombando Agora<"),
-    lancamentos: dashboardBody.indexOf("Lancamentos<"),
+    proximosEpisodios: dashboardBody.indexOf("Proximos episodios<"),
     recomendado: dashboardBody.indexOf("Recomendado para voce<"),
-    watchNext: dashboardBody.indexOf("Watch Next<"),
-    minhaLista: dashboardBody.indexOf("Minha Lista<"),
-    estatisticas: dashboardBody.indexOf("Suas Estatisticas<"),
     atividade: dashboardBody.indexOf("Atividade recente<"),
-    descobrirMais: dashboardBody.indexOf("Descobrir mais<")
+    atalhosRapidos: dashboardBody.indexOf("Atalhos rapidos<")
   };
   check(
-    "Dashboard (Fase 2) segue a nova ordem: Continuar assistindo -> Bombando Agora -> Lancamentos -> Recomendado -> Watch Next -> Minha Lista -> Estatisticas -> Atividade -> Descobrir mais",
+    "Dashboard (Fase 2/3) segue a nova ordem enxuta: Continuar assistindo -> Proximos episodios -> Recomendado -> Atividade -> Atalhos rapidos",
     Object.values(sectionIndex).every((index) => index !== -1) &&
-      sectionIndex.continueWatching < sectionIndex.bombandoAgora &&
-      sectionIndex.bombandoAgora < sectionIndex.lancamentos &&
-      sectionIndex.lancamentos < sectionIndex.recomendado &&
-      sectionIndex.recomendado < sectionIndex.watchNext &&
-      sectionIndex.watchNext < sectionIndex.minhaLista &&
-      sectionIndex.minhaLista < sectionIndex.estatisticas &&
-      sectionIndex.estatisticas < sectionIndex.atividade &&
-      sectionIndex.atividade < sectionIndex.descobrirMais,
+      sectionIndex.continueWatching < sectionIndex.proximosEpisodios &&
+      sectionIndex.proximosEpisodios < sectionIndex.recomendado &&
+      sectionIndex.recomendado < sectionIndex.atividade &&
+      sectionIndex.atividade < sectionIndex.atalhosRapidos,
     sectionIndex
   );
   check(
     "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
-    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < Math.min(sectionIndex.bombandoAgora, sectionIndex.minhaLista),
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.proximosEpisodios,
     sectionIndex
   );
-  check("Dashboard (Fase 5) exibe a secao Minha Lista", dashboardBody.includes("Minha Lista"), dashboardAuth.status);
-  check("Dashboard (Fase 6) exibe a secao Suas Estatisticas", dashboardBody.includes("Suas Estatisticas"), dashboardAuth.status);
-  check("Dashboard (Fase 7) exibe a secao Atividade recente", dashboardBody.includes("Atividade recente"), dashboardAuth.status);
+  check(
+    // "Minha Lista" fica de fora desta lista de propósito: o proprio Atalho rapido para
+    // /me/minha-lista usa esse rotulo — nao e uma secao de preview duplicada, e um link.
+    "Dashboard (Fase 2) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais)",
+    !dashboardBody.includes("Bombando Agora<") &&
+      !dashboardBody.includes("Lancamentos<") &&
+      !dashboardBody.includes("Watch Next<") &&
+      !dashboardBody.includes("Suas Estatisticas<") &&
+      !dashboardBody.includes("Descobrir mais<"),
+    null
+  );
+  check("Dashboard (Fase 2) exibe Atalhos rapidos para Estatisticas/Recap/Conquistas/Minha Lista/Assistir a seguir", dashboardBody.includes("Atalhos rapidos"), dashboardAuth.status);
+  check("Dashboard (Fase 2) exibe a secao Atividade recente", dashboardBody.includes("Atividade recente"), dashboardAuth.status);
   check(
     "Regra global de grids (Fase 10): nenhuma classe auto-fit/auto-fill e usada em nenhuma listagem",
     !dashboardBody.includes("auto-fit") && !dashboardBody.includes("auto-fill"),
