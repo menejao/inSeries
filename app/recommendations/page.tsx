@@ -26,7 +26,8 @@ export default async function RecommendationsPage() {
           copy="Assista episodios, conclua series e escreva reviews para receber sugestoes personalizadas."
         />
       ) : (
-        <FixedGrid mobile={2} tablet={3} desktop={4} wide={6}>
+        // Fase 4 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — menos colunas, cards mais largos.
+        <FixedGrid mobile={2} tablet={3} desktop={3} wide={4}>
           {result.items.map((recommendation) => (
             <RecommendationCard key={recommendation.series.id} recommendation={recommendation} />
           ))}
