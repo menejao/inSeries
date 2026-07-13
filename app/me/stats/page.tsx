@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { MeTabs } from "@/components/me/me-tabs";
 import { StatTile } from "@/components/stats/stat-tile";
 import { InsightList } from "@/components/stats/insight-list";
 import { BarList } from "@/components/ui/bar-list";
@@ -53,7 +52,6 @@ export default async function StatsPage() {
         <h1 className="section-title">Estatisticas</h1>
         <p className="section-copy">Um resumo do seu historico de series, calculado a partir do seu progresso real.</p>
       </div>
-      <MeTabs active="/me/stats" />
 
       {!hasAnyData ? (
         <EmptyState

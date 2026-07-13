@@ -2,7 +2,6 @@ import { MyListHeader } from "@/components/my-list/my-list-header";
 import { MyListStatsSection } from "@/components/my-list/my-list-stats-section";
 import { MyListPageClient } from "@/components/my-list/my-list-page-client";
 import { MyListDiscoverySection } from "@/components/my-list/my-list-discovery-section";
-import { MeTabs } from "@/components/me/me-tabs";
 import { requireUser } from "@/lib/auth/server";
 import { getUserStats } from "@/lib/analytics";
 import { getMyListFullForUser } from "@/lib/my-list";
@@ -25,7 +24,6 @@ export default async function MinhaListaPage() {
 
   return (
     <div className="space-y-8">
-      <MeTabs active="/me/minha-lista" />
       <MyListHeader stats={stats} />
       <MyListPageClient items={fullList.items} lists={lists.map((list) => ({ id: list.id, title: list.title }))} />
       <MyListStatsSection stats={stats} />

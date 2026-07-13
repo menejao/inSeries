@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { MeTabs } from "@/components/me/me-tabs";
 import { RecapUnavailable } from "@/components/recap/recap-unavailable";
 import { CompassIcon, SparklesIcon } from "@/components/ui/icons";
 import { requireUser } from "@/lib/auth/server";
@@ -19,7 +18,6 @@ export default async function RecapIndexPage() {
         <h1 className="section-title">Recap</h1>
         <p className="section-copy">Retrospectivas mensais e anuais geradas a partir do seu historico real de series.</p>
       </div>
-      <MeTabs active="/me/recap" />
 
       {!result.enabled ? (
         <RecapUnavailable />

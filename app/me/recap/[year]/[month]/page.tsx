@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { MeTabs } from "@/components/me/me-tabs";
 import { RecapCard } from "@/components/recap/recap-card";
 import { RecapUnavailable } from "@/components/recap/recap-unavailable";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -18,7 +17,6 @@ export default async function MonthlyRecapPage({ params }: { params: Promise<{ y
         <p className="eyebrow">Minha area</p>
         <h1 className="section-title">Recap</h1>
       </div>
-      <MeTabs active="/me/recap" />
 
       {!result.enabled ? (
         <RecapUnavailable />

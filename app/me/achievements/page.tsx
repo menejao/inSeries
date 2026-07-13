@@ -1,4 +1,3 @@
-import { MeTabs } from "@/components/me/me-tabs";
 import { StatTile } from "@/components/stats/stat-tile";
 import { LevelProgressCard } from "@/components/achievements/level-progress-card";
 import { AchievementCard } from "@/components/achievements/achievement-card";
@@ -18,7 +17,6 @@ export default async function AchievementsPage() {
         <h1 className="section-title">Conquistas</h1>
         <p className="section-copy">Badges, nivel e progresso construidos a partir das suas acoes reais no inSeries.</p>
       </div>
-      <MeTabs active="/me/achievements" />
 
       {!result.enabled ? (
         <AchievementsUnavailable />

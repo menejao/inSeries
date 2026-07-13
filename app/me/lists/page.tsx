@@ -3,8 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListCreateForm } from "@/components/social/list-create-form";
-import { MeTabs } from "@/components/me/me-tabs";
-import { ListIcon } from "@/components/ui/icons";
+import { ChevronLeftIcon, ListIcon } from "@/components/ui/icons";
 import { requireUser } from "@/lib/auth/server";
 import { listUserLists } from "@/lib/social/lists";
 import { formatDate } from "@/lib/utils";
@@ -16,11 +15,13 @@ export default async function MyListsPage() {
   return (
     <div className="space-y-6">
       <div>
+        <Link href="/lists" className="mb-2 inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
+          <ChevronLeftIcon className="h-4 w-4" /> Listas publicas
+        </Link>
         <p className="eyebrow">Minha area</p>
         <h1 className="section-title">Minhas listas</h1>
         <p className="section-copy">Crie, edite e organize suas listas de series.</p>
       </div>
-      <MeTabs active="/me/lists" />
 
       <ListCreateForm />
 
