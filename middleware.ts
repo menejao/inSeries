@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 import { REQUEST_ID_HEADER, getOrCreateRequestId } from "@/lib/observability/request-id";
 
-const protectedRoutes = ["/me", "/settings", "/notifications", "/watch-next", "/recommendations"];
+const protectedRoutes = ["/me", "/settings", "/watch-next", "/recommendations"];
 const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
 export async function middleware(request: NextRequest) {

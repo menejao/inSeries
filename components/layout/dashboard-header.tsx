@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
-import { NotificationsNavLink } from "@/components/notifications/notifications-nav-link";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -24,7 +24,7 @@ export async function DashboardHeader() {
         <span className="text-base font-semibold text-ink">inSeries</span>
       </Link>
       <div className="ml-auto flex items-center gap-2">
-        <NotificationsNavLink />
+        <NotificationBell />
         <UserMenu name={user.name} username={user.username} avatarUrl={user.avatarUrl} roleLabel={ROLE_LABELS[user.role]} />
       </div>
     </header>

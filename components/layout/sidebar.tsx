@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  BellIcon,
   CalendarIcon,
   ChartIcon,
   CompassIcon,
@@ -34,8 +33,7 @@ const ITEMS: SidebarItem[] = [
   { href: "/me/stats", label: "Estatisticas", icon: ChartIcon },
   { href: "/me/recap", label: "Recap", icon: SparklesIcon },
   { href: "/me/achievements", label: "Conquistas", icon: TrophyIcon },
-  { href: "/lists", label: "Listas", icon: ListIcon },
-  { href: "/notifications", label: "Notificacoes", icon: BellIcon }
+  { href: "/lists", label: "Listas", icon: ListIcon }
 ];
 
 const ADMIN_ITEM: SidebarItem = { href: "/admin", label: "Admin", icon: ShieldIcon };
