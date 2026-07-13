@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { PosterImage, BackdropImage } from "@/components/media/poster-image";
+import { PosterBadge } from "@/components/media/poster-badge";
 import { WatchNextMarkButton } from "@/components/watch-next/watch-next-mark-button";
 import { PlayIcon } from "@/components/ui/icons";
 import { formatRelativeDate } from "@/lib/utils";
@@ -48,9 +49,9 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
           imageClassName="transition duration-500 ease-out group-hover:scale-105"
         />
         {item.isNew ? (
-          <Badge variant="success" className="absolute left-2 top-2">
+          <PosterBadge variant="success" className="absolute left-2 top-2">
             Novo episodio
-          </Badge>
+          </PosterBadge>
         ) : null}
       </Link>
 

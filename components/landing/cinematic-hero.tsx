@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { BackdropImage } from "@/components/media/poster-image";
 import { SeriesLogoOrTitle } from "@/components/media/series-logo";
 import { CollectionTagList } from "@/components/media/collection-tag-badge";
+import { PosterBadge } from "@/components/media/poster-badge";
 import { ProviderList } from "@/components/media/provider-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CompassIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
@@ -95,18 +95,18 @@ export function CinematicHero({ pool }: { pool: Series[] }) {
           <p className="eyebrow text-ink/70">Em destaque no catalogo inSeries</p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={getStatusBadgeVariant(current.status)}>{getStatusLabel(current.status)}</Badge>
-            {current.type ? <Badge variant="outline">{current.type}</Badge> : null}
-            {current.year ? <Badge variant="default">{current.year}</Badge> : null}
+            <PosterBadge variant={getStatusBadgeVariant(current.status)}>{getStatusLabel(current.status)}</PosterBadge>
+            {current.type ? <PosterBadge variant="outline">{current.type}</PosterBadge> : null}
+            {current.year ? <PosterBadge variant="default">{current.year}</PosterBadge> : null}
             {typeof current.voteAverage === "number" ? (
-              <Badge variant="warning">
+              <PosterBadge variant="warning">
                 <StarIcon className="h-3 w-3 fill-current" /> {current.voteAverage.toFixed(1)}
-              </Badge>
+              </PosterBadge>
             ) : null}
             {typeof current.qualityScore === "number" ? (
-              <Badge variant="primary">
+              <PosterBadge variant="primary">
                 <SparklesIcon className="h-3 w-3" /> {Math.round(current.qualityScore)}
-              </Badge>
+              </PosterBadge>
             ) : null}
           </div>
 
@@ -132,7 +132,7 @@ export function CinematicHero({ pool }: { pool: Series[] }) {
 
           {current.collectionTags.length || current.watchProviders.length ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              <CollectionTagList tags={current.collectionTags} limit={3} />
+              <CollectionTagList tags={current.collectionTags} limit={3} overlay />
               <ProviderList providers={current.watchProviders} limit={3} />
             </div>
           ) : null}

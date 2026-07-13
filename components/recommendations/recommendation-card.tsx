@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
 import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
+import { PosterBadge } from "@/components/media/poster-badge";
 import { ProviderList } from "@/components/media/provider-badge";
 import { InfoIcon, SparklesIcon } from "@/components/ui/icons";
 import type { ScoredRecommendation } from "@/lib/recommendations";
@@ -29,14 +30,16 @@ export function RecommendationCard({ recommendation }: { recommendation: ScoredR
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/90 via-canvas/10 to-transparent" />
         {typeof series.qualityScore === "number" ? (
-          <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-xs font-semibold text-ink backdrop-blur">
-            <SparklesIcon className="h-3 w-3 text-primary-text" />
-            {Math.round(series.qualityScore)}
+          <div className="absolute right-2 top-2">
+            <PosterBadge>
+              <SparklesIcon className="h-3 w-3 text-primary-text" />
+              {Math.round(series.qualityScore)}
+            </PosterBadge>
           </div>
         ) : null}
         {primaryTag ? (
           <div className="absolute left-2 top-2">
-            <CollectionTagBadge tag={primaryTag} />
+            <CollectionTagBadge tag={primaryTag} overlay />
           </div>
         ) : null}
         <div className="absolute inset-x-0 bottom-0 p-3">

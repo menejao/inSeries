@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
 import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
-import { Badge } from "@/components/ui/badge";
+import { PosterBadge } from "@/components/media/poster-badge";
 import { StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { cn } from "@/lib/utils";
@@ -56,26 +56,21 @@ export function SeriesPosterCard({
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/90 via-canvas/10 to-transparent opacity-0 transition duration-300 group-hover:opacity-100" />
 
         <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
-          {variant === "new" ? <Badge variant="danger">NOVO</Badge> : null}
-          {variant === "status" ? <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge> : null}
-          {variant === "collection" ? <Badge variant="secondary">Colecao completa</Badge> : null}
+          {variant === "new" ? <PosterBadge variant="danger">NOVO</PosterBadge> : null}
+          {variant === "status" ? <PosterBadge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</PosterBadge> : null}
+          {variant === "collection" ? <PosterBadge variant="secondary">Colecao completa</PosterBadge> : null}
           {variant === "default" && primaryTag ? (
             <div className="opacity-0 transition duration-200 group-hover:opacity-100">
-              <CollectionTagBadge tag={primaryTag} />
+              <CollectionTagBadge tag={primaryTag} overlay />
             </div>
           ) : null}
         </div>
 
         {typeof series.voteAverage === "number" ? (
-          <div
-            className={cn(
-              "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-canvas/70 font-semibold text-ink backdrop-blur",
-              variant === "rating" ? "px-2.5 py-1 text-sm" : "px-2 py-0.5 text-xs"
-            )}
-          >
+          <PosterBadge className={cn("absolute right-2 top-2", variant === "rating" ? "px-2.5 py-1 text-sm" : undefined)}>
             <StarIcon className={cn("fill-current text-warning-text", variant === "rating" ? "h-3.5 w-3.5" : "h-3 w-3")} />
             {series.voteAverage.toFixed(1)}
-          </div>
+          </PosterBadge>
         ) : null}
 
         <div className="absolute inset-x-0 bottom-0 space-y-1 p-2.5">
