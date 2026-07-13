@@ -2931,6 +2931,109 @@ a mesma regra global de colunas fixas por breakpoint do resto do app.
   requisicoes HTTP diretas — este sandbox nao tem Playwright/Puppeteer instalado como
   dependencia do projeto para screenshots reais.
 
+## Dashboard e Navegacao Reestruturados (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01)
+
+Ticket com um principio central: o Dashboard responde **"o que eu preciso fazer agora?"**,
+nao "qualquer informacao que existe no sistema", e a navegacao possui **um unico caminho**
+por modulo — nunca dois menus levando ao mesmo lugar.
+
+**Fase 1 — Auditoria (o que foi encontrado)**
+
+- `/me` era um segundo Dashboard completo, mas nenhum link em toda a aplicacao apontava
+  para ele (`grep href="/me"` nao teve nenhuma ocorrencia) — puro codigo morto de navegacao.
+- O Dashboard (`components/dashboard/dashboard-home.tsx`) tinha 10 secoes principais mais um
+  grid secundario de 4 cards de preview (Proximos lancamentos, Conquistas, Recap,
+  Notificacoes) — 13 fetches em paralelo so para renderizar a Home.
+- Bombando Agora, Lancamentos e Watch Next repetiam, com outro recorte, o mesmo papel que
+  Continuar Assistindo ja cumpria: "o que eu deveria assistir agora".
+- Minha Lista, Estatisticas, Conquistas e Recap apareciam como preview no Dashboard **e**
+  como pagina propria — a mesma informacao duas vezes.
+- `components/me/me-tabs.tsx` (menu horizontal de pills) era renderizado em 8 paginas
+  (`/me`, `/me/stats`, `/me/recap`, `/me/achievements`, `/me/minha-lista`, `/me/lists`,
+  `/me/recap/[year]`, `/me/recap/[year]/[month]`) — navegacao duplicada com a Sidebar, que
+  ja tem entradas para a maioria dessas paginas.
+- Badges de status/nota/collection tag sobrepostos a poster/backdrop usavam `Badge`, cujo
+  fundo de baixa opacidade (`bg-primary/12` etc.) e adequado sobre um card solido mas nao
+  garante contraste sobre uma imagem arbitraria.
+- Notificacoes tinham pagina dedicada (`/notifications`) mais um link no Header — um clique
+  extra para algo que deveria ser imediato, e uma pagina inteira para uma lista que cabe num
+  dropdown.
+- `/me/lists` (criacao/gestao pessoal de listas) e `/lists` (navegacao publica de listas) sao
+  paginas genuinamente diferentes — nao foram fundidas, mas `/me/lists` ganhou um link
+  contextual de volta para `/lists` (controle interno legitimo, nao um menu de navegacao).
+
+**Fase 2/3 — Dashboard reduzido a painel de acompanhamento diario**
+
+`DashboardHome` caiu de 13 fetches/10+ secoes para **5 fetches e 5 secoes**: Saudacao,
+Continuar assistindo, Proximos episodios (promovido do grid secundario, agora com
+`EmptyState` no lugar do placeholder ad-hoc), Recomendado para voce (recorte de 6 em vez de
+8), Atividade recente, e um novo bloco de **Atalhos rapidos**
+(`components/dashboard/quick-shortcuts-section.tsx`) para Assistir a seguir/Minha
+Lista/Estatisticas/Recap/Conquistas — paginas que passaram a existir *apenas* la, sem
+repetir conteudo no Dashboard. Bombando Agora, Lancamentos, Watch Next, Minha Lista,
+Estatisticas, Conquistas, Recap e Notificacoes deixaram de aparecer no Dashboard; os
+componentes que ficaram sem nenhum outro consumidor
+(`discover-more-section.tsx`, `watch-next-section.tsx`, `stats-section.tsx`,
+`dashboard-poster-row.tsx`, `my-list-section.tsx`) foram removidos.
+
+**Fase 4 — Recomendacoes com cards mais largos**
+
+`app/recommendations/page.tsx`: `FixedGrid` passou de `desktop={4} wide={6}` para
+`desktop={3} wide={4}` — menos colunas, mais largura por card, mesma regra global de grid
+fixo (nunca `auto-fit`/`auto-fill`).
+
+**Fase 5 — Contraste de badges sobre poster (`PosterBadge`)**
+
+Novo `components/media/poster-badge.tsx`: mesmo vocabulario de variantes de `Badge`
+(`BadgeVariant`), mas usando os pares solidos `bg-*`/`text-*-foreground` que `Button` ja usa
+— tokens de contraste AA ja definidos em `app/globals.css` para light/dark, so nao estavam
+sendo reaproveitados em contexto de overlay. `CollectionTagBadge`/`CollectionTagList`
+ganharam uma prop `overlay` para trocar entre `Badge` (fundo solido, contexto de card) e
+`PosterBadge` (sobreposto a imagem) sem duplicar o componente. Aplicado em todo badge que
+fica sobre poster/backdrop: `SeriesCard`, `SeriesPosterCard`, `RecommendationCard`,
+`CinematicHero`, `ContinueWatchingCard`.
+
+**Fase 6 — Remove navegacao duplicada**
+
+`MeTabs` foi removido das 7 paginas que o usavam (o `/me` que sobrou depois da Fase 2 nao
+tinha mais motivo pra existir — virou um simples `redirect("/")`) e o componente em si foi
+deletado. A Sidebar volta a ser o unico mecanismo de navegacao entre modulos.
+
+**Fase 7/8/9 — Sino do Header vira centro de notificacoes**
+
+A pagina dedicada `/notifications` foi removida (junto com `notifications-nav-link.tsx`,
+`notification-item.tsx`, `mark-all-read-button.tsx`). No lugar: `NotificationBell` (Server
+Component, busca o unread count inicial via `countUnreadNotifications`) +
+`NotificationBellClient` (Client, o Dropdown em si) — reaproveitando 100% de
+`lib/notifications/service.ts` e das rotas `/api/notifications` ja existentes, nenhuma regra
+de negocio nova. O Dropdown cobre loading (skeleton), erro (com "Tentar novamente"), vazio
+(`EmptyState`), scroll interno limitado (`max-h-[26rem] overflow-y-auto`, nunca ultrapassa a
+viewport), fechamento por clique fora ou Escape, e marcar uma/todas como lidas. Clicar numa
+notificacao navega direto para o `href` que o proprio `service.ts` ja precalcula por tipo de
+notificacao (review, comentario, feed, perfil, lista) — nunca uma pagina intermediaria.
+
+**Fase 10/11 — Responsividade e acessibilidade**
+
+Nenhuma classe `auto-fit`/`auto-fill` foi introduzida; todo grid novo/alterado usa
+`FixedGrid` com colunas fixas por breakpoint (mobile/tablet/desktop/wide), a mesma regra
+global ja em vigor no resto do app. O Dropdown de notificacoes usa `aria-haspopup="menu"`,
+`aria-expanded`, `aria-label` com contagem de nao lidas, fecha com Escape e ao clicar fora,
+e o `IconButton` de "marcar como lida" exige `label` (acessibilidade ja garantida pelo
+Design System). Como nos sprints anteriores, a validacao de 360/390/412/768/1024/desktop
+amplo foi feita por inspecao das classes Tailwind responsivas e requisicoes HTTP diretas —
+este sandbox nao tem Playwright/Puppeteer instalado como dependencia do projeto para
+screenshots reais.
+
+**Limitacoes conhecidas**
+
+- `getWatchNextForUser`, `getMyListSummaryForUser`, `getUserReviewStats`,
+  `getUserAchievementsOverview`, `listAvailableRecaps`, `listBombandoAgora` e
+  `listLancamentos` continuam existindo em `lib/` (regra do ticket: nao alterar
+  logica/servicos existentes) — apenas deixaram de ser chamados a partir do Dashboard;
+  suas paginas dedicadas continuam usando-os normalmente.
+- Validacao visual continua limitada a inspecao de HTML/classes (sem Playwright no
+  sandbox), igual a todos os sprints anteriores deste projeto.
+
 ## Comandos
 
 - `npm install`: instala dependencias
