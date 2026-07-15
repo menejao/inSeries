@@ -56,7 +56,7 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
       </Link>
 
       <div className="flex flex-1 flex-col gap-2 overflow-hidden p-4 sm:p-5">
-        <Link href={`/series/${item.series.slug}`} className="font-semibold text-ink transition hover:text-primary-text">
+        <Link href={`/series/${item.series.slug}`} className="line-clamp-1 font-semibold text-ink transition hover:text-primary-text" title={item.series.title}>
           {item.series.title}
         </Link>
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -84,17 +84,17 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
           ) : null}
         </div>
 
-        <p className="text-xs text-subtle">
+        <p className="truncate text-xs text-subtle">
           {item.pendingAfterNext > 0 ? `${item.pendingAfterNext} episodio(s) restante(s) depois deste` : "Ultimo pendente desta serie"}
         </p>
         {item.lastWatchedEpisode ? (
-          <p className="text-xs text-subtle">
+          <p className="truncate text-xs text-subtle">
             Ultimo assistido: {formatEpisodeCode(item.lastWatchedEpisode.seasonNumber, item.lastWatchedEpisode.number)} ·{" "}
             {formatRelativeDate(item.lastWatchedEpisode.watchedAt)}
           </p>
         ) : null}
 
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
           <Link href={`/series/${item.series.slug}/episode/${item.episode.id}`} className="inline-flex">
             <Button variant="secondary" size="sm">
               <PlayIcon className="h-4 w-4" />

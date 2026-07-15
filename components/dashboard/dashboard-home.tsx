@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FixedGrid } from "@/components/ui/fixed-grid";
 import { EpisodeCalendarCard } from "@/components/calendar/episode-calendar-card";
 import { ActivityCard } from "@/components/feed/activity-card";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
@@ -8,12 +9,10 @@ import {
   AlertCircleIcon,
   BellIcon,
   CalendarIcon,
-  ChartIcon,
+  CompassIcon,
   FilmIcon,
-  ListIcon,
   PlayIcon,
-  SparklesIcon,
-  TrophyIcon
+  TvIcon
 } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
@@ -21,11 +20,11 @@ import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import type { User } from "@prisma/client";
 
 const SHORTCUTS = [
-  { icon: PlayIcon, label: "Assistir a seguir", href: "/watch-next" },
-  { icon: ListIcon, label: "Minha lista", href: "/me/minha-lista" },
-  { icon: ChartIcon, label: "Estatisticas", href: "/me/stats" },
-  { icon: SparklesIcon, label: "Recap", href: "/me/recap" },
-  { icon: TrophyIcon, label: "Conquistas", href: "/me/achievements" }
+  { icon: CalendarIcon, label: "Calendario", href: "/calendar" },
+  { icon: FilmIcon, label: "Feed", href: "/feed" },
+  { icon: PlayIcon, label: "Proximo episodio", href: "/watch-next" },
+  { icon: TvIcon, label: "Assistindo", href: "/me/watching" },
+  { icon: CompassIcon, label: "Explorar series", href: "/series" }
 ] as const;
 
 export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" | "lastLoginAt"> }) {
@@ -45,7 +44,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
       <div>
         <p className="eyebrow">Ola, {firstName}</p>
         <h1 className="section-title">Dashboard</h1>
-        <p className="section-copy">Seu hub de series — tudo que importa hoje, num so lugar.</p>
+        <p className="section-copy">Veja o que chegou, retome suas series e organize o que assistir hoje.</p>
       </div>
 
       <ContinueWatchingSection continueWatching={continueWatching} />
@@ -157,12 +156,11 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
       <section className="space-y-4" aria-label="Atalhos rapidos">
         <h2 className="text-xl font-semibold text-ink">Atalhos rapidos</h2>
         <p className="section-copy">Acesso direto ao que voce usa com mais frequencia.</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" role="list">
+        <FixedGrid mobile={2} tablet={3} desktop={5}>
           {SHORTCUTS.map((shortcut) => (
             <Link
               key={shortcut.href}
               href={shortcut.href}
-              role="listitem"
               className="group flex flex-col items-start gap-3 rounded-3xl border border-border bg-surface/70 p-4 transition duration-200 hover:border-primary/40 hover:bg-surface-strong/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               <span
@@ -174,7 +172,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               <p className="text-sm font-semibold text-ink">{shortcut.label}</p>
             </Link>
           ))}
-        </div>
+        </FixedGrid>
       </section>
     </div>
   );
