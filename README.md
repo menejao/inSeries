@@ -3034,6 +3034,69 @@ screenshots reais.
 - Validacao visual continua limitada a inspecao de HTML/classes (sem Playwright no
   sandbox), igual a todos os sprints anteriores deste projeto.
 
+## Dashboard Hub Diario (INSERIES-DASHBOARD-HOME-EXPERIENCE-02)
+
+Evolucao do Dashboard Home (`/`) para um hub de uso diario — responde "o que aconteceu e o que devo fazer **hoje**", nao "tudo que existe no sistema". Construido sobre o enxugamento do sprint anterior (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01).
+
+**Principio central:** tres perguntas, seis secoes:
+1. *Onde parei?* → Continuar assistindo (sempre)
+2. *O que estreou enquanto eu estava fora?* → Lancados desde ultima visita (condicional)
+3. *O que vem por ai?* → Proximos episodios (sempre + `EmptyState`)
+4. *Estou atrasado em algo?* → Pendencias (condicional)
+5. *O que estao fazendo?* → Atividade recente (sempre + `EmptyState`)
+6. *Ir direto para X* → Atalhos rapidos (grid fixo)
+
+**Fase 2 — Nova estrutura de secoes**
+
+`DashboardHome` (`components/dashboard/dashboard-home.tsx`) reescrito: cai de 13+ fetches
+para **3 chamadas em `Promise.all`**: `getDashboardCalendarData`, `getRecentActivityForUser`,
+`getContinueWatchingForUser`. O prop do componente passa a exigir `lastLoginAt` (alem de
+`id`/`name`) para calcular a janela "desde a ultima visita" (fallback: 24 h atras se null).
+
+Secoes condicionals (`sinceLastVisit`, `overdue`) nao aparecem se vazias — sem estados
+vazios desnecessarios no Dashboard. `Proximos episodios` e `Atividade recente` sempre
+aparecem com `EmptyState` quando nao ha dados, para evitar um Dashboard em branco na
+primeira vez de uso.
+
+**Fase 3 — Recomendacoes removidas do Dashboard**
+
+`Recomendado para voce` saiu do Dashboard completamente. O motor de recomendacoes
+(`lib/recommendations/`) continua existindo e servindo `/recommendations` — apenas nao
+aparece mais na Home. Os Atalhos rapidos dao acesso direto caso o usuario queira explorar.
+
+**Fase 4 — Altura uniforme dos cards de Continuar assistindo**
+
+`ContinueWatchingCard` ganhou `sm:h-60` no container externo e `overflow-hidden` no div
+de conteudo — garante que todos os cards do carrossel horizontal tenham a mesma altura no
+breakpoint desktop, independentemente de quantas linhas o titulo/episodio ocupa.
+A animacao de hover foi mantida em `hover:-translate-y-1` (padrao do sprint anterior).
+
+**Fase 5–11 — Grid, responsividade, acessibilidade**
+
+Nenhuma classe `auto-fit`/`auto-fill` foi introduzida. O grid de Atalhos rapidos usa
+`grid-cols-2 sm:grid-cols-3 lg:grid-cols-5` — colunas fixas por breakpoint, mesma regra
+global. Todos os `<section>` tem `aria-label`, icones decorativos recebem `aria-hidden`,
+links de "Ver tudo" sao `shrink-0` para nao quebrar em viewports estreitas. Validacao de
+breakpoints por inspecao de classes Tailwind e HTTP direto (sem Playwright no sandbox).
+
+**Data layer**
+
+- `lib/calendar/queries.ts` exporta `getDashboardCalendarData(userId, lastVisitAt)`: retorna
+  `{ sinceLastVisit, upcoming, overdue }` numa unica carga de `loadUserCalendarData` (sem
+  query extra ao banco — mesmo conjunto de series ativas ja carregado, so filtrado em memoria).
+- `lib/auth/server.ts`: `getCurrentUser` agora seleciona `lastLoginAt` (campo ja mantido
+  pelo route de login, nunca escrito aqui).
+
+**Smoke test**
+
+- Atualizacao da verificacao de ordem das secoes: removeu `recomendado` do `sectionIndex`,
+  nova descricao "Continuar assistindo -> Proximos episodios -> Atividade recente ->
+  Atalhos rapidos".
+- Check "Recomendado para voce no Dashboard" substituido por verificacao de que o Dashboard
+  carrega sem erro mesmo quando ha recomendacoes disponiveis (feature nao regressa, so foi
+  movida para pagina propria).
+- `dashboardGridIndex` ja usava "Proximos episodios" (corrigido no sprint anterior).
+
 ## Comandos
 
 - `npm install`: instala dependencias

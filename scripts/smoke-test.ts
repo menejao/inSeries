@@ -416,9 +416,11 @@ async function main() {
   );
 
   const dashboardWithRecs = await request(jarRecsPersonal, "/");
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-02 (Fase 3) — Recomendacoes removidas do Dashboard;
+  // vivem apenas em /recommendations, acessivel pelos Atalhos rapidos.
   check(
-    "dashboard /me mostra secao Recomendado para voce quando ha recomendacoes",
-    dashboardWithRecs.status === 200 && String(dashboardWithRecs.body).includes("Recomendado para voce"),
+    "dashboard / carrega sem erro mesmo com recomendacoes disponiveis (Recomendado removido do Dashboard)",
+    dashboardWithRecs.status === 200,
     dashboardWithRecs.status
   );
 
@@ -2581,16 +2583,14 @@ async function main() {
   const sectionIndex = {
     continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
     proximosEpisodios: dashboardBody.indexOf("Proximos episodios<"),
-    recomendado: dashboardBody.indexOf("Recomendado para voce<"),
     atividade: dashboardBody.indexOf("Atividade recente<"),
     atalhosRapidos: dashboardBody.indexOf("Atalhos rapidos<")
   };
   check(
-    "Dashboard (Fase 2/3) segue a nova ordem enxuta: Continuar assistindo -> Proximos episodios -> Recomendado -> Atividade -> Atalhos rapidos",
+    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-02) segue a nova ordem: Continuar assistindo -> Proximos episodios -> Atividade recente -> Atalhos rapidos",
     Object.values(sectionIndex).every((index) => index !== -1) &&
       sectionIndex.continueWatching < sectionIndex.proximosEpisodios &&
-      sectionIndex.proximosEpisodios < sectionIndex.recomendado &&
-      sectionIndex.recomendado < sectionIndex.atividade &&
+      sectionIndex.proximosEpisodios < sectionIndex.atividade &&
       sectionIndex.atividade < sectionIndex.atalhosRapidos,
     sectionIndex
   );
