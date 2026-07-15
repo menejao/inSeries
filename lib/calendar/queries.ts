@@ -271,3 +271,25 @@ export async function getGlobalCalendarEpisodes(params: {
       }
     }));
 }
+
+export async function getDashboardCalendarData(userId: string, lastVisitAt: Date) {
+  const { episodes } = await loadUserCalendarData(userId);
+  const now = new Date();
+
+  const sinceLastVisit = episodes
+    .filter((ep) => !ep.watched && ep.airedAt > lastVisitAt && ep.airedAt <= now)
+    .sort((a, b) => b.airedAt.getTime() - a.airedAt.getTime())
+    .slice(0, 10);
+
+  const upcoming = episodes
+    .filter((ep) => !ep.watched && ep.airedAt > now)
+    .sort((a, b) => a.airedAt.getTime() - b.airedAt.getTime())
+    .slice(0, 5);
+
+  const overdue = episodes
+    .filter((ep) => !ep.watched && ep.airedAt <= lastVisitAt)
+    .sort((a, b) => b.airedAt.getTime() - a.airedAt.getTime())
+    .slice(0, 5);
+
+  return { sinceLastVisit, upcoming, overdue };
+}
