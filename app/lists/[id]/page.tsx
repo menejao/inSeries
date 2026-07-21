@@ -69,7 +69,7 @@ export default async function ListDetailsPage({ params }: { params: Promise<{ id
               <h2 className="text-lg font-semibold text-ink">Excluir lista</h2>
               <p className="mt-2 text-sm text-muted">Essa acao remove a lista e todos os itens permanentemente.</p>
             </div>
-            <ListDeleteButton listId={list.id} redirectTo="/me/lists" />
+            <ListDeleteButton listId={list.id} redirectTo="/lists?view=minhas" />
           </Card>
         </div>
       ) : null}
