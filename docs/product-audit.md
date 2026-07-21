@@ -186,3 +186,10 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
    agora, ou adiar para depois da reformulação visual estar estável?
 5. Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de
    qualquer implementação, não é algo para decidir sozinho.
+
+**Fase 5 (Design System) — parcialmente resolvida.** A parte segura (documentar o que já
+existe, sem decisão visual nenhuma) está em `docs/design-system.md`: tokens de cor mapeados
+contra o vocabulário do ticket, catálogo dos 31 componentes de `components/ui/`, motion,
+breakpoints, sombra/raio. Confirma o achado da Fase 1: a base já é semântica e sem cor
+arbitrária — o trabalho real que falta (fonte própria, escala tipográfica, Drawer/Popover/
+Breadcrumb/Command Palette) é o que a decisão #5 acima cobre.
