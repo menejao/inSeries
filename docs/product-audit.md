@@ -147,8 +147,19 @@ sprints incrementais sem uma arquitetura de informação unificada.
 Esta auditoria não implementa nada — é a base factual para decidir, com o usuário, por onde a
 Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de qualquer código:
 
-1. As 4 rotas mortas (`/me`, `/me/watching`, `/me/completed`, `/me/watchlist`) são removidas de
-   verdade (virando regra de `middleware.ts`) ou continuam como estão?
+1. ~~As 4 rotas mortas (`/me`, `/me/watching`, `/me/completed`, `/me/watchlist`) são removidas
+   de verdade (virando regra de `middleware.ts`) ou continuam como estão?~~ **Resolvido** — os
+   4 `app/me*/page.tsx` (e o `loading.tsx` orfão de `/me`) foram apagados; o redirect virou
+   `legacyRedirects` em `middleware.ts` (match exato de pathname, nunca prefixo — não
+   intercepta `/me/minha-lista`, `/me/stats` etc). Login/registro (`app/api/auth/{login,
+   register}/route.ts`) e `AuthForm` apontavam para `/me` como destino pós-autenticação — 
+   atualizados para `/` direto, evitando um hop de redirect a mais. `scripts/smoke-test.ts`
+   atualizado: os 3 checks de rota antiga verificavam antes um digest `NEXT_REDIRECT`
+   embutido no HTML (porque o redirect rodava dentro de `app/me/loading.tsx`, um Suspense
+   boundary); agora que o redirect é só do middleware, viraram checks de 307/302 real +
+   header `Location`, mais simples e mais correto. Achado durante a limpeza: o atalho "Series
+   acompanhadas" do Dashboard (sprint 03) ainda linkava para `/me/watching` em vez do destino
+   final — corrigido para `/me/minha-lista#grupo-watching` direto.
 2. `/watch-next` continua como página própria ou é descontinuada em favor do Dashboard?
 3. `/lists` e `/me/lists` são unificados numa rota com toggle, ou permanecem separados?
 4. Testes automatizados (Fase 46/47) e Storybook (Fase 45) — investir em infraestrutura nova

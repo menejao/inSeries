@@ -6,6 +6,19 @@ import { REQUEST_ID_HEADER, getOrCreateRequestId } from "@/lib/observability/req
 const protectedRoutes = ["/me", "/settings", "/watch-next", "/recommendations"];
 const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
+/**
+ * Fase 1 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — 4 rotas antigas que so faziam
+ * `redirect()` (nenhuma UI propria) foram removidas de app/me/*; o redirect em si vira uma
+ * regra aqui, sem manter 4 arquivos de pagina so pra isso. Match exato de pathname (nao
+ * prefixo) — nunca intercepta /me/minha-lista, /me/stats etc.
+ */
+const legacyRedirects: Record<string, string> = {
+  "/me": "/",
+  "/me/watching": "/me/minha-lista#grupo-watching",
+  "/me/completed": "/me/minha-lista#grupo-completed",
+  "/me/watchlist": "/me/minha-lista#grupo-want_to_watch"
+};
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAdminRoute = pathname.startsWith("/admin");
@@ -36,6 +49,11 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminRoute && !adminRoles.has(session.role ?? "USER")) {
     return withRequestId(NextResponse.redirect(new URL("/", request.url)));
+  }
+
+  const legacyTarget = legacyRedirects[pathname];
+  if (legacyTarget) {
+    return withRequestId(NextResponse.redirect(new URL(legacyTarget, request.url)));
   }
 
   return withRequestId(NextResponse.next({ request: { headers: forwardedHeaders } }));

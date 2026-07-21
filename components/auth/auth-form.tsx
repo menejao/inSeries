@@ -53,7 +53,7 @@ export function AuthForm({ mode }: AuthFormProps) {
               return;
             }
 
-            router.push(result.next ?? "/me");
+            router.push(result.next ?? "/");
             router.refresh();
           });
         }}

@@ -19,7 +19,7 @@ const SHORTCUTS = [
   { icon: CalendarIcon, label: "Calendario", href: "/calendar" },
   { icon: FilmIcon, label: "Feed", href: "/feed" },
   { icon: CheckCircleIcon, label: "Marcar episodio", href: "/watch-next" },
-  { icon: TvIcon, label: "Series acompanhadas", href: "/me/watching" }
+  { icon: TvIcon, label: "Series acompanhadas", href: "/me/minha-lista#grupo-watching" }
 ] as const;
 
 /**

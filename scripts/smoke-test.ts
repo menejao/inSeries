@@ -3002,31 +3002,30 @@ async function main() {
     );
   }
 
-  // `app/me/loading.tsx` envolve toda a secao /me/* num Suspense boundary automatico do
-  // Next.js; um redirect() disparado durante o streaming dessa secao nao vira mais um 3xx
-  // de HTTP puro (o framework ja comecou a enviar a resposta 200) — ele e propagado como um
-  // digest NEXT_REDIRECT embutido no HTML (`data-dgst="NEXT_REDIRECT;replace;<path>;307;"`),
-  // que o React do cliente intercepta e usa para navegar de verdade. Middleware (que roda
-  // antes desse streaming) continua emitindo 307 reais, como os demais redirects ja testados
-  // neste arquivo — so os 3 redirects desta sprint (dentro de paginas envolvidas por
-  // loading.tsx) usam esse mecanismo, entao o check verifica o digest em vez do status HTTP.
+  // Fase 1 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — as 3 rotas antigas nao tem mais
+  // app/me/*/page.tsx proprio; o redirect virou uma regra de middleware.ts (legacyRedirects),
+  // entao volta a ser um 307/302 de HTTP puro com Location, igual ao redirect de auth — nao
+  // precisa mais checar o digest NEXT_REDIRECT embutido no HTML.
   const watchingRedirect = await request(jarMyList, "/me/watching");
   check(
-    "Minha Lista: /me/watching (rota antiga) redireciona para /me/minha-lista (nao duplica logica)",
-    watchingRedirect.status === 200 && String(watchingRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
-    watchingRedirect.status
+    "Minha Lista: /me/watching (rota antiga) redireciona para /me/minha-lista (middleware, nao duplica logica)",
+    (watchingRedirect.status === 307 || watchingRedirect.status === 302) &&
+      watchingRedirect.headers.get("location")?.includes("/me/minha-lista#grupo-watching") === true,
+    { status: watchingRedirect.status, location: watchingRedirect.headers.get("location") }
   );
   const watchlistRedirect = await request(jarMyList, "/me/watchlist");
   check(
     "Minha Lista: /me/watchlist (rota antiga) redireciona para /me/minha-lista",
-    watchlistRedirect.status === 200 && String(watchlistRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
-    watchlistRedirect.status
+    (watchlistRedirect.status === 307 || watchlistRedirect.status === 302) &&
+      watchlistRedirect.headers.get("location")?.includes("/me/minha-lista#grupo-want_to_watch") === true,
+    { status: watchlistRedirect.status, location: watchlistRedirect.headers.get("location") }
   );
   const completedRedirect = await request(jarMyList, "/me/completed");
   check(
     "Minha Lista: /me/completed (rota antiga) redireciona para /me/minha-lista",
-    completedRedirect.status === 200 && String(completedRedirect.body).includes("NEXT_REDIRECT;replace;/me/minha-lista"),
-    completedRedirect.status
+    (completedRedirect.status === 307 || completedRedirect.status === 302) &&
+      completedRedirect.headers.get("location")?.includes("/me/minha-lista#grupo-completed") === true,
+    { status: completedRedirect.status, location: completedRedirect.headers.get("location") }
   );
 
   // ---- INSERIES-PROFILE-PREMIUM-01 ----

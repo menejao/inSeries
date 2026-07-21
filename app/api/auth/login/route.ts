@@ -62,7 +62,7 @@ async function loginHandler(request: Request) {
   incrementLogin();
   logger.info("user_login", { requestId, route: "auth.login", userId: user.id });
 
-  const response = NextResponse.json({ ok: true, next: "/me" });
+  const response = NextResponse.json({ ok: true, next: "/" });
   response.cookies.set(SESSION_COOKIE, token, getSessionCookieOptions());
   return response;
 }
