@@ -118,12 +118,11 @@ sprints incrementais sem uma arquitetura de informação unificada.
 
 ## Lacunas de infraestrutura (afetam quais fases são só implementação vs. implementação + infra nova)
 
-- **Nenhum framework de teste existe**: sem Jest/Vitest/Testing Library (unitário/integração),
-  sem Playwright/Cypress (E2E), sem Chromatic/Percy/Loki (regressão visual). O único mecanismo
-  automatizado é `scripts/smoke-test.ts` (script HTTP + alguns testes puros pontuais, como o de
-  deduplicação da sprint 03) — não é um framework, é um script escrito à mão. **Fases 46
-  (testes visuais) e 47 (testes de fluxo automatizados) do ticket exigem infraestrutura nova do
-  zero antes de qualquer teste poder ser escrito.**
+- ~~**Nenhum framework de teste existe**~~ **Resolvido** (ver decisão #4 mais abaixo) — Vitest
+  (unitário, 38 testes rodando de verdade) e Playwright (E2E + regressão visual, instalado e
+  com specs validados via `--list`, mas ainda não executados de fato — falta servidor/banco).
+  `scripts/smoke-test.ts` continua existindo e útil (cobre fluxo HTTP completo com mutação de
+  dado real), não foi substituído.
 - **Sem Storybook** (Fase 45): nenhum `.storybook/`, nenhuma dependência relacionada. Setup novo
   do zero.
 - **Sem busca global / Command Palette** (Fase 4): existe `SearchBar` (busca de catálogo), mas
@@ -182,14 +181,48 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
    ("Criar sua primeira lista", `components/series/add-to-list-button.tsx`) linkava para
    `/lists` (a view pública) em vez do destino de criação — bug pré-existente, corrigido
    como parte da unificação.
-4. Testes automatizados (Fase 46/47) e Storybook (Fase 45) — investir em infraestrutura nova
-   agora, ou adiar para depois da reformulação visual estar estável?
-5. Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de
-   qualquer implementação, não é algo para decidir sozinho.
+4. ~~Testes automatizados (Fase 46/47) e Storybook (Fase 45) — investir em infraestrutura nova
+   agora, ou adiar para depois da reformulação visual estar estável?~~ **Parcialmente
+   resolvido** — testes automatizados atacados; Storybook (Fase 45) fica pra depois (é um
+   investimento separado, cadastrar cada componente com variantes/estados — não decidi puxar
+   isso agora sem pedido explícito).
+   - **Vitest** (`vitest.config.ts`, `npm run test`) — primeiro framework de teste unitário
+     real do projeto. 38 testes cobrindo as funções puras que já existiam sem cobertura:
+     `lib/dashboard/dedupe.ts` (regra de exclusividade da sprint 03), `lib/dashboard/agenda.ts`
+     (agrupamento hoje/amanhã/semana), `lib/calendar/dates.ts`, `lib/utils.ts`. **Rodei de
+     verdade** (`npm run test`) — 38/38 passando, evidência real, não só leitura de código. No
+     processo, achei e corrigi um teste próprio frágil por timezone (episódio no limite exato
+     dos 7 dias, `startOfDay`/`addDays` zeram hora local, não UTC).
+   - **Playwright** (`playwright.config.ts`, `e2e/`, `npm run test:e2e`) — E2E + regressão
+     visual. 7 specs / 36 casos (2 projects: `chromium` + `mobile-chromium`) cobrindo os
+     fluxos obrigatórios do ticket: login/registro, encontrar série, começar a acompanhar,
+     marcar episódio, Dashboard, calendário, listas (rota unificada `/lists?view=minhas`),
+     navegação por teclado, ausência de scroll horizontal em 320/375px, e um spec de
+     regressão visual (`e2e/visual.spec.ts`) estabelecendo o padrão. Chromium baixado e
+     instalado (`npx playwright install chromium`) — confirmado funcional. **Bloqueado de
+     rodar de verdade** (mesma razão de sempre: Docker Desktop indisponível, sem
+     servidor+banco). Validação possível sem servidor: `npx playwright test --list` — os 36
+     casos carregam/compilam corretamente (achei e corrigi um erro real nesse passo: um
+     `test.use(devices[...])` dentro de um `describe` não é permitido pelo Playwright, movido
+     para spec próprio).
+5. ~~Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de
+   qualquer implementação, não é algo para decidir sozinho.~~ **Resolvido** — usuário delegou
+   a escolha. `Fraunces` (serif editorial, variável) para display/títulos + `Inter` (grotesca
+   neutra) para o resto da UI, ambas via `next/font/google` em `app/layout.tsx`
+   (self-hosted, zero requisição externa, sem layout shift — resolve de brinde parte da Fase
+   37/performance). `Inter` já estava *citada* dentro da stack de sistema em
+   `tailwind.config.ts` mas nunca carregada de verdade — essa decisão ativa uma intenção que
+   já existia, não é um pivô aleatório. `tailwind.config.ts` ganhou `fontFamily.display`;
+   `.section-title` (`app/globals.css`, usado como título principal em praticamente toda
+   página) e o título do Hero da Landing (`components/landing/cinematic-hero.tsx`) usam
+   `font-display` agora. Build confirmado gerando os `.woff2` self-hosted (10 arquivos em
+   `.next/static/media`). **Não validado visualmente** — Docker indisponível, sem servidor
+   pra ver o resultado renderizado; só a mecânica (fontes carregam, build passa) foi
+   confirmada.
 
-**Fase 5 (Design System) — parcialmente resolvida.** A parte segura (documentar o que já
-existe, sem decisão visual nenhuma) está em `docs/design-system.md`: tokens de cor mapeados
-contra o vocabulário do ticket, catálogo dos 31 componentes de `components/ui/`, motion,
-breakpoints, sombra/raio. Confirma o achado da Fase 1: a base já é semântica e sem cor
-arbitrária — o trabalho real que falta (fonte própria, escala tipográfica, Drawer/Popover/
-Breadcrumb/Command Palette) é o que a decisão #5 acima cobre.
+**Fase 5 (Design System) — resolvida na parte que não precisa de infraestrutura nova.**
+`docs/design-system.md`: tokens de cor mapeados contra o vocabulário do ticket, catálogo dos
+31 componentes de `components/ui/`, motion, breakpoints, sombra/raio, e agora a decisão de
+tipografia acima. Lacunas reais que sobram (Drawer, Popover, Breadcrumb, Command Palette)
+exigem construir componente novo, não só documentar — ficam para quando essas fases forem
+atacadas de verdade.

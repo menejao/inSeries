@@ -9,3 +9,6 @@ prisma/dev.db
 tsconfig.tsbuildinfo
 .vercel
 .env*
+/test-results/
+/playwright-report/
+/blob-report/

@@ -117,7 +117,7 @@ html {
 body {
   min-height: 100vh;
   color: rgb(var(--c-ink));
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -180,7 +180,7 @@ button:disabled {
 }
 
 .section-title {
-  @apply text-2xl font-semibold tracking-tight text-ink sm:text-3xl;
+  @apply font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl;
 }
 
 .section-copy {
