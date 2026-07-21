@@ -3034,6 +3034,124 @@ screenshots reais.
 - Validacao visual continua limitada a inspecao de HTML/classes (sem Playwright no
   sandbox), igual a todos os sprints anteriores deste projeto.
 
+## Dashboard Hub Diario (INSERIES-DASHBOARD-HOME-EXPERIENCE-02)
+
+Evolucao do Dashboard Home (`/`) para um hub de uso diario — responde "o que aconteceu e o que devo fazer **hoje**", nao "tudo que existe no sistema". Construido sobre o enxugamento do sprint anterior (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01).
+
+**Principio central:** tres perguntas, seis secoes:
+1. *Onde parei?* → Continuar assistindo (sempre)
+2. *O que estreou enquanto eu estava fora?* → Lancados desde ultima visita (condicional)
+3. *O que vem por ai?* → Proximos episodios (sempre + `EmptyState`)
+4. *Estou atrasado em algo?* → Pendencias (condicional)
+5. *O que estao fazendo?* → Atividade recente (sempre + `EmptyState`)
+6. *Ir direto para X* → Atalhos rapidos (grid fixo)
+
+**Fase 2 — Nova estrutura de secoes**
+
+`DashboardHome` (`components/dashboard/dashboard-home.tsx`) reescrito: cai de 13+ fetches
+para **3 chamadas em `Promise.all`**: `getDashboardCalendarData`, `getRecentActivityForUser`,
+`getContinueWatchingForUser`. O prop do componente passa a exigir `lastLoginAt` (alem de
+`id`/`name`) para calcular a janela "desde a ultima visita" (fallback: 24 h atras se null).
+
+Secoes condicionals (`sinceLastVisit`, `overdue`) nao aparecem se vazias — sem estados
+vazios desnecessarios no Dashboard. `Proximos episodios` e `Atividade recente` sempre
+aparecem com `EmptyState` quando nao ha dados, para evitar um Dashboard em branco na
+primeira vez de uso.
+
+**Fase 3 — Recomendacoes removidas do Dashboard**
+
+`Recomendado para voce` saiu do Dashboard completamente. O motor de recomendacoes
+(`lib/recommendations/`) continua existindo e servindo `/recommendations` — apenas nao
+aparece mais na Home. Os Atalhos rapidos dao acesso direto caso o usuario queira explorar.
+
+**Fase 4 — Altura uniforme dos cards de Continuar assistindo**
+
+`ContinueWatchingCard` ganhou `sm:h-60` no container externo e `overflow-hidden` no div
+de conteudo — garante que todos os cards do carrossel horizontal tenham a mesma altura no
+breakpoint desktop, independentemente de quantas linhas o titulo/episodio ocupa.
+A animacao de hover foi mantida em `hover:-translate-y-1` (padrao do sprint anterior).
+
+**Fase 5–11 — Grid, responsividade, acessibilidade**
+
+Nenhuma classe `auto-fit`/`auto-fill` foi introduzida. O grid de Atalhos rapidos usa
+`grid-cols-2 sm:grid-cols-3 lg:grid-cols-5` — colunas fixas por breakpoint, mesma regra
+global. Todos os `<section>` tem `aria-label`, icones decorativos recebem `aria-hidden`,
+links de "Ver tudo" sao `shrink-0` para nao quebrar em viewports estreitas. Validacao de
+breakpoints por inspecao de classes Tailwind e HTTP direto (sem Playwright no sandbox).
+
+**Data layer**
+
+- `lib/calendar/queries.ts` exporta `getDashboardCalendarData(userId, lastVisitAt)`: retorna
+  `{ sinceLastVisit, upcoming, overdue }` numa unica carga de `loadUserCalendarData` (sem
+  query extra ao banco — mesmo conjunto de series ativas ja carregado, so filtrado em memoria).
+- `lib/auth/server.ts`: `getCurrentUser` agora seleciona `lastLoginAt` (campo ja mantido
+  pelo route de login, nunca escrito aqui).
+
+**Smoke test**
+
+- Atualizacao da verificacao de ordem das secoes: removeu `recomendado` do `sectionIndex`,
+  nova descricao "Continuar assistindo -> Proximos episodios -> Atividade recente ->
+  Atalhos rapidos".
+- Check "Recomendado para voce no Dashboard" substituido por verificacao de que o Dashboard
+  carrega sem erro mesmo quando ha recomendacoes disponiveis (feature nao regressa, so foi
+  movida para pagina propria).
+- `dashboardGridIndex` ja usava "Proximos episodios" (corrigido no sprint anterior).
+
+### Hardening — auditoria completa, paridade de altura no mobile e limpeza (sessao 2)
+
+Ciclo adicional sobre o mesmo ticket, disparado porque a Fase 4 anterior so garantia altura uniforme no breakpoint desktop (`sm:h-60`) — no mobile o card variava de altura conforme presenca de barra de progresso da temporada e linha de "ultimo assistido".
+
+**Fase 1 — Auditoria**
+
+| Bloco | Classificacao | Motivo |
+| --- | --- | --- |
+| Continuar assistindo | Essencial | Responde "onde parei" |
+| Lancados desde ultima visita | Essencial (condicional) | Responde "o que perdi" |
+| Proximos episodios | Essencial | Responde "o que vem" |
+| Pendencias | Essencial (condicional) | Responde "estou atrasado" |
+| Atividade recente | Util | Contexto social, nao bloqueia acao |
+| Atalhos rapidos | Essencial | Reduz clique pra rotas de alta frequencia |
+| Recomendacoes/Minha Lista/Estatisticas/Recap/Conquistas/Descobrir mais | Desnecessario no Dashboard | Ja removidos no sprint anterior (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01); confirmado que `dashboard-home.tsx` nao importa nenhum desses — auditoria so re-confirmou, nao houve remocao nova aqui |
+
+**Fase 4 — Altura fixa do card tambem no mobile**
+
+`ContinueWatchingCard` (`components/continue-watching/continue-watching-card.tsx`) tinha `sm:h-60` mas nenhuma altura no breakpoint base (<640px) — card mobile crescia com conteudo condicional (barra de progresso da temporada, linha "ultimo assistido"). Corrigido: `h-[760px]` no container externo (base, <640px), mantendo `sm:h-60` para >=640px. Valor calculado analiticamente (poster `aspect-[2/3]` a 300px de largura = 450px + area de conteudo no pior caso, com os dois blocos condicionais presentes, ~292px + folga) — `overflow-hidden` (ja existente no container) age como rede de seguranca contra qualquer estouro residual, sem quebrar o layout.
+
+**Limpeza — codigo morto**
+
+4 componentes de dashboard nunca importados por nenhum arquivo (confirmado via grep, so apareciam no README): `recommendations-section.tsx`, `quick-shortcuts-section.tsx`, `greeting-section.tsx`, `activity-section.tsx` — sobras de refatoracoes anteriores (`DashboardHome` reimplementa a mesma logica inline). Deletados.
+
+**Fix nao relacionado ao ticket, encontrado durante validacao**
+
+`docker-compose.yml` publicava Postgres em `5432`, mas `.env` aponta `DATABASE_URL` para `5433` (porta 5432 ja ocupada por um Postgres nativo fora do Docker nesta maquina) — mismatch corrigido para `5433:5432`.
+
+Prisma Client estava desatualizado em relacao a `schema.prisma` (`prisma.systemSetting`, `prisma.catalogSyncRun`, `hiddenByAdminAt`, `User.role`, `Series.voteAverage` etc. ausentes do client gerado) — causava dezenas de erros de typecheck que nao faziam parte da lista de erros pre-existentes conhecidos do ticket. `npx prisma generate` resolveu; typecheck ficou 100% limpo (0 erros, nem os "conhecidos" apareceram).
+
+**Fase 6 — Responsividade — auditoria estatica (Docker bloqueado)**
+
+Docker Desktop nesta maquina crashou duas vezes ao subir (`backend process exited` ~40-70s apos o launch, antes do daemon ficar pronto) — sem banco vivo, sem `npm run dev` funcional, sem validacao real em browser nos 14 breakpoints pedidos. Auditoria caiu para inspecao estatica de classes Tailwind (mesmo metodo de toda sprint anterior deste projeto, ja documentado como limitacao em cada secao acima).
+
+O projeto so tem 3 breakpoints reais em uso no Dashboard (`base <640`, `sm >=640`, `lg >=1024`) — os 14 valores pedidos no ticket mapeiam todos para um desses 3 buckets:
+
+| Bucket | Larguras do ticket | Resultado |
+| --- | --- | --- |
+| base (<640px) | 320/360/375/390/412/430/480/600 | Carrossel `overflow-x-auto` contem os cards de 300px sem vazar scroll pra pagina (`main` tem `px-4`); Atalhos em `FixedGrid` 2 colunas; listas (calendario/atividade) sao `space-y-3` full-width com `truncate`/`line-clamp` — sem elemento de largura fixa que exceda o container |
+| sm-lg (640-1023px) | 768/820 | Card muda pra `sm:w-[440px] sm:h-60 sm:flex-row`; Atalhos passam a 3 colunas |
+| lg+ (>=1024px) | 1024/1280/1440/ultrawide | Atalhos viram 5 colunas; container `max-w-6xl` centralizado (`mx-auto`) evita cards excessivamente largos em ultrawide |
+
+Nao foi possivel gerar screenshot real nem medir altura de card em pixel via DOM — o valor `h-[760px]` acima e estimativa analitica, nao validacao visual. **Risco residual**: se a estimativa estiver um pouco curta em algum caso extremo (badge/runtime muito longo quebrando linha), `overflow-hidden` corta silenciosamente em vez de esticar o card — prefere-se isso a violar a regra de altura identica, mas o valor merece confirmacao visual assim que o Docker for resolvido.
+
+**Fase 11 — Acessibilidade**
+
+Sem mudanca nova nesta sessao alem do que ja existia: todo `<section>` do Dashboard ja tem `aria-label`, icones decorativos `aria-hidden`, links "Ver tudo"/"Ver calendario" com `shrink-0`, foco visivel (`focus-visible:ring-2`) nos Atalhos rapidos. Nao auditado manualmente com leitor de tela nesta sessao (mesma limitacao das sprints anteriores).
+
+**Testes obrigatorios executados**
+
+- `npm run build`: PASS
+- `npm run lint`: PASS
+- `npm run typecheck`: PASS (0 erros — inclusive os erros "pre-existentes conhecidos" do ticket nao apareceram, resolvidos pelo `prisma generate`)
+- `npm run smoke:test`: BLOCKED (precisa servidor + banco vivos; Docker Desktop indisponivel nesta maquina)
+
 ## Comandos
 
 - `npm install`: instala dependencias

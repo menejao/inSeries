@@ -30,7 +30,7 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
   const runtime = formatRuntime(item.episode.runtimeMinutes);
 
   return (
-    <div className="group relative isolate flex w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:w-[440px] sm:flex-row">
+    <div className="group relative isolate flex h-[760px] w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:h-60 sm:w-[440px] sm:flex-row">
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100">
         <BackdropImage src={item.series.backdropUrl} alt="" imageClassName="opacity-25" />
         <div className="absolute inset-0 bg-gradient-to-r from-canvas via-canvas/70 to-canvas/30" />
@@ -55,8 +55,8 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
         ) : null}
       </Link>
 
-      <div className="flex flex-1 flex-col gap-2 p-4 sm:p-5">
-        <Link href={`/series/${item.series.slug}`} className="font-semibold text-ink transition hover:text-primary-text">
+      <div className="flex flex-1 flex-col gap-2 overflow-hidden p-4 sm:p-5">
+        <Link href={`/series/${item.series.slug}`} className="line-clamp-1 font-semibold text-ink transition hover:text-primary-text" title={item.series.title}>
           {item.series.title}
         </Link>
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -84,17 +84,17 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
           ) : null}
         </div>
 
-        <p className="text-xs text-subtle">
+        <p className="truncate text-xs text-subtle">
           {item.pendingAfterNext > 0 ? `${item.pendingAfterNext} episodio(s) restante(s) depois deste` : "Ultimo pendente desta serie"}
         </p>
         {item.lastWatchedEpisode ? (
-          <p className="text-xs text-subtle">
+          <p className="truncate text-xs text-subtle">
             Ultimo assistido: {formatEpisodeCode(item.lastWatchedEpisode.seasonNumber, item.lastWatchedEpisode.number)} ·{" "}
             {formatRelativeDate(item.lastWatchedEpisode.watchedAt)}
           </p>
         ) : null}
 
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
           <Link href={`/series/${item.series.slug}/episode/${item.episode.id}`} className="inline-flex">
             <Button variant="secondary" size="sm">
               <PlayIcon className="h-4 w-4" />
