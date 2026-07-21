@@ -238,3 +238,28 @@ antes não existia nenhuma lógica de item ativo no mobile. `isNavItemActive`
 (`lib/utils.ts`, com teste em `lib/utils.test.ts`) extraído da Sidebar pra ser compartilhado
 entre os dois, em vez de duplicar a mesma regra. **Não validado visualmente** — mesma
 limitação de sempre.
+
+**Fase 4 (Busca Global / Command Palette) — resolvida.** Era 100% ausente (confirmado na
+Fase 1). Achado que acelerou tudo: `GET /api/search?type=all` já existia e já fazia busca
+multi-domínio (séries via `searchProvider`, usuários/listas/reviews via
+`lib/discovery/search.ts`) com rate limit — só nunca tinha sido exposta como Command Palette,
+só usada nos filtros de `/series`. Zero lógica de busca nova, só UI nova em cima do que já
+existia.
+
+- `components/search/command-palette.tsx` — abre via `Ctrl/Cmd+K` global (listener em
+  `window`) ou pelo evento customizado `OPEN_COMMAND_PALETTE_EVENT` (disparado pelo botão de
+  busca do `DashboardHeader`) — decoupled porque trigger e palette vivem em subárvores React
+  diferentes dentro do `DashboardShell`. Tem: ações rápidas (query vazia — calendário, feed,
+  minhas listas, catálogo, configurações), busca com debounce de 250ms + `AbortController`,
+  resultados agrupados por tipo (Séries/Usuários/Listas/Reviews), navegação por teclado
+  (setas + Enter, além do clique/hover), histórico de buscas recentes (`localStorage`,
+  mesmo padrão do `collapsed` da Sidebar), loading/erro/empty state.
+- `Dialog` (`components/ui/dialog.tsx`) ganhou `size` (`md` default idêntico a antes, `lg`
+  para o palette) e `padded` (permite conteúdo full-bleed, como o input de busca com borda
+  própria) — os dois únicos outros usos de `Dialog` (`ConfirmDialog`) não passam nenhum dos
+  dois, então o comportamento deles não muda.
+- `e2e/command-palette.spec.ts` — 5 casos novos (abrir por atalho, abrir pelo botão, navegar
+  e fechar, Escape fecha, busca mostra resultado agrupado ou empty state). Mesma limitação de
+  execução dos outros specs: carrega certo via `--list` (46 casos totais agora), não rodou de
+  verdade por falta de servidor.
+- **Não validado visualmente** — mesma limitação de sempre (Docker indisponível).

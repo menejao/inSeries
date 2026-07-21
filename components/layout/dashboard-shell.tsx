@@ -4,6 +4,7 @@ import { canAccessAdminWorkspace } from "@/lib/admin/rbac";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { CommandPalette } from "@/components/search/command-palette";
 
 /** Fase 2/5/11 — the authenticated shell: fixed sidebar (desktop) + slim header + bottom nav (mobile). Never shown to visitors. */
 export async function DashboardShell({ children }: PropsWithChildren) {
@@ -20,6 +21,7 @@ export async function DashboardShell({ children }: PropsWithChildren) {
         </main>
       </div>
       {user ? <BottomNav /> : null}
+      {user ? <CommandPalette /> : null}
     </div>
   );
 }

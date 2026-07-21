@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
+import { CommandPaletteTrigger } from "@/components/search/command-palette-trigger";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrador",
@@ -23,6 +24,7 @@ export async function DashboardHeader() {
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-primary-foreground">in</span>
         <span className="text-base font-semibold text-ink">inSeries</span>
       </Link>
+      <CommandPaletteTrigger />
       <div className="ml-auto flex items-center gap-2">
         <NotificationBell />
         <UserMenu name={user.name} username={user.username} avatarUrl={user.avatarUrl} roleLabel={ROLE_LABELS[user.role]} />

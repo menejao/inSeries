@@ -17,9 +17,15 @@ type DialogProps = {
   children?: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /** "md" (default, max-w-md) preserves every existing call site; "lg" (max-w-2xl) is for content-heavy dialogs like the Command Palette. */
+  size?: "md" | "lg";
+  /** Drops the default p-6 so children control their own spacing (e.g. a full-bleed search input). Defaults to true (existing behavior). */
+  padded?: boolean;
 };
 
-export function Dialog({ open, onClose, title, description, children, footer, className }: DialogProps) {
+const sizeClasses = { md: "max-w-md", lg: "max-w-2xl" };
+
+export function Dialog({ open, onClose, title, description, children, footer, className, size = "md", padded = true }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -78,7 +84,9 @@ export function Dialog({ open, onClose, title, description, children, footer, cl
         aria-describedby={description ? "dialog-description" : undefined}
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full max-w-md animate-scale-in rounded-4xl border border-border bg-surface-strong p-6 shadow-raised",
+          "relative z-10 w-full animate-scale-in rounded-4xl border border-border bg-surface-strong shadow-raised",
+          sizeClasses[size],
+          padded && "p-6",
           className
         )}
       >
