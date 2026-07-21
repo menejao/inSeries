@@ -3,7 +3,7 @@ import { getApiUser } from "@/lib/auth/server";
 import { getWatchNextForUser } from "@/lib/watch-next";
 import { withApiObservability } from "@/lib/http/api-handler";
 
-/** Same object the `/watch-next` page and the `/me` dashboard section render. */
+/** Same object the Dashboard's dedup logic (lib/dashboard/dedupe.ts) reads from. */
 async function watchNextHandler(request: Request) {
   const user = await getApiUser();
   if (!user) {

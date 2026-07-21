@@ -160,7 +160,19 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
    header `Location`, mais simples e mais correto. Achado durante a limpeza: o atalho "Series
    acompanhadas" do Dashboard (sprint 03) ainda linkava para `/me/watching` em vez do destino
    final — corrigido para `/me/minha-lista#grupo-watching` direto.
-2. `/watch-next` continua como página própria ou é descontinuada em favor do Dashboard?
+2. ~~`/watch-next` continua como página própria ou é descontinuada em favor do Dashboard?~~
+   **Resolvido** — descontinuada. `app/watch-next/` removido; `/watch-next` virou
+   `legacyRedirects` em `middleware.ts` apontando para `/` (sem gate de auth próprio — `/`
+   já trata anônimo vs. autenticado sozinho, então saiu de `protectedRoutes`). Removido de
+   `Sidebar` e `BottomNav` (7→6 itens, `grid-cols-7`→`grid-cols-6`). O atalho "Marcar
+   episodio" do Dashboard (sprint 03, apontava pra cá) foi removido — a ação já está
+   evidente nas seções "Novos para você"/"Pendências" logo acima (`FixedGrid`
+   `desktop={4}`→`desktop={3}`). A seção "Watch Next" do Perfil (só dono, duplicava
+   "Continuar assistindo" na mesma página) também saiu, junto com o fetch
+   `getWatchNextForUser` correspondente em `app/profile/[username]/page.tsx`.
+   `components/watch-next/watch-next-card.tsx` ficou órfão (só tinha esses 2 consumidores)
+   e foi apagado. `getWatchNextForUser`/`GET /api/me/watch-next` continuam existindo —
+   ainda alimentam o Dashboard (via dedup), `/series/[id]` e o `WatchNextMarkButton`.
 3. ~~`/lists` e `/me/lists` são unificados numa rota com toggle, ou permanecem separados?~~
    **Resolvido** — unificados em `/lists` com abas "Descobrir"/"Minhas listas"
    (`?view=minhas`), reusando o `Tabs` já usado por `/feed`/`/calendar`. `app/me/lists/`

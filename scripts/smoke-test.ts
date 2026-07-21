@@ -723,12 +723,14 @@ async function main() {
   // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — secao de Conquistas no Dashboard foi
   // removida (Conquistas agora vive apenas em /me/achievements).
 
-  // ---- Assistir a seguir: query layer, formato T05|E01+N, marcar assistido, exclusoes, dashboard, privacidade ----
+  // ---- Assistir a seguir: query layer (getWatchNextForUser), formato T05|E01+N, marcar ----
+  // ---- assistido, exclusoes. /watch-next (pagina) foi fundida no Dashboard (Fase 2, ----
+  // ---- INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) - so os checks de API/dado continuam. ----
   const watchNextGuestPage = await request({ value: "" }, "/watch-next");
   check(
-    "acesso anonimo a /watch-next redireciona (privacidade)",
-    watchNextGuestPage.status === 307 || watchNextGuestPage.status === 302,
-    watchNextGuestPage.status
+    "/watch-next (rota antiga) redireciona para / (fundido no Dashboard, sem gate proprio)",
+    (watchNextGuestPage.status === 307 || watchNextGuestPage.status === 302) && watchNextGuestPage.headers.get("location")?.endsWith("/") === true,
+    { status: watchNextGuestPage.status, location: watchNextGuestPage.headers.get("location") }
   );
 
   const watchNextGuestApi = await request({ value: "" }, "/api/me/watch-next");
@@ -745,13 +747,6 @@ async function main() {
       watchNextEmptyApi.body.data.hasTrackedSeries === false,
     watchNextEmptyApi.body
   );
-  const watchNextEmptyPage = await request(jarWatchNextEmpty, "/watch-next");
-  check(
-    "pagina /watch-next mostra empty state para quem nao segue nenhuma serie",
-    watchNextEmptyPage.status === 200 && String(watchNextEmptyPage.body).includes("Voce ainda nao segue nenhuma serie"),
-    watchNextEmptyPage.status
-  );
-
   const secondSeriesIdForWatchNext: string | undefined = catalog.body?.data?.[1]?.id;
   const thirdSeriesIdForWatchNext: string | undefined = catalog.body?.data?.[2]?.id;
 
@@ -772,13 +767,6 @@ async function main() {
       watchNextA1Item?.pendingAfterNext === 10 &&
       watchNextA1Item?.totalPending === 11,
     watchNextA1.body?.data
-  );
-
-  const watchNextAPage = await request(jarWatchNextA, "/watch-next");
-  check(
-    "pagina /watch-next exibe o formato T01 | E01 +10",
-    watchNextAPage.status === 200 && String(watchNextAPage.body).includes("T01 | E01 +10"),
-    watchNextAPage.status
   );
 
   const markFirstFromWatchNext = await request(jarWatchNextA, `/api/episodes/${watchNextA1Item.episode.id}/progress`, {
@@ -818,13 +806,6 @@ async function main() {
       lastWatchNextForA.body.data.hasTrackedSeries === true,
     lastWatchNextForA.body?.data
   );
-  const watchNextAUpToDatePage = await request(jarWatchNextA, "/watch-next");
-  check(
-    "pagina /watch-next mostra empty state de 'em dia' quando nao ha pendencias",
-    watchNextAUpToDatePage.status === 200 && String(watchNextAUpToDatePage.body).includes("Voce esta em dia com suas series"),
-    watchNextAUpToDatePage.status
-  );
-
   const jarWatchNextB: CookieJar = { value: "" };
   await registerUser(jarWatchNextB, "userwnb");
   if (secondSeriesIdForWatchNext) {
@@ -873,7 +854,8 @@ async function main() {
     body: JSON.stringify({ seriesId, state: "WATCHING" })
   });
   // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — secao Assistir a seguir no Dashboard
-  // foi removida (redundante com Continuar assistindo); acessivel via atalho rapido para /watch-next.
+  // foi removida (redundante com Continuar assistindo). A pagina /watch-next em si foi
+  // fundida no Dashboard depois (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01, Fase 2).
 
   // ---- Continuar assistindo (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) ----
   const jarWatchNextDashboardMe = await request(jarWatchNextDashboard, "/api/auth/me");
@@ -2673,12 +2655,6 @@ async function main() {
     null
   );
 
-  const watchNextPosterCheck = await request(jarWatchNextDashboard, "/watch-next");
-  check(
-    "Watch Next usa poster grande (nao mais still dividido 50/50)",
-    watchNextPosterCheck.status === 200 && String(watchNextPosterCheck.body).includes("poster.svg"),
-    watchNextPosterCheck.status
-  );
 
   // ---- Catalogo Inteligente (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01): metadados ----
   // ---- enriquecidos (Quality Score, Collection Tags, Providers, Logos, Keywords) na UI ----
@@ -3084,7 +3060,7 @@ async function main() {
     null
   );
   check(
-    "Perfil (Fase 5): dono ve Continuar assistindo/Watch Next (colecoes pessoais, nunca expostas a visitantes)",
+    "Perfil (Fase 5): dono ve Continuar assistindo (colecao pessoal, nunca exposta a visitantes)",
     String(ownProfilePage.body).includes("Continuar assistindo"),
     null
   );
@@ -3110,7 +3086,7 @@ async function main() {
   await registerUser(jarProfileViewer, "userprofileviewer");
   const visitorProfilePage = await request(jarProfileViewer, `/profile/${profileUser.username}`);
   check(
-    "Perfil (Fase 5): visitante nunca ve Continuar assistindo/Watch Next de outro usuario (sem flag de privacidade para isso, decisao deliberada)",
+    "Perfil (Fase 5): visitante nunca ve Continuar assistindo de outro usuario (sem flag de privacidade para isso, decisao deliberada)",
     visitorProfilePage.status === 200 && !String(visitorProfilePage.body).includes("Continuar assistindo"),
     null
   );

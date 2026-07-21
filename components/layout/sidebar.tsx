@@ -12,7 +12,6 @@ import {
   LayoutDashboardIcon,
   ListIcon,
   PanelLeftIcon,
-  PlayIcon,
   ShieldIcon,
   SparklesIcon,
   TrophyIcon,
@@ -25,7 +24,6 @@ type SidebarItem = { href: string; label: string; icon: (props: IconProps) => Re
 /** Fase 5's suggested list, minus Perfil/Configuracoes — those live in the avatar dropdown now (Fase 6/10). */
 const ITEMS: SidebarItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
-  { href: "/watch-next", label: "Assistir a seguir", icon: PlayIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
   { href: "/series", label: "Catalogo", icon: TvIcon },
   { href: "/feed", label: "Feed", icon: FilmIcon },

@@ -26,14 +26,13 @@ import { getMostReviewedSeries, getUserReviewStats } from "@/lib/social/review-s
 import { getUserStats } from "@/lib/analytics";
 import { getMyListFullForUser } from "@/lib/my-list";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
-import { getWatchNextForUser } from "@/lib/watch-next";
 import { computeProfileHighlights } from "@/lib/profile-page/highlights";
 import { prisma } from "@/lib/db/prisma";
 
 /**
  * INSERIES-PROFILE-PREMIUM-01 — o Perfil como vitrine da jornada do usuario: cabecalho,
  * estatisticas, destaques, colecoes e timeline, tudo reaproveitando servicos existentes
- * (getUserStats, getMyListFullForUser, getContinueWatchingForUser, getWatchNextForUser,
+ * (getUserStats, getMyListFullForUser, getContinueWatchingForUser,
  * getProfileActivity) e preservando a mesma regra de privacidade granular ja estabelecida
  * (showWatchingSeries/showWatchedSeries/showLists/showReviews/showActivity +
  * isProfilePrivate). Ver README para o audit completo da Fase 1 e as decisoes de
@@ -65,7 +64,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   // agregados derivados delas, em vez de inventar uma flag nova.
   const canSeeStats = isOwner || (!profile.isProfilePrivate && (profile.showWatchingSeries || profile.showWatchedSeries));
 
-  const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, watchNext, reviewStats, mostReviewedSeries] =
+  const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, reviewStats, mostReviewedSeries] =
     await Promise.all([
     canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING") : Promise.resolve([]),
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
@@ -92,7 +91,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     canSeeStats ? getUserStats(profile.id) : Promise.resolve(null),
     canSeeStats ? getMyListFullForUser(profile.id) : Promise.resolve(null),
     isOwner ? getContinueWatchingForUser(profile.id, { limit: 6 }) : Promise.resolve(null),
-    isOwner ? getWatchNextForUser(profile.id, { limit: 6 }) : Promise.resolve(null),
     canSeeReviews ? getUserReviewStats(profile.id) : Promise.resolve(null),
     canSeeReviews ? getMostReviewedSeries() : Promise.resolve(null)
   ]);
@@ -159,7 +157,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           <ProfileCollections
             isOwner={isOwner}
             continueWatching={continueWatching}
-            watchNext={watchNext}
             canSeeCompleted={canSeeCompleted}
             completedRecent={completedSeries}
             canSeeReviews={canSeeReviews}

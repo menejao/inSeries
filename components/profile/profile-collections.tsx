@@ -4,11 +4,9 @@ import { Card } from "@/components/ui/card";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { PosterImage } from "@/components/media/poster-image";
 import { ContinueWatchingCard } from "@/components/continue-watching/continue-watching-card";
-import { WatchNextCard } from "@/components/watch-next/watch-next-card";
 import { StarIcon } from "@/components/ui/icons";
 import { formatRelativeDate } from "@/lib/utils";
 import type { ContinueWatchingResult } from "@/lib/continue-watching";
-import type { WatchNextResult } from "@/lib/watch-next";
 
 const FAVORITE_MIN_RATING = 4;
 
@@ -47,18 +45,20 @@ function PosterTile({ series }: { series: ProfileSeriesTile }) {
 
 /**
  * Fase 5 (INSERIES-PROFILE-PREMIUM-01) — cada secao reaproveita um componente/servico ja
- * existente: Continue Watching e Watch Next usam os mesmos cards do Dashboard
- * (`ContinueWatchingCard`/`WatchNextCard`, `lib/continue-watching`/`lib/watch-next`) e sao
- * exclusivos do dono do perfil — nao ha nenhuma flag de privacidade para "resumir de onde
- * parei" de outra pessoa, e exibir isso a estranhos nao e sancionado por nenhuma regra
- * existente (decisao documentada no README). Favoritas/Concluidas recentemente/Reviews
- * recentes reaproveitam os mesmos arrays que a pagina ja busca (`reviews`,
- * `completedSeries`) — nenhuma query nova, so um recorte/filtro em memoria.
+ * existente: Continue Watching usa o mesmo card do Dashboard (`ContinueWatchingCard`,
+ * `lib/continue-watching`) e e exclusivo do dono do perfil — nao ha nenhuma flag de
+ * privacidade para "resumir de onde parei" de outra pessoa, e exibir isso a estranhos nao e
+ * sancionado por nenhuma regra existente (decisao documentada no README). Favoritas/Concluidas
+ * recentemente/Reviews recentes reaproveitam os mesmos arrays que a pagina ja busca
+ * (`reviews`, `completedSeries`) — nenhuma query nova, so um recorte/filtro em memoria.
+ *
+ * Fase 2 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — a secao "Watch Next" (dono only) foi
+ * removida daqui: duplicava exatamente "Continuar assistindo" logo acima (mesma pergunta "o
+ * que assisto agora"), e o /watch-next pra onde ela linkava foi fundido no Dashboard.
  */
 export function ProfileCollections({
   isOwner,
   continueWatching,
-  watchNext,
   canSeeCompleted,
   completedRecent,
   canSeeReviews,
@@ -66,7 +66,6 @@ export function ProfileCollections({
 }: {
   isOwner: boolean;
   continueWatching: ContinueWatchingResult | null;
-  watchNext: WatchNextResult | null;
   canSeeCompleted: boolean;
   completedRecent: ProfileSeriesTile[];
   canSeeReviews: boolean;
@@ -82,22 +81,6 @@ export function ProfileCollections({
           <div className="scrollbar-thin flex gap-4 overflow-x-auto pb-2">
             {continueWatching.items.map((item) => (
               <ContinueWatchingCard key={item.series.id} item={item} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {isOwner && watchNext && watchNext.items.length ? (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="section-title">Watch Next</h2>
-            <Link href="/watch-next" className="link-accent text-sm">
-              Ver tudo
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {watchNext.items.slice(0, 4).map((item) => (
-              <WatchNextCard key={item.episode.id} item={item} />
             ))}
           </div>
         </section>

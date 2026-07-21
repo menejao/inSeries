@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 import { REQUEST_ID_HEADER, getOrCreateRequestId } from "@/lib/observability/request-id";
 
-const protectedRoutes = ["/me", "/settings", "/watch-next", "/recommendations"];
+const protectedRoutes = ["/me", "/settings", "/recommendations"];
 const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
 /**
@@ -19,7 +19,12 @@ const legacyRedirects: Record<string, string> = {
   "/me/watchlist": "/me/minha-lista#grupo-want_to_watch",
   // /lists e /me/lists unificados numa rota so (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01,
   // Fase 2): "/lists" ganhou a aba "Minhas listas" via ?view=minhas.
-  "/me/lists": "/lists?view=minhas"
+  "/me/lists": "/lists?view=minhas",
+  // /watch-next fundido no Dashboard (Fase 2): a fila que ele mostrava (getWatchNextForUser)
+  // ja alimenta "Novos para voce"/"Pendencias" do Dashboard (com dedup, Fase 7 da sprint 03).
+  // Nao precisa mais de gate de autenticacao proprio - "/" ja trata anonimo (Landing) vs
+  // autenticado (Dashboard) sozinho.
+  "/watch-next": "/"
 };
 
 export async function middleware(request: NextRequest) {

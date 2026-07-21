@@ -10,10 +10,13 @@ const ELIGIBLE_STATES: WatchState[] = ["WATCHING", "WANT_TO_WATCH"];
 const RECENT_THRESHOLD_DAYS = 3;
 
 /**
- * The only place that decides "what should I watch next" — reused by the
- * `/watch-next` page, the `/me` dashboard section and `GET /api/me/watch-next`.
- * Never touches progress data itself; `toggleEpisodeProgress` (lib/progress/mutations.ts)
- * remains the single place that writes UserEpisodeProgress/UserSeriesStatus.
+ * The only place that decides "what should I watch next" — reused by the Dashboard
+ * ("Novos para voce"/"Pendencias", via lib/continue-watching), `GET /api/me/watch-next`,
+ * `/series/[id]` and `/profile/[username]`'s own continue-watching blocks. The standalone
+ * `/watch-next` page was retired (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01, Fase 2) — its
+ * queue now lives on the Dashboard. Never touches progress data itself;
+ * `toggleEpisodeProgress` (lib/progress/mutations.ts) remains the single place that writes
+ * UserEpisodeProgress/UserSeriesStatus.
  */
 export async function getWatchNextForUser(userId: string, options: { limit?: number } = {}): Promise<WatchNextResult> {
   const statuses = await prisma.userSeriesStatus.findMany({

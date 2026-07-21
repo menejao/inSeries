@@ -13,8 +13,7 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number) {
 /**
  * Fase 3 (INSERIES-SERIES-PAGE-PREMIUM-01) — "Continuar Assistindo" logo abaixo do Hero.
  * `item` comes straight from `getWatchNextForUser` (lib/watch-next), filtered by the caller
- * to this one series — the exact same algorithm every other Watch Next surface uses
- * (`/watch-next`, Dashboard's "Watch Next" section, "Continuar assistindo" no Dashboard).
+ * to this one series — the exact same algorithm the Dashboard's "Continuar assistindo" uses.
  * No parallel "what's next for this series" rule.
  */
 export function SeriesContinueWatching({

@@ -6,7 +6,7 @@ import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { ActivityRow } from "@/components/dashboard/activity-row";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, BellIcon, CalendarIcon, CheckCircleIcon, FilmIcon, TvIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, BellIcon, CalendarIcon, FilmIcon, TvIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
@@ -15,10 +15,14 @@ import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
 import { cn, formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
+/**
+ * Fase 2 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — "Marcar episodio" (ex-/watch-next)
+ * removido: a acao ja esta evidente nas secoes "Novos para voce"/"Pendencias" logo acima
+ * (Fase 27 — nao repetir uma acao ja visivel na secao imediatamente anterior).
+ */
 const SHORTCUTS = [
   { icon: CalendarIcon, label: "Calendario", href: "/calendar" },
   { icon: FilmIcon, label: "Feed", href: "/feed" },
-  { icon: CheckCircleIcon, label: "Marcar episodio", href: "/watch-next" },
   { icon: TvIcon, label: "Series acompanhadas", href: "/me/minha-lista#grupo-watching" }
 ] as const;
 
@@ -219,7 +223,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
 
       <section className="space-y-4" aria-label="Atalhos rapidos">
         <h2 className="text-xl font-semibold text-ink">Atalhos rapidos</h2>
-        <FixedGrid mobile={2} desktop={4}>
+        <FixedGrid mobile={2} desktop={3}>
           {SHORTCUTS.map((shortcut) => (
             <Link
               key={shortcut.href}
