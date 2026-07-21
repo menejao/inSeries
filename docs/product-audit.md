@@ -226,3 +226,15 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
 tipografia acima. Lacunas reais que sobram (Drawer, Popover, Breadcrumb, Command Palette)
 exigem construir componente novo, não só documentar — ficam para quando essas fases forem
 atacadas de verdade.
+
+**Fase 3 (Navegação mobile) — parcialmente resolvida.** O ticket pede explicitamente "no
+máximo cinco destinos principais" com um item "Mais" pra ações secundárias — `BottomNav`
+(`components/layout/bottom-nav.tsx`) tinha 7 (incluindo "Perfil", redundante: o avatar no
+`DashboardHeader` já fica visível em toda largura de tela, inclusive mobile, e abre
+Perfil/Configurações/Sair). Reduzido a 4 primários (Início, Acompanhar → `/me/minha-lista`,
+Calendário, Séries) + "Mais" (`Sheet`, com Feed/Listas/Recomendações/Estatísticas/Recap/
+Conquistas). Ganhou de brinde o que faltava desde a Fase 1: estado ativo (`aria-current`) —
+antes não existia nenhuma lógica de item ativo no mobile. `isNavItemActive`
+(`lib/utils.ts`, com teste em `lib/utils.test.ts`) extraído da Sidebar pra ser compartilhado
+entre os dois, em vez de duplicar a mesma regra. **Não validado visualmente** — mesma
+limitação de sempre.

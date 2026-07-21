@@ -19,7 +19,7 @@ export async function DashboardShell({ children }: PropsWithChildren) {
           <div className="mx-auto w-full max-w-6xl animate-fade-in">{children}</div>
         </main>
       </div>
-      {user ? <BottomNav username={user.username} /> : null}
+      {user ? <BottomNav /> : null}
     </div>
   );
 }

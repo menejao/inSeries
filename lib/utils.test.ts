@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { cn, formatEpisodeCode, getInitials, formatDate, formatRelativeDate } from "@/lib/utils";
+import { cn, formatEpisodeCode, getInitials, formatDate, formatRelativeDate, isNavItemActive } from "@/lib/utils";
 
 describe("cn", () => {
   it("joins truthy class names", () => {
@@ -37,6 +37,29 @@ describe("formatDate", () => {
     const formatted = formatDate(new Date("2026-03-05T12:00:00Z"));
     expect(formatted).toContain("2026");
     expect(formatted).toContain("5");
+  });
+});
+
+describe("isNavItemActive", () => {
+  it("matches '/' only when the pathname is exactly '/'", () => {
+    expect(isNavItemActive("/", "/")).toBe(true);
+    expect(isNavItemActive("/calendar", "/")).toBe(false);
+  });
+
+  it("matches an exact non-root href", () => {
+    expect(isNavItemActive("/calendar", "/calendar")).toBe(true);
+  });
+
+  it("matches a nested route under a non-root href", () => {
+    expect(isNavItemActive("/series/abc123", "/series")).toBe(true);
+  });
+
+  it("does not match a different top-level route with a shared prefix", () => {
+    expect(isNavItemActive("/serieszzz", "/series")).toBe(false);
+  });
+
+  it("does not match an unrelated route", () => {
+    expect(isNavItemActive("/feed", "/calendar")).toBe(false);
   });
 });
 

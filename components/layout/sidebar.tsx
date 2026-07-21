@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isNavItemActive } from "@/lib/utils";
 import {
   CalendarIcon,
   ChartIcon,
@@ -37,11 +37,6 @@ const ITEMS: SidebarItem[] = [
 const ADMIN_ITEM: SidebarItem = { href: "/admin", label: "Admin", icon: ShieldIcon };
 
 const COLLAPSE_STORAGE_KEY = "inseries-sidebar-collapsed";
-
-function isItemActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 /** Fase 5/13 — fixed left on desktop (lg+), collapsible to icon-only, persisted. Never rendered for visitors (Fase 5). */
 export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
@@ -86,7 +81,7 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
 
       <nav aria-label="Navegacao principal" className="flex-1 space-y-1 overflow-y-auto">
         {items.map((item) => {
-          const isActive = isItemActive(pathname, item.href);
+          const isActive = isNavItemActive(pathname, item.href);
           return (
             <Link
               key={item.href}

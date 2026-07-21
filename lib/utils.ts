@@ -4,6 +4,12 @@ export function cn(...values: Array<string | false | null | undefined>) {
   return clsx(values);
 }
 
+/** Shared active-link rule for Sidebar/BottomNav: exact match for "/", prefix match otherwise. */
+export function isNavItemActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function formatEpisodeCode(season: number, episode: number) {
   return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
 }
