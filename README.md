@@ -3152,6 +3152,189 @@ Sem mudanca nova nesta sessao alem do que ja existia: todo `<section>` do Dashbo
 - `npm run typecheck`: PASS (0 erros — inclusive os erros "pre-existentes conhecidos" do ticket nao apareceram, resolvidos pelo `prisma generate`)
 - `npm run smoke:test`: BLOCKED (precisa servidor + banco vivos; Docker Desktop indisponivel nesta maquina)
 
+## Dashboard Home v2 — densidade, deduplicacao e agenda (INSERIES-DASHBOARD-HOME-EXPERIENCE-03)
+
+Terceira passada sobre a Home (`/`, autenticado). As duas sprints anteriores (HOME-EXPERIENCE-02,
+"Hardening" acima) ja tinham reduzido o Dashboard a 6 blocos e removido Recomendacoes/Minha
+Lista/Estatisticas/Recap/Conquistas — mas os cards so foram *encolhidos*, nao *reprojetados*:
+"Proximos episodios" e "Pendencias" mostravam essencialmente o mesmo tipo de episodio (ja no
+ar, nao assistido) sem regra de exclusividade, e o card de Continuar Assistindo empilhava 4
+informacoes de continuidade simultaneas (progresso da serie, progresso da temporada,
+episodios restantes, ultimo assistido) competindo por um espaco menor.
+
+**Principio central desta sprint:** o Dashboard so mostra o que responde a uma destas 5
+perguntas — *o que posso continuar agora? o que foi lancado desde a ultima visita? o que
+precisa da minha atencao? o que sera lancado em breve? qual acao frequente posso executar
+rapido?* — e cada episodio aparece em **no maximo uma** secao operacional.
+
+### Dashboard vs Catalogo vs Feed
+
+- **Dashboard (`/`)**: central operacional, "o que faco agora" — nunca descoberta, nunca
+  estatistica, nunca gamificacao. So dados do que o usuario ja acompanha.
+- **Catalogo (`/series`)**: descoberta, busca, filtros — todo o acervo, independente do que o
+  usuario acompanha.
+- **Feed (`/feed`)**: rede social — atividade de outros usuarios, reviews, comentarios. O
+  Dashboard so mostra um recorte de 3-5 itens com link "Ver feed"; a pagina completa
+  (`ActivityCard`, sem alteracao) continua la.
+
+### Regra de exclusividade e deduplicacao (Fase 7)
+
+Prioridade fixa: **Continuar Assistindo > Novos para voce > Pendencias > Agenda futura**.
+
+Por que a colisao existe de verdade: `getContinueWatchingForUser` (`lib/continue-watching`)
+reusa `getWatchNextForUser` (`lib/watch-next`) para escolher o "proximo episodio" de cada
+serie — o mesmo predicado (`airedAt <= now && !watched`, series `WATCHING`/`WANT_TO_WATCH`)
+que `getDashboardCalendarData` (`lib/calendar/queries.ts`) usa para `sinceLastVisit`/`overdue`.
+O mesmo `episode.id` pode legitimamente aparecer nas duas fontes. `upcoming` nunca precisa de
+dedupe: e sempre `airedAt > now`, e o episodio de Continuar Assistindo e sempre `airedAt <=
+now` — mutuamente exclusivos por construcao de data, sem precisar de logica extra.
+
+`lib/dashboard/dedupe.ts` (`dedupeDashboardEpisodes`) e uma funcao pura: recebe os 3 arrays,
+monta um `Set` dos `episode.id` de Continuar Assistindo, e filtra esse conjunto fora de
+`sinceLastVisit`/`overdue`. **Teste automatizado**: `scripts/smoke-test.ts` roda um teste
+puro (`testDedupeDashboardEpisodes`, sem servidor/banco — executa no import do modulo, antes
+de qualquer `fetch`) com fixtures sinteticas provando que um episodio presente em Continuar
+Assistindo desaparece de "Novos para voce" e "Pendencias". Rodei isoladamente (`npx tsx
+scripts/smoke-test.ts`, cortado antes da parte que precisa de servidor) e os 3 `check(...)`
+passaram — evidencia real, nao apenas leitura de codigo.
+
+### Por que "Proximos episodios" e "Pendencias" nao podem repetir item
+
+As duas ja eram estruturalmente exclusivas por tempo (uma so mostra `airedAt > now`, a outra
+so `airedAt <= lastVisitAt`) — o problema nesta sprint nao era sobreposicao entre elas, era a
+falta de **funcao distinta**: as duas listavam a mesma UI (`EpisodeCalendarCard` completo,
+altura variavel) sem diferenciar "isso e uma agenda" de "isso exige uma acao". Renomeadas e
+redesenhadas:
+
+- **Agenda resumida** (`components/dashboard/agenda-summary.tsx` +
+  `lib/dashboard/agenda.ts::groupUpcomingForAgenda`) — so `upcoming` (futuro), agrupado em
+  Hoje/Amanha/Esta semana (reaproveita `isSameDay`/`addDays`/`startOfDay` de
+  `lib/calendar/dates.ts`, nenhuma logica de data nova), maximo 4 episodios visiveis no total;
+  o que sobra vira `hiddenCount` ("+N mais"), nunca mais linhas. Sem acao (informativo — o
+  episodio ainda nao saiu).
+- **Pendencias** — so `overdue` (ja no ar, nao assistido, deduplicado), cada item com acao
+  explicita "Marcar como assistido" (nunca um botao generico "Marcar"). Secao inteira some
+  quando vazia (nunca uma area grande em branco).
+
+### Card de Continuar Assistindo — uma informacao de continuidade, nao quatro (Fase 4)
+
+Antes: progresso da serie (%) + progresso da temporada (%) + "N episodios restantes" + "ultimo
+assistido ha X dias" — 4 dados simultaneos no mesmo espaco. Agora: barra de progresso da serie
+(sempre visivel, Nivel 1) + **uma unica** linha de continuidade ("N episodio(s) restante(s)");
+progresso da temporada e ultimo assistido (Nivel 3) viraram um `Tooltip` acionado por
+`IconButton` (nova variante `xs`, `components/ui/button.tsx` — 28px, existia so
+sm/md/lg) — acessivel por foco de teclado (`group-focus-within` do `Tooltip`, nao so hover), e
+sempre ocupa o mesmo espaco (`invisible` em vez de nao-renderizar quando nao ha detalhe extra,
+pra nao mudar a altura da linha entre cards). "Marcar assistido" deixou de ser `variant=primary
+size=lg` (competia visualmente com "Continuar") e virou `variant=secondary size=sm`;
+`WatchNextMarkButton` (`components/watch-next/watch-next-mark-button.tsx`) ganhou props
+opcionais `variant`/`size`/`className`/`label` (default identico ao anterior — os outros 3
+call-sites, `watch-next-card.tsx`/`series-continue-watching.tsx`, nao mudam).
+
+Altura do card recalculada para o conteudo mais enxuto: `h-[700px]` no mobile (base, <640px,
+onde o poster e `aspect-[2/3]` full-bleed + conteudo empilhado), `sm:h-60` (240px, layout em
+linha) sem mudanca no desktop. Como na sprint anterior, e uma **estimativa analitica** (soma
+de padding/line-height/gap por classe Tailwind), nao uma medicao real em pixel — ver
+limitacoes.
+
+### Conteudo adaptativo (Fase 15)
+
+Estrategia de 3 niveis aplicada ao card de Continuar Assistindo (o unico componente desta
+sprint com adaptacao real por breakpoint alem do layout empilhado -> em linha):
+
+| Nivel | Conteudo | Onde |
+| --- | --- | --- |
+| 1 — sempre visivel | Titulo, temporada/episodio, progresso da serie, "Continuar" | Corpo do card, todas as larguras |
+| 2 — quando ha espaco | Duracao (badge), "Marcar assistido" | Corpo do card, sempre presente (card ja tem espaco em ambas larguras) |
+| 3 — tooltip/detalhe | Progresso da temporada, ultimo episodio assistido | `Tooltip` no icone de info |
+
+### Limite de itens por secao (Fase 6/9/10)
+
+"Novos para voce", "Pendencias" e "Atividade recente" usam o mesmo mecanismo: array ja limitado
+a 5 pela query, renderizado inteiro em RSC, com os 2 ultimos itens (`indices 3 e 4`) recebendo
+`hidden sm:block`/`hidden lg:block` (`responsiveItemVisibility` em `dashboard-home.tsx`) — 3
+no mobile, 4 no tablet, 5 no desktop, sem JS/client component. `gap` (nao `space-y`) nos
+containers de lista, porque `space-y` aplica margem via seletor de irmao adjacente no DOM —
+`display:none` nao remove o elemento do DOM, entao um item de largura zero ainda "conta" como
+irmao anterior; `gap` ignora elementos com `display:none` corretamente.
+
+### Componentes novos (reaproveitando o Design System, Fase 17)
+
+- `components/dashboard/episode-action-row.tsx` (`EpisodeActionRow`) — linha compacta
+  compartilhada por "Novos para voce" e "Pendencias" (e, sem `action`, pela Agenda resumida) —
+  evita 2 componentes quase identicos. Layout `flex-col` no mobile (acao numa linha propria,
+  full-width, alvo de toque confortavel) -> `sm:flex-row` (tudo numa linha) — corrigido durante
+  a auditoria estatica: um botao "Marcar como assistido" (~160px) ao lado do poster (44px) e do
+  texto numa linha unica de 288px uteis (320px - padding) deixaria a coluna de texto com ~60px,
+  ilegivel.
+- `components/dashboard/agenda-summary.tsx` — agrupamento visual da Agenda resumida, usa
+  `EpisodeActionRow` sem `action`.
+- `components/dashboard/activity-row.tsx` (`ActivityRow`) — versao de uma linha da Atividade
+  recente. Reaproveita `getActionContent`/`typeIcons`, agora exportados de
+  `components/feed/activity-card.tsx` (mesma logica de texto por tipo de atividade), descartando
+  so os blocos extras (preview de review/comentario, badges, poster, hover) que tornam o card
+  completo alto. `/feed` continua usando `ActivityCard` sem alteracao.
+- `Button`/`IconButton` (`components/ui/button.tsx`) ganharam tamanho `xs` (28px) — nao existia
+  variante pequena o suficiente para um icone de tooltip inline num texto `text-xs`.
+
+Nenhum componente paralelo foi criado para algo que ja existia — `EpisodeCalendarCard` e
+`ActivityCard` continuam servindo `/calendar` e `/feed` sem mudanca.
+
+### Cabecalho contextual (Fase 3)
+
+Substitui o `<h1>Dashboard</h1>` generico por uma frase calculada a partir dos dados ja
+buscados (nenhuma query nova): prioriza "Voce tem N episodios novos..." (Novos para voce) >
+"Continue de onde parou." (ha item em Continuar Assistindo) > "Voce tem N pendencias..." >
+"Seu proximo episodio estreia hoje/amanha." (primeiro grupo da Agenda) > "Nao ha lancamentos
+pendentes hoje." Sem metricas decorativas, sem gamificacao, uma frase so.
+
+### Layout desktop — uma coluna (decisao consciente)
+
+O ticket permite composicao em duas areas no desktop desde que nao quebre o `FixedGrid` nem
+afine cards. Optado por manter **uma coluna** (como nas 2 sprints anteriores): sem Docker
+disponivel nesta maquina para validar visualmente (ver limitacoes), o risco de uma composicao
+em duas colunas quebrar em algum breakpoint sem eu conseguir ver o resultado superava o
+ganho. Decisao confirmada com o usuario antes da implementacao.
+
+### Atalhos rapidos revisados (Fase 11)
+
+5 atalhos -> 4: removido "Explorar series" (redundante com a Sidebar/`Catalogo`, sem
+justificativa forte o suficiente) e "Assistindo" foi renomeado para "Series acompanhadas"
+(mesma rota `/me/watching`, rotulo mais claro); "Proximo episodio" virou "Marcar episodio"
+(mesma rota `/watch-next`, mas o rotulo agora reflete a acao, nao so a navegacao).
+`FixedGrid mobile={2} desktop={4}` (antes `mobile={2} tablet={3} desktop={5}`). Labels usam
+`line-clamp-2 min-h-[2.5rem]` e o link do cartao ganhou `h-full` — sem isso, "Series
+acompanhadas" (2 linhas) e "Feed" (1 linha) ficariam com alturas diferentes na mesma linha do
+grid, quebrando a regra de dimensoes identicas (Fase 5/13).
+
+### Estados vazios (Fase 18)
+
+"Novos para voce" e "Agenda resumida" ganharam `EmptyState` proprio (antes, "Novos"/"Lancados
+desde ultima visita" simplesmente sumia quando vazio — nesta sprint ela e tratada como bloco
+"sempre presente" como Continuar Assistindo/Agenda, entao precisa de estado vazio, nao de
+ausencia). "Pendencias" continua desaparecendo inteira quando vazia (opção explicitamente
+permitida pelo ticket, e a mais segura contra "area grande em branco").
+
+### Limitacoes conhecidas
+
+- **Docker Desktop indisponivel de novo nesta maquina** (mesmo erro da sprint anterior:
+  `backend process exited` ~40-70s apos o launch) — sem banco/servidor vivo, sem screenshot
+  real em nenhum dos 7 breakpoints de evidencia pedidos (320/390/430/768/1024/1440/ultrawide).
+  Auditoria responsiva ficou estatica (leitura de classes Tailwind) outra vez, mas desta vez
+  identificou e corrigiu um problema real antes de qualquer usuario ver (squeeze do botao de
+  acao em `EpisodeActionRow` a 320px) — nao foi so leitura passiva.
+- **`h-[700px]` do card mobile e estimativa, nao medicao**: calculada somando
+  padding/line-height/gap por classe Tailwind para o pior caso de conteudo. `overflow-hidden`
+  no container ja existia como rede de seguranca (corta silenciosamente em vez de esticar o
+  card) caso a estimativa erre por poucos pixels.
+- **Teste de deduplicacao e uma prova da funcao pura, nao um teste HTTP fim-a-fim**: no dado
+  real semeado por `npm run seed:dev`, nunca foi confirmado ao vivo que Continuar Assistindo e
+  Novos-para-voce/Pendencias realmente colidem (precisaria de servidor+banco). A funcao esta
+  provada correta para o caso sintetico; falta a confirmacao de que o cenario acontece de fato
+  nos dados de desenvolvimento.
+- Nenhuma regra de negocio, sincronizacao TMDB, permissao ou algoritmo de recomendacao foi
+  alterado — apenas apresentacao/organizacao do Dashboard.
+
 ## Comandos
 
 - `npm install`: instala dependencias

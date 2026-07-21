@@ -16,7 +16,7 @@ const statusLabels: Record<string, string> = {
   COMPLETED: "Concluida"
 };
 
-const typeIcons: Record<ActivityFeedItem["type"], typeof FilmIcon> = {
+export const typeIcons: Record<ActivityFeedItem["type"], typeof FilmIcon> = {
   EPISODE_WATCHED: CheckCircleIcon,
   SERIES_STATUS_CHANGED: TvIcon,
   SERIES_COMPLETED: StarIcon,
@@ -26,7 +26,7 @@ const typeIcons: Record<ActivityFeedItem["type"], typeof FilmIcon> = {
   COMMENT_CREATED: MessageCircleIcon
 };
 
-function getActionContent(activity: ActivityFeedItem) {
+export function getActionContent(activity: ActivityFeedItem) {
   switch (activity.type) {
     case "EPISODE_WATCHED": {
       if (!activity.series || !activity.episode) return { text: "assistiu um episodio" };

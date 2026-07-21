@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip } from "@/components/ui/tooltip";
 import { PosterImage, BackdropImage } from "@/components/media/poster-image";
 import { PosterBadge } from "@/components/media/poster-badge";
 import { WatchNextMarkButton } from "@/components/watch-next/watch-next-mark-button";
-import { PlayIcon } from "@/components/ui/icons";
-import { formatRelativeDate } from "@/lib/utils";
+import { PlayIcon, InfoIcon } from "@/components/ui/icons";
+import { formatRelativeDate, cn } from "@/lib/utils";
 import type { ContinueWatchingItem } from "@/lib/continue-watching";
 
 function formatEpisodeCode(seasonNumber: number, episodeNumber: number) {
@@ -19,18 +20,31 @@ function formatRuntime(minutes: number | null) {
 }
 
 /**
- * Fase 4/8 (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) — the premium "continue watching"
- * card: poster grande + backdrop wash on hover, temporada/episodio, progresso da serie e
- * da temporada, episodios restantes, ultimo episodio assistido, e as duas acoes pedidas
- * ("Continuar" navega para o episodio; "Marcar como assistido" reaproveita
- * WatchNextMarkButton — Fase 7, mesma mutation/refresh que todo outro botao de marcar
- * assistido do app).
+ * Fase 4/5/15 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — card compacto: mostra apenas uma
+ * "informacao de continuidade" (episodios restantes) alem da barra de progresso da serie.
+ * Progresso da temporada e ultimo episodio assistido (Nivel 3) saem do corpo do card e viram
+ * um Tooltip acessivel por teclado (IconButton `xs`, foco-visivel via group-focus-within do
+ * Tooltip) em vez de competir por espaco com a acao principal. "Marcar assistido" e sempre
+ * secundario visualmente a "Continuar" (Fase 4: nunca deve competir com a acao principal).
  */
 export function ContinueWatchingCard({ item, priority = false }: { item: ContinueWatchingItem; priority?: boolean }) {
   const runtime = formatRuntime(item.episode.runtimeMinutes);
+  const continuityText =
+    item.pendingAfterNext > 0 ? `${item.pendingAfterNext} episodio(s) restante(s) depois deste` : "Ultimo pendente desta serie";
+
+  const detailParts: string[] = [];
+  if (item.seasonProgressPercent > 0) {
+    detailParts.push(`Temporada ${item.episode.seasonNumber}: ${item.seasonProgressPercent}% assistida`);
+  }
+  if (item.lastWatchedEpisode) {
+    detailParts.push(
+      `Ultimo assistido: ${formatEpisodeCode(item.lastWatchedEpisode.seasonNumber, item.lastWatchedEpisode.number)} · ${formatRelativeDate(item.lastWatchedEpisode.watchedAt)}`
+    );
+  }
+  const hasDetails = detailParts.length > 0;
 
   return (
-    <div className="group relative isolate flex h-[760px] w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:h-60 sm:w-[440px] sm:flex-row">
+    <div className="group relative isolate flex h-[700px] w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:h-60 sm:w-[440px] sm:flex-row">
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100">
         <BackdropImage src={item.series.backdropUrl} alt="" imageClassName="opacity-25" />
         <div className="absolute inset-0 bg-gradient-to-r from-canvas via-canvas/70 to-canvas/30" />
@@ -65,43 +79,36 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
         </div>
         <p className="line-clamp-1 text-sm text-muted">{item.episode.title}</p>
 
-        <div className="mt-1 space-y-2">
-          <div>
-            <div className="mb-1 flex items-center justify-between text-xs text-subtle">
-              <span>Progresso da serie</span>
-              <span>{Math.round(item.seriesProgressPercent)}%</span>
-            </div>
-            <Progress value={item.seriesProgressPercent} label={`Progresso de ${item.series.title}`} />
+        <div className="mt-1">
+          <div className="mb-1 flex items-center justify-between text-xs text-subtle">
+            <span className="flex items-center gap-1">
+              Progresso da serie
+              <Tooltip content={hasDetails ? detailParts.join(" · ") : "Sem detalhes adicionais para este episodio"} side="right">
+                <IconButton
+                  label="Mais detalhes do progresso"
+                  variant="ghost"
+                  size="xs"
+                  className={cn(!hasDetails && "invisible")}
+                >
+                  <InfoIcon className="h-3.5 w-3.5" />
+                </IconButton>
+              </Tooltip>
+            </span>
+            <span>{Math.round(item.seriesProgressPercent)}%</span>
           </div>
-          {item.seasonProgressPercent > 0 ? (
-            <div>
-              <div className="mb-1 flex items-center justify-between text-xs text-subtle">
-                <span>Progresso da temporada {item.episode.seasonNumber}</span>
-                <span>{item.seasonProgressPercent}%</span>
-              </div>
-              <Progress value={item.seasonProgressPercent} label={`Progresso da temporada ${item.episode.seasonNumber}`} />
-            </div>
-          ) : null}
+          <Progress value={item.seriesProgressPercent} label={`Progresso de ${item.series.title}`} />
         </div>
 
-        <p className="truncate text-xs text-subtle">
-          {item.pendingAfterNext > 0 ? `${item.pendingAfterNext} episodio(s) restante(s) depois deste` : "Ultimo pendente desta serie"}
-        </p>
-        {item.lastWatchedEpisode ? (
-          <p className="truncate text-xs text-subtle">
-            Ultimo assistido: {formatEpisodeCode(item.lastWatchedEpisode.seasonNumber, item.lastWatchedEpisode.number)} ·{" "}
-            {formatRelativeDate(item.lastWatchedEpisode.watchedAt)}
-          </p>
-        ) : null}
+        <p className="truncate text-xs text-subtle">{continuityText}</p>
 
-        <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
+        <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
           <Link href={`/series/${item.series.slug}/episode/${item.episode.id}`} className="inline-flex">
-            <Button variant="secondary" size="sm">
+            <Button variant="primary" size="sm">
               <PlayIcon className="h-4 w-4" />
               Continuar
             </Button>
           </Link>
-          <WatchNextMarkButton episodeId={item.episode.id} />
+          <WatchNextMarkButton episodeId={item.episode.id} size="sm" variant="secondary" className="whitespace-nowrap" label="Marcar assistido" />
         </div>
       </div>
     </div>
