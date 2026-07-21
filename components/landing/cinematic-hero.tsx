@@ -114,7 +114,7 @@ export function CinematicHero({ pool }: { pool: Series[] }) {
             title={current.title}
             logoUrl={current.logoUrl}
             as="h1"
-            textClassName="max-w-2xl text-4xl font-black leading-[1.05] tracking-tight text-ink sm:text-6xl lg:text-7xl"
+            textClassName="max-w-2xl font-display text-4xl font-black leading-[1.05] tracking-tight text-ink sm:text-6xl lg:text-7xl"
             logoClassName="h-16 max-w-[300px] sm:h-24 sm:max-w-[420px]"
           />
 

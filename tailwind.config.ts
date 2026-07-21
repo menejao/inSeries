@@ -58,15 +58,16 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
+          "var(--font-sans)",
           "-apple-system",
           "BlinkMacSystemFont",
           "\"Segoe UI\"",
-          "Inter",
           "Roboto",
           "\"Helvetica Neue\"",
           "Arial",
           "sans-serif"
-        ]
+        ],
+        display: ["var(--font-display)", "Georgia", "\"Times New Roman\"", "serif"]
       },
       boxShadow: {
         xs: "0 1px 2px rgb(var(--c-shadow) / 0.06)",

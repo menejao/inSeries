@@ -184,12 +184,24 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
    como parte da unificação.
 4. Testes automatizados (Fase 46/47) e Storybook (Fase 45) — investir em infraestrutura nova
    agora, ou adiar para depois da reformulação visual estar estável?
-5. Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de
-   qualquer implementação, não é algo para decidir sozinho.
+5. ~~Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de
+   qualquer implementação, não é algo para decidir sozinho.~~ **Resolvido** — usuário delegou
+   a escolha. `Fraunces` (serif editorial, variável) para display/títulos + `Inter` (grotesca
+   neutra) para o resto da UI, ambas via `next/font/google` em `app/layout.tsx`
+   (self-hosted, zero requisição externa, sem layout shift — resolve de brinde parte da Fase
+   37/performance). `Inter` já estava *citada* dentro da stack de sistema em
+   `tailwind.config.ts` mas nunca carregada de verdade — essa decisão ativa uma intenção que
+   já existia, não é um pivô aleatório. `tailwind.config.ts` ganhou `fontFamily.display`;
+   `.section-title` (`app/globals.css`, usado como título principal em praticamente toda
+   página) e o título do Hero da Landing (`components/landing/cinematic-hero.tsx`) usam
+   `font-display` agora. Build confirmado gerando os `.woff2` self-hosted (10 arquivos em
+   `.next/static/media`). **Não validado visualmente** — Docker indisponível, sem servidor
+   pra ver o resultado renderizado; só a mecânica (fontes carregam, build passa) foi
+   confirmada.
 
-**Fase 5 (Design System) — parcialmente resolvida.** A parte segura (documentar o que já
-existe, sem decisão visual nenhuma) está em `docs/design-system.md`: tokens de cor mapeados
-contra o vocabulário do ticket, catálogo dos 31 componentes de `components/ui/`, motion,
-breakpoints, sombra/raio. Confirma o achado da Fase 1: a base já é semântica e sem cor
-arbitrária — o trabalho real que falta (fonte própria, escala tipográfica, Drawer/Popover/
-Breadcrumb/Command Palette) é o que a decisão #5 acima cobre.
+**Fase 5 (Design System) — resolvida na parte que não precisa de infraestrutura nova.**
+`docs/design-system.md`: tokens de cor mapeados contra o vocabulário do ticket, catálogo dos
+31 componentes de `components/ui/`, motion, breakpoints, sombra/raio, e agora a decisão de
+tipografia acima. Lacunas reais que sobram (Drawer, Popover, Breadcrumb, Command Palette)
+exigem construir componente novo, não só documentar — ficam para quando essas fases forem
+atacadas de verdade.

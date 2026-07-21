@@ -48,18 +48,30 @@ a cor de fundo diretamente.
 
 ## Tipografia
 
-**Não existe uma escala tipográfica formal nem `next/font`** — a fonte é a stack de sistema
-(`-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial,
-sans-serif`, `tailwind.config.ts:59-69`). Isso é uma lacuna real (Fase 6/7 do ticket pedem
-identidade tipográfica editorial) — decisão de produto que precisa aprovação, não é algo para
-decidir nesta auditoria.
+**Resolvido** (usuário delegou a escolha): 2 famílias, ambas self-hosted via `next/font/google`
+em `app/layout.tsx` (zero requisição externa, sem layout shift):
 
-O que já existe, de forma consistente mas não documentada centralmente, são utilitários
-semânticos para os 3 níveis de texto mais repetidos (`app/globals.css:182-192`):
+- **`font-display` → Fraunces** (serif editorial, variável) — títulos e momentos de marca
+  (`.section-title`, título do Hero da Landing). Dá o caráter "cinematográfico/editorial" que
+  o ticket pede sem depender de imagem — combina com o laranja quente de `--c-primary`.
+- **`font-sans` → Inter** (grotesca neutra) — todo o resto: corpo, labels, botões, tabelas,
+  stats. UI densa precisa de uma fonte neutra e muito legível em tamanho pequeno; usar a
+  mesma serif do display aí destruiria a legibilidade das telas mais carregadas de dado
+  (`/me/stats`, `/admin/*`). `Inter` já estava *citada* na stack de sistema
+  (`tailwind.config.ts`) mas nunca carregada de verdade — essa decisão ativa uma intenção que
+  já existia.
+
+Ambas configuradas em `tailwind.config.ts` (`fontFamily.sans`/`fontFamily.display`) como
+variável CSS (`var(--font-sans)`/`var(--font-display)`), com fallback de sistema caso a fonte
+não carregue. **Não validado visualmente** — Docker indisponível nesta sessão, só a build
+(gera os `.woff2`) foi confirmada.
+
+Utilitários semânticos já existentes para os 3 níveis de texto mais repetidos
+(`app/globals.css:182-192`), agora com `.section-title` usando `font-display`:
 
 | Utilitário | Uso | Tamanho |
 | --- | --- | --- |
-| `.section-title` | Título de página/seção principal | `text-2xl sm:text-3xl`, `font-semibold`, `tracking-tight` |
+| `.section-title` | Título de página/seção principal | `font-display`, `text-2xl sm:text-3xl`, `font-semibold`, `tracking-tight` |
 | `.section-copy` | Parágrafo de apoio abaixo do título | `text-sm sm:text-base`, `text-muted` |
 | `.eyebrow` | Rótulo pequeno acima do título ("Ola, Fulano") | `text-xs uppercase tracking-[0.18em]`, `text-subtle` |
 
@@ -138,7 +150,9 @@ INSERIES-DASHBOARD-HOME-EXPERIENCE-02/03).
 - **Breadcrumb** — não existe, nenhum uso em nenhuma página (páginas profundas como
   `/series/[id]/season/[season]` não têm trilha de navegação).
 - **Command Palette / busca global** — não existe (Fase 4 do ticket).
-- **Escala tipográfica formal + fonte própria** — não existe (Fase 6/7, decisão de produto).
+- **Escala tipográfica formal para todos os níveis** — fonte própria resolvida (Fraunces/Inter,
+  ver secção Tipografia acima), mas ainda faltam utilitários dedicados para título de card,
+  metadado e caption (hoje compostos ad-hoc por componente).
 - **Escala de z-index documentada** — só 2 valores literais isolados, sem sistema.
 
 ## O que isso desbloqueia
