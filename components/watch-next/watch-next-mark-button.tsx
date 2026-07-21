@@ -13,7 +13,19 @@ import { useToast } from "@/components/ui/toast";
  * which re-derives the next pending episode (or drops the series entirely) from
  * the same lib/watch-next query every other consumer uses.
  */
-export function WatchNextMarkButton({ episodeId }: { episodeId: string }) {
+export function WatchNextMarkButton({
+  episodeId,
+  variant = "primary",
+  size = "lg",
+  className = "w-full sm:w-auto",
+  label = "Marcar assistido"
+}: {
+  episodeId: string;
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
+  size?: "sm" | "md" | "lg";
+  className?: string;
+  label?: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [justWatched, setJustWatched] = useState(false);
@@ -21,9 +33,9 @@ export function WatchNextMarkButton({ episodeId }: { episodeId: string }) {
 
   return (
     <Button
-      variant="primary"
-      size="lg"
-      className="w-full sm:w-auto"
+      variant={variant}
+      size={size}
+      className={className}
       disabled={isPending || justWatched}
       loading={isPending}
       onClick={() => {
@@ -43,8 +55,8 @@ export function WatchNextMarkButton({ episodeId }: { episodeId: string }) {
         });
       }}
     >
-      <CheckCircleIcon className="h-5 w-5" />
-      {justWatched ? "Assistido!" : "Marcar assistido"}
+      <CheckCircleIcon className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />
+      {justWatched ? "Assistido!" : label}
     </Button>
   );
 }

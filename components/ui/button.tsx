@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 import { LoaderIcon } from "@/components/ui/icons";
 
 export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary: "bg-primary text-primary-foreground hover:bg-primary-hover shadow-xs",
@@ -14,6 +14,7 @@ const variantClasses: Record<ButtonVariant, string> = {
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
+  xs: "h-7 min-h-7 px-2.5 text-xs gap-1",
   sm: "h-9 min-h-9 px-3.5 text-sm gap-1.5",
   md: "h-11 min-h-11 px-5 text-sm gap-2",
   lg: "h-12 min-h-12 px-6 text-base gap-2"
@@ -59,6 +60,7 @@ type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const iconSizeClasses: Record<ButtonSize, string> = {
+  xs: "h-7 w-7",
   sm: "h-9 w-9",
   md: "h-11 w-11",
   lg: "h-12 w-12"

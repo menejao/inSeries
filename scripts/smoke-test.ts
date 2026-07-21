@@ -30,6 +30,9 @@ import { computeSmartListCounts } from "@/lib/catalog/smart-lists";
 import { getCatalogFilterMetadata, searchSeries } from "@/lib/discovery/search";
 import { pickHero } from "@/lib/catalog/hero-selection";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
+import type { ContinueWatchingItem } from "@/lib/continue-watching";
+import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
+import type { CalendarEpisode } from "@/lib/calendar/queries";
 import { editorialProvider } from "@/lib/recommendations/providers";
 import { getWatchNextForUser } from "@/lib/watch-next";
 import { runDiscoveryEngine } from "@/lib/discovery/engine";
@@ -94,6 +97,48 @@ function check(label: string, condition: boolean, detail?: unknown) {
 function countOccurrences(haystack: string, needle: string) {
   return haystack.split(needle).length - 1;
 }
+
+// ---- Fase 7 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — regra de deduplicacao entre secoes ----
+// Teste puro (sem servidor/banco): roda sempre, mesmo se o resto do smoke test estiver bloqueado.
+(function testDedupeDashboardEpisodes() {
+  const now = new Date();
+  const makeCalendarEpisode = (id: string): CalendarEpisode => ({
+    id,
+    title: `Episodio ${id}`,
+    number: 1,
+    seasonNumber: 1,
+    airedAt: now,
+    watched: false,
+    watchedAt: null,
+    stillUrl: null,
+    userState: "WATCHING",
+    series: { id: "series-1", slug: "serie-1", title: "Serie 1", posterUrl: null, backdropUrl: null }
+  });
+  const makeContinueWatchingItem = (episodeId: string): ContinueWatchingItem =>
+    ({ episode: { id: episodeId } }) as unknown as ContinueWatchingItem;
+
+  const continueWatching = [makeContinueWatchingItem("ep-shared")];
+  const sinceLastVisit = [makeCalendarEpisode("ep-shared"), makeCalendarEpisode("ep-new")];
+  const overdue = [makeCalendarEpisode("ep-shared"), makeCalendarEpisode("ep-overdue")];
+
+  const result = dedupeDashboardEpisodes({ continueWatching, sinceLastVisit, overdue });
+
+  check(
+    "dedupeDashboardEpisodes remove de 'Novos para voce' um episodio ja presente em Continuar Assistindo",
+    result.sinceLastVisit.length === 1 && result.sinceLastVisit[0].id === "ep-new",
+    result.sinceLastVisit.map((ep) => ep.id)
+  );
+  check(
+    "dedupeDashboardEpisodes remove de 'Pendencias' um episodio ja presente em Continuar Assistindo",
+    result.overdue.length === 1 && result.overdue[0].id === "ep-overdue",
+    result.overdue.map((ep) => ep.id)
+  );
+  check(
+    "dedupeDashboardEpisodes preserva itens sem sobreposicao com Continuar Assistindo",
+    result.sinceLastVisit.some((ep) => ep.id === "ep-new") && result.overdue.some((ep) => ep.id === "ep-overdue"),
+    result
+  );
+})();
 
 async function registerUser(jar: CookieJar, label: string) {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -837,7 +882,7 @@ async function main() {
   const dashboardHomeWithContinueWatching = await request(jarWatchNextDashboard, "/");
   const dashboardHomeBody = String(dashboardHomeWithContinueWatching.body);
   const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar assistindo");
-  const dashboardGridIndex = dashboardHomeBody.indexOf("Proximos episodios");
+  const dashboardGridIndex = dashboardHomeBody.indexOf("Novos para voce");
   check(
     "Dashboard exibe a secao Continuar assistindo",
     dashboardHomeWithContinueWatching.status === 200 &&
@@ -2582,36 +2627,41 @@ async function main() {
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
     continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
-    proximosEpisodios: dashboardBody.indexOf("Proximos episodios<"),
+    novosParaVoce: dashboardBody.indexOf("Novos para voce<"),
+    agendaResumida: dashboardBody.indexOf("Agenda resumida<"),
     atividade: dashboardBody.indexOf("Atividade recente<"),
     atalhosRapidos: dashboardBody.indexOf("Atalhos rapidos<")
   };
   check(
-    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-02) segue a nova ordem: Continuar assistindo -> Proximos episodios -> Atividade recente -> Atalhos rapidos",
+    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) segue a nova ordem: Continuar assistindo -> Novos para voce -> Agenda resumida -> Atividade recente -> Atalhos rapidos",
     Object.values(sectionIndex).every((index) => index !== -1) &&
-      sectionIndex.continueWatching < sectionIndex.proximosEpisodios &&
-      sectionIndex.proximosEpisodios < sectionIndex.atividade &&
+      sectionIndex.continueWatching < sectionIndex.novosParaVoce &&
+      sectionIndex.novosParaVoce < sectionIndex.agendaResumida &&
+      sectionIndex.agendaResumida < sectionIndex.atividade &&
       sectionIndex.atividade < sectionIndex.atalhosRapidos,
     sectionIndex
   );
   check(
     "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
-    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.proximosEpisodios,
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.novosParaVoce,
     sectionIndex
   );
   check(
     // "Minha Lista" fica de fora desta lista de propósito: o proprio Atalho rapido para
     // /me/minha-lista usa esse rotulo — nao e uma secao de preview duplicada, e um link.
-    "Dashboard (Fase 2) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais)",
+    "Dashboard (Fase 2/3) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais/Proximos episodios)",
     !dashboardBody.includes("Bombando Agora<") &&
       !dashboardBody.includes("Lancamentos<") &&
       !dashboardBody.includes("Watch Next<") &&
       !dashboardBody.includes("Suas Estatisticas<") &&
-      !dashboardBody.includes("Descobrir mais<"),
+      !dashboardBody.includes("Descobrir mais<") &&
+      !dashboardBody.includes("Proximos episodios<"),
     null
   );
-  check("Dashboard (Fase 2) exibe Atalhos rapidos para Estatisticas/Recap/Conquistas/Minha Lista/Assistir a seguir", dashboardBody.includes("Atalhos rapidos"), dashboardAuth.status);
+  check("Dashboard (Fase 2) exibe Atalhos rapidos", dashboardBody.includes("Atalhos rapidos"), dashboardAuth.status);
   check("Dashboard (Fase 2) exibe a secao Atividade recente", dashboardBody.includes("Atividade recente"), dashboardAuth.status);
+  check("Dashboard (Fase 6) exibe a secao Novos para voce", dashboardBody.includes("Novos para voce"), dashboardAuth.status);
+  check("Dashboard (Fase 7/8) exibe a Agenda resumida", dashboardBody.includes("Agenda resumida"), dashboardAuth.status);
   check(
     "Regra global de grids (Fase 10): nenhuma classe auto-fit/auto-fill e usada em nenhuma listagem",
     !dashboardBody.includes("auto-fit") && !dashboardBody.includes("auto-fill"),
