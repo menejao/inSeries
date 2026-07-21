@@ -38,18 +38,28 @@ function responsiveItemVisibility(index: number) {
   return undefined;
 }
 
-/** Fase 3 — cabecalho contextual: uma frase, nunca metricas decorativas nem gamificacao. */
+/**
+ * Fase 3/8 — cabecalho contextual: uma frase, nunca metricas decorativas nem gamificacao.
+ * "Usuario novo/sem series" (Fase 8) e o primeiro branch: sem isso, cai no fallback generico
+ * "Nao ha lancamentos pendentes hoje" — tecnicamente verdade, mas confuso pra quem nunca
+ * acompanhou nada (sugere que ha algo sendo monitorado, so que em dia).
+ */
 function getContextualMessage({
+  hasTrackedSeries,
   newCount,
   hasContinueWatching,
   pendingCount,
   nextAgendaGroupKey
 }: {
+  hasTrackedSeries: boolean;
   newCount: number;
   hasContinueWatching: boolean;
   pendingCount: number;
   nextAgendaGroupKey: "hoje" | "amanha" | "estaSemana" | null;
 }) {
+  if (!hasTrackedSeries) {
+    return "Bem-vindo ao inSeries! Explore o catalogo e comece a acompanhar suas series.";
+  }
   if (newCount > 0) {
     return `Voce tem ${newCount} episodio${newCount > 1 ? "s" : ""} novo${newCount > 1 ? "s" : ""} desde sua ultima visita.`;
   }
@@ -83,6 +93,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const agendaGroups = groupUpcomingForAgenda(calendarData.upcoming);
 
   const contextualMessage = getContextualMessage({
+    hasTrackedSeries: continueWatching.hasTrackedSeries,
     newCount: sinceLastVisit.length,
     hasContinueWatching: continueWatching.items.length > 0,
     pendingCount: overdue.length,
@@ -98,68 +109,79 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
 
       <ContinueWatchingSection continueWatching={continueWatching} />
 
-      <section className="space-y-4" aria-label="Novos para voce">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-              <BellIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-              Novos para voce
-            </h2>
-            <p className="section-copy mt-1">Episodios de series que voce acompanha, lancados desde sua ultima visita.</p>
-          </div>
-          <Link href="/calendar" className="link-accent shrink-0 text-sm">
-            Ver todos
-          </Link>
-        </div>
-        {sinceLastVisit.length ? (
-          <div className="flex flex-col gap-2">
-            {sinceLastVisit.map((episode, index) => (
-              <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
-                <EpisodeActionRow
-                  episode={episode}
-                  dateLabel={formatRelativeDate(episode.airedAt)}
-                  badge={{ label: "Novo", variant: "success" }}
-                  action={{ kind: "continue", label: "Assistir", href: `/series/${episode.series.slug}/episode/${episode.id}` }}
-                />
+      {/*
+        Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — "usuario novo"/"usuario sem
+        series": sem nenhuma serie acompanhada, sinceLastVisit/overdue/upcoming sao sempre
+        vazios por construcao (derivam de UserSeriesStatus). Empilhar 3 EmptyState repetindo
+        "acompanhe uma serie" depois do CTA que ContinueWatchingSection ja mostra vira parede
+        de cards vazios (proibido pelo ticket) — Novos/Agenda somem inteiras nesse caso.
+      */}
+      {continueWatching.hasTrackedSeries ? (
+        <>
+          <section className="space-y-4" aria-label="Novos para voce">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                  <BellIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                  Novos para voce
+                </h2>
+                <p className="section-copy mt-1">Episodios de series que voce acompanha, lancados desde sua ultima visita.</p>
               </div>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <EmptyState
-              icon={<BellIcon className="h-6 w-6" aria-hidden />}
-              title="Nenhum episodio novo"
-              copy="Quando uma serie que voce acompanha lancar um episodio, ele aparece aqui."
-            />
-          </Card>
-        )}
-      </section>
+              <Link href="/calendar" className="link-accent shrink-0 text-sm">
+                Ver todos
+              </Link>
+            </div>
+            {sinceLastVisit.length ? (
+              <div className="flex flex-col gap-2">
+                {sinceLastVisit.map((episode, index) => (
+                  <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
+                    <EpisodeActionRow
+                      episode={episode}
+                      dateLabel={formatRelativeDate(episode.airedAt)}
+                      badge={{ label: "Novo", variant: "success" }}
+                      action={{ kind: "continue", label: "Assistir", href: `/series/${episode.series.slug}/episode/${episode.id}` }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={<BellIcon className="h-6 w-6" aria-hidden />}
+                  title="Nenhum episodio novo"
+                  copy="Quando uma serie que voce acompanha lancar um episodio, ele aparece aqui."
+                />
+              </Card>
+            )}
+          </section>
 
-      <section className="space-y-4" aria-label="Agenda resumida">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-              <CalendarIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-              Agenda resumida
-            </h2>
-            <p className="section-copy mt-1">O que estreia nos proximos 7 dias.</p>
-          </div>
-          <Link href="/calendar" className="link-accent shrink-0 text-sm">
-            Abrir calendario
-          </Link>
-        </div>
-        {agendaGroups.length ? (
-          <AgendaSummary groups={agendaGroups} />
-        ) : (
-          <Card>
-            <EmptyState
-              icon={<CalendarIcon className="h-6 w-6" aria-hidden />}
-              title="Nenhum lancamento previsto"
-              copy="Assim que uma serie que voce acompanha tiver um episodio agendado, ele aparece aqui."
-            />
-          </Card>
-        )}
-      </section>
+          <section className="space-y-4" aria-label="Agenda resumida">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                  <CalendarIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                  Agenda resumida
+                </h2>
+                <p className="section-copy mt-1">O que estreia nos proximos 7 dias.</p>
+              </div>
+              <Link href="/calendar" className="link-accent shrink-0 text-sm">
+                Abrir calendario
+              </Link>
+            </div>
+            {agendaGroups.length ? (
+              <AgendaSummary groups={agendaGroups} />
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={<CalendarIcon className="h-6 w-6" aria-hidden />}
+                  title="Nenhum lancamento previsto"
+                  copy="Assim que uma serie que voce acompanha tiver um episodio agendado, ele aparece aqui."
+                />
+              </Card>
+            )}
+          </section>
+        </>
+      ) : null}
 
       {overdue.length > 0 ? (
         <section className="space-y-4" aria-label="Pendencias acionaveis">

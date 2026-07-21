@@ -928,6 +928,17 @@ async function main() {
       String(dashboardEmptyContinueWatching.body).includes("Explorar catalogo"),
     dashboardEmptyContinueWatching.status
   );
+  check(
+    "Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01): usuario sem nenhuma serie acompanhada nao ve 'Novos para voce'/'Agenda resumida' (evita parede de empty states)",
+    !String(dashboardEmptyContinueWatching.body).includes("Novos para voce<") &&
+      !String(dashboardEmptyContinueWatching.body).includes("Agenda resumida<"),
+    null
+  );
+  check(
+    "Fase 8: cabecalho contextual do usuario novo diz 'Bem-vindo', nao o fallback generico de usuario com series em dia",
+    String(dashboardEmptyContinueWatching.body).includes("Bem-vindo ao inSeries"),
+    null
+  );
 
   // ---- Calendario: pessoal, global, proximo episodio, dashboard, filtros ----
   const seriesDetail = await request(jarA, "/api/catalog/series");

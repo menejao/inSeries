@@ -286,3 +286,29 @@ endpoint novo, só separar os formulários:
   Privacidade — a razão de separar os forms em primeiro lugar). 54 casos totais agora,
   carregando certo via `--list`.
 - **Não validado visualmente** — mesma limitação de sempre.
+
+**Fase 8 (Home/Dashboard — conteúdo adaptativo por estado) — resolvida na parte que faltava.**
+O Dashboard já tinha passado por 2 sprints dedicados antes deste ticket
+(HOME-EXPERIENCE-02/03) — estrutura de seções e dedup já resolvidos. O que a Fase 8 pede e
+ainda faltava: adaptar conteúdo pelo *estado do usuário* (novo/sem séries, com pendências,
+sem pendências, etc), não só pela presença/ausência de dado por seção isolada.
+
+- Achado real: usuário sem nenhuma série acompanhada via 3 `EmptyState` empilhados dizendo
+  a mesma coisa de formas diferentes ("Continuar assistindo" já tem CTA "Explorar catálogo",
+  mas "Novos para você" e "Agenda resumida" mostravam outro `EmptyState` cada — **proibido
+  explicitamente pelo ticket** ("Não criar uma parede de cards"), porque essas duas seções
+  são sempre vazias por construção quando `hasTrackedSeries` é falso (derivam de
+  `UserSeriesStatus`, que não existe pra esse usuário).
+- `dashboard-home.tsx`: "Novos para você"/"Agenda resumida" agora somem inteiras (não só o
+  conteúdo — a seção toda) quando `continueWatching.hasTrackedSeries` é falso. Sobra
+  Continuar Assistindo (com seu CTA) + Atividade recente (pode ter atividade de outros
+  usuários, útil mesmo sem série própria) + Atalhos rápidos — 3 seções em vez de 6 pro
+  primeiro acesso.
+- Cabeçalho contextual (`getContextualMessage`) ganhou o branch que faltava: sem isso, um
+  usuário novo caía no fallback "Não há lançamentos pendentes hoje" — tecnicamente certo,
+  mas engana (sugere que há algo sendo acompanhado, só que em dia). Agora é "Bem-vindo ao
+  inSeries! Explore o catálogo e comece a acompanhar suas séries."
+- `e2e/dashboard-new-user.spec.ts` (2 casos) + 2 checks novos em `scripts/smoke-test.ts`
+  (reaproveitando o usuário `usercwempty` que já existia pra outro teste) — 58 casos E2E
+  totais agora.
+- **Não validado visualmente** — mesma limitação de sempre.
