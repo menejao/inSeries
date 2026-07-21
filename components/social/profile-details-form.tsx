@@ -5,34 +5,20 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Avatar } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
 import { getInitials } from "@/lib/utils";
 
-type ProfileSettingsData = {
-  name: string;
-  username: string;
-  bio: string | null;
-  avatarUrl: string | null;
-  isProfilePrivate: boolean;
-  showWatchedSeries: boolean;
-  showWatchingSeries: boolean;
-  showLists: boolean;
-  showReviews: boolean;
-  showActivity: boolean;
-};
+type ProfileDetails = { name: string; username: string; bio: string | null; avatarUrl: string | null };
 
-const privacyToggles: Array<{ key: keyof ProfileSettingsData; label: string; description: string }> = [
-  { key: "isProfilePrivate", label: "Perfil privado", description: "Oculta tudo abaixo de quem nao e voce." },
-  { key: "showWatchingSeries", label: "Mostrar series assistindo", description: "Visivel no seu perfil publico." },
-  { key: "showWatchedSeries", label: "Mostrar series concluidas", description: "Visivel no seu perfil publico." },
-  { key: "showLists", label: "Mostrar listas publicas", description: "Visivel no seu perfil publico." },
-  { key: "showReviews", label: "Mostrar reviews publicas", description: "Visivel no seu perfil publico." },
-  { key: "showActivity", label: "Mostrar atividade", description: "Visivel no seu perfil publico." }
-];
-
-export function ProfileSettingsForm({ initial }: { initial: ProfileSettingsData }) {
+/**
+ * Fase 19 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — separado de ProfilePrivacyForm (antes
+ * era um unico form gigante, name+username+bio+avatar+6 toggles de privacidade num so
+ * submit). `PATCH /api/profile` ja aceita payload parcial (todo campo e `.optional()` em
+ * `lib/social/validation.ts`) — cada form so envia os campos do seu proprio dominio, sem
+ * precisar de endpoint novo.
+ */
+export function ProfileDetailsForm({ initial }: { initial: ProfileDetails }) {
   const router = useRouter();
   const { toast } = useToast();
   const nameId = useId();
@@ -41,10 +27,6 @@ export function ProfileSettingsForm({ initial }: { initial: ProfileSettingsData 
   const avatarId = useId();
   const [form, setForm] = useState(initial);
   const [isPending, startTransition] = useTransition();
-
-  function toggle(key: keyof ProfileSettingsData) {
-    setForm((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
 
   return (
     <form
@@ -60,13 +42,7 @@ export function ProfileSettingsForm({ initial }: { initial: ProfileSettingsData 
               name: form.name,
               username: form.username,
               bio: form.bio ?? "",
-              avatarUrl: form.avatarUrl ?? "",
-              isProfilePrivate: form.isProfilePrivate,
-              showWatchedSeries: form.showWatchedSeries,
-              showWatchingSeries: form.showWatchingSeries,
-              showLists: form.showLists,
-              showReviews: form.showReviews,
-              showActivity: form.showActivity
+              avatarUrl: form.avatarUrl ?? ""
             })
           });
 
@@ -139,22 +115,6 @@ export function ProfileSettingsForm({ initial }: { initial: ProfileSettingsData 
           maxLength={280}
           placeholder="Conte algo sobre voce"
         />
-      </div>
-
-      <div className="space-y-1 border-t border-border pt-5">
-        <p className="text-sm font-semibold text-ink">Privacidade</p>
-        <div className="divide-y divide-border">
-          {privacyToggles.map((item) => (
-            <div key={item.key} className="py-3">
-              <Switch
-                label={item.label}
-                description={item.description}
-                checked={Boolean(form[item.key])}
-                onChange={() => toggle(item.key)}
-              />
-            </div>
-          ))}
-        </div>
       </div>
 
       <Button type="submit" disabled={isPending} loading={isPending} className="w-full sm:w-auto">

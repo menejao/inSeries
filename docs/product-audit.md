@@ -263,3 +263,26 @@ existia.
   execução dos outros specs: carrega certo via `--list` (46 casos totais agora), não rodou de
   verdade por falta de servidor.
 - **Não validado visualmente** — mesma limitação de sempre (Docker indisponível).
+
+**Fase 19 (Perfil e Configurações) — resolvida na parte com dado real.** `/settings` era 1
+formulário só (`ProfileSettingsForm`): avatar+nome+username+bio+6 toggles de privacidade,
+1 botão "Salvar" pra tudo junto. Auditoria (Fase 1) já tinha marcado isso como o problema
+literal que a Fase 19 descreve ("página única longa"). `PATCH /api/profile` já aceitava
+payload parcial (todo campo `.optional()` em `lib/social/validation.ts`) — não foi preciso
+endpoint novo, só separar os formulários:
+
+- `components/social/profile-details-form.tsx` (nome/username/bio/avatar) +
+  `components/social/profile-privacy-form.tsx` (6 toggles) substituem o form único
+  (`profile-settings-form.tsx` apagado). Cada um salva só o próprio domínio — editar
+  privacidade não precisa mais reenviar nome/username/bio junto.
+- `/settings` (`app/settings/page.tsx`) reescrita com `Tabs` (`?tab=`, mesmo padrão de
+  `/feed`/`/calendar`): Perfil (default) / Privacidade / Aparência / Conta.
+- **Deliberadamente não criadas** as abas Notificações/Segurança/Dados/Integrações/
+  Acessibilidade que o ticket sugere — nenhuma delas tem dado ou funcionalidade real por
+  trás hoje; criar aba vazia seria interface desonesta, não simplificação. Ficam para quando
+  a funcionalidade de base existir.
+- `e2e/settings.spec.ts` — 4 casos novos (aba padrão, trocar aba sem sair da rota, aba
+  Aparência, e uma verificação real de que salvar Perfil não mexe nos toggles de
+  Privacidade — a razão de separar os forms em primeiro lugar). 54 casos totais agora,
+  carregando certo via `--list`.
+- **Não validado visualmente** — mesma limitação de sempre.
