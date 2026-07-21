@@ -86,6 +86,7 @@ export async function GlobalCalendar({
         items={episodes}
         emptyTitle="Nenhum lancamento no periodo"
         emptyCopy="Ajuste os filtros ou escolha outro periodo para ver lancamentos do catalogo."
+        initialVisible={10}
         renderItem={(episode) => (
           <Card key={episode.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>

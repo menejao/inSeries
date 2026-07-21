@@ -28,6 +28,7 @@ export async function PersonalCalendar({ userId }: { userId: string }) {
         emptyTitle="Sem lancamentos futuros"
         emptyCopy="Nao ha episodios futuros conhecidos para suas series no momento."
         renderItem={(episode) => <EpisodeCalendarCard key={episode.id} episode={episode} authenticated />}
+        initialVisible={5}
       />
       <CalendarSection
         title="Temporadas Futuras"
@@ -42,6 +43,7 @@ export async function PersonalCalendar({ userId }: { userId: string }) {
         emptyTitle="Tudo em dia"
         emptyCopy="Voce nao tem episodios ja lancados pendentes de assistir."
         renderItem={(episode) => <EpisodeCalendarCard key={episode.id} episode={episode} authenticated />}
+        initialVisible={5}
       />
       <CalendarSection
         title="Assistidos Recentemente"
@@ -49,6 +51,7 @@ export async function PersonalCalendar({ userId }: { userId: string }) {
         emptyTitle="Nada assistido nos ultimos dias"
         emptyCopy="Episodios marcados como assistidos recentemente aparecem aqui."
         renderItem={(episode) => <EpisodeCalendarCard key={episode.id} episode={episode} authenticated />}
+        initialVisible={5}
       />
     </div>
   );

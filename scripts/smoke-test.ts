@@ -996,8 +996,10 @@ async function main() {
 
   const dashboard = await request(jarA, "/");
   check(
-    "dashboard /me mostra secao Proximos episodios",
-    dashboard.status === 200 && String(dashboard.body).includes("Proximos episodios"),
+    // "Proximos episodios" foi renomeada pra "Agenda resumida" na sprint 03
+    // (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) - este check ficou desatualizado ate agora.
+    "dashboard / mostra secao Agenda resumida",
+    dashboard.status === 200 && String(dashboard.body).includes("Agenda resumida"),
     dashboard.status
   );
 

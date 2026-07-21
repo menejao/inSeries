@@ -312,3 +312,35 @@ sem pendências, etc), não só pela presença/ausência de dado por seção iso
   (reaproveitando o usuário `usercwempty` que já existia pra outro teste) — 58 casos E2E
   totais agora.
 - **Não validado visualmente** — mesma limitação de sempre.
+
+**Fase 9 (Acompanhamento) — já madura, sem ação.** `/me/minha-lista` já tinha, antes deste
+ticket, tudo que a Fase 9 pede explicitamente: 6 grupos (`WATCHING`/`WANT_TO_WATCH`/
+`PAUSED`/`COMPLETED`/`DROPPED`/`FAVORITES`), busca, filtro, ordenação e ações em lote
+(`MyListToolbar`/`MyListBulkBar`). Não fiz mudança aqui — o gap real que sobra
+(`MyListStatsSection`/`MyListDiscoverySection` duplicando `/me/stats`/`/recommendations`,
+já achado #5/#6 da auditoria) é uma decisão de unificação maior, não um bug pontual.
+
+**Fase 10 (Calendário) — parcialmente resolvida.** Achado real: 3 das 6 seções do calendário
+pessoal (`Atrasados`, `Próximos Lançamentos`, `Assistidos Recentemente`) empilhavam
+`EpisodeCalendarCard` (card cheio, poster+badge+ações) sem limite — `Atrasados` nem tinha
+cap na query (`getPersonalCalendarSections`, `lib/calendar/queries.ts`), podia crescer sem
+fim pra quem está muito atrasado. Exatamente a "grade ilegível"/"lista vertical muito longa"
+que o ticket pede pra evitar (Fase 10/25). O calendário global já tinha visualizações
+Hoje/Semana/Mês (`Tabs` em `components/calendar/global-calendar.tsx`) — a parte de
+"oferecer visualizações adequadas" já estava feita, só faltava o limite de itens.
+
+- `components/ui/expandable-list.tsx` — primitivo novo do Design System: mostra os N
+  primeiros itens (dado já carregado pelo Server Component, nenhuma query nova) + um
+  "Mostrar mais" que revela o resto no cliente, sem cortar dado de verdade.
+- `CalendarSection` (`components/calendar/calendar-section.tsx`) ganhou `initialVisible`
+  opcional — aplicado em `Atrasados`/`Próximos Lançamentos`/`Assistidos Recentemente`
+  (pessoal, 5 cada) e `Lançamentos` (global, 10).
+- Achado incidental corrigido: `scripts/smoke-test.ts` tinha um check checando
+  `"Proximos episodios"` no Dashboard — texto renomeado pra "Agenda resumida" desde a
+  sprint 03 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03), nunca atualizado, ficaria falhando
+  desde então se o smoke test rodasse de verdade.
+- **Não fiz** as visualizações agenda/semana/mês completas com grid de datas — mudança
+  maior, mais arriscada sem servidor pra validar visualmente. Ficou pra uma sessão com
+  Docker disponível.
+- `e2e/calendar.spec.ts` (3 casos) — 64 casos E2E totais agora.
+- **Não validado visualmente** — mesma limitação de sempre.
