@@ -66,7 +66,7 @@ async function registerHandler(request: Request) {
   incrementRegistration();
   logger.info("user_registered", { requestId, route: "auth.register", userId: user.id });
 
-  const response = NextResponse.json({ ok: true, next: "/me" }, { status: 201 });
+  const response = NextResponse.json({ ok: true, next: "/" }, { status: 201 });
   response.cookies.set(SESSION_COOKIE, token, getSessionCookieOptions());
   return response;
 }
