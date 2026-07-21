@@ -161,7 +161,15 @@ Fase 2 em diante deve começar. Pontos que exigem decisão explícita antes de q
    acompanhadas" do Dashboard (sprint 03) ainda linkava para `/me/watching` em vez do destino
    final — corrigido para `/me/minha-lista#grupo-watching` direto.
 2. `/watch-next` continua como página própria ou é descontinuada em favor do Dashboard?
-3. `/lists` e `/me/lists` são unificados numa rota com toggle, ou permanecem separados?
+3. ~~`/lists` e `/me/lists` são unificados numa rota com toggle, ou permanecem separados?~~
+   **Resolvido** — unificados em `/lists` com abas "Descobrir"/"Minhas listas"
+   (`?view=minhas`), reusando o `Tabs` já usado por `/feed`/`/calendar`. `app/me/lists/`
+   removido; `/me/lists` virou `legacyRedirects` em `middleware.ts` (mesmo padrão da
+   decisão #1) apontando para `/lists?view=minhas`, preservando bookmarks antigos e o
+   gate de autenticação que a rota já tinha. Achado incidental: `AddToListButton`
+   ("Criar sua primeira lista", `components/series/add-to-list-button.tsx`) linkava para
+   `/lists` (a view pública) em vez do destino de criação — bug pré-existente, corrigido
+   como parte da unificação.
 4. Testes automatizados (Fase 46/47) e Storybook (Fase 45) — investir em infraestrutura nova
    agora, ou adiar para depois da reformulação visual estar estável?
 5. Fonte própria (Fase 6/7) — decisão de identidade visual que precisa de aprovação antes de

@@ -16,7 +16,10 @@ const legacyRedirects: Record<string, string> = {
   "/me": "/",
   "/me/watching": "/me/minha-lista#grupo-watching",
   "/me/completed": "/me/minha-lista#grupo-completed",
-  "/me/watchlist": "/me/minha-lista#grupo-want_to_watch"
+  "/me/watchlist": "/me/minha-lista#grupo-want_to_watch",
+  // /lists e /me/lists unificados numa rota so (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01,
+  // Fase 2): "/lists" ganhou a aba "Minhas listas" via ?view=minhas.
+  "/me/lists": "/lists?view=minhas"
 };
 
 export async function middleware(request: NextRequest) {

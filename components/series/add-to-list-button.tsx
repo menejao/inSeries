@@ -35,7 +35,7 @@ export function AddToListButton({ seriesId, lists, authenticated }: { seriesId: 
 
   if (!lists.length) {
     return (
-      <Link href="/lists" className="inline-flex">
+      <Link href="/lists?view=minhas" className="inline-flex">
         <Button variant="secondary" size="md">
           <ListIcon className="h-4 w-4" />
           Criar sua primeira lista
