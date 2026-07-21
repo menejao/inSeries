@@ -30,7 +30,7 @@ export function ContinueWatchingCard({ item, priority = false }: { item: Continu
   const runtime = formatRuntime(item.episode.runtimeMinutes);
 
   return (
-    <div className="group relative isolate flex w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:h-60 sm:w-[440px] sm:flex-row">
+    <div className="group relative isolate flex h-[760px] w-[300px] shrink-0 snap-start flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:h-60 sm:w-[440px] sm:flex-row">
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100">
         <BackdropImage src={item.series.backdropUrl} alt="" imageClassName="opacity-25" />
         <div className="absolute inset-0 bg-gradient-to-r from-canvas via-canvas/70 to-canvas/30" />
