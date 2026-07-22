@@ -351,6 +351,22 @@ já explica o motivo de cada sugestão — `RecommendationCard` mostra `primaryR
 motor de recomendações, `lib/recommendations/scoring.ts`, nunca inventado na UI) — exatamente
 o que a Fase 11 pede ("porque você acompanha X", etc). Nenhuma mudança necessária.
 
+**Fase 13 (Temporadas/Episódios) — avaliada ao vivo, sem ação.** O risco apontado na Fase 1
+("tabela rígida no mobile") era leitura estática — checado ao vivo agora (Docker disponível):
+`/series/[id]/season/[season]` já renderiza `EpisodeRow` como card flex (`flex-col` no
+mobile, `flex-row` em `sm:`), não tabela. Confirmado em 375px: `scrollWidth === clientWidth`
+(zero overflow horizontal), 5 episódios renderizando corretamente. Já resolvido por uma
+sprint anterior (`INSERIES-SERIES-PAGE-PREMIUM-01`, comentário no próprio componente) antes
+deste ticket começar.
+
+**Fase 35 (Acessibilidade), checagem pontual do `Tabs` — sem ação.** A dúvida da Fase 1 era
+se nomear o componente "Tabs" sem ser um `role="tablist"` real confundiria a auditoria de
+a11y. Lendo o componente: já é o padrão correto pra navegação orientada a rota (`<nav
+aria-label>` + `<Link aria-current="page">`, não uma fake tablist) — exatamente o que o
+WAI-ARIA APG recomenda pra esse caso (tablist real é pra alternar painéis sem navegar,
+não é o caso aqui). Comentário no próprio arquivo já documenta a decisão. Nenhum bug de
+verdade, só nomenclatura que já tem uma explicação clara ao lado.
+
 **Fase 12 (Página da Série) — avaliada, achado pontual corrigido.** A página é a mais rica do
 app (hero, ações contextuais, progresso, temporadas, próximo lançamento, produção, timeline,
 reviews, listas, recomendações) e já segue boa parte do que a Fase 12 pede: ação contextual em
