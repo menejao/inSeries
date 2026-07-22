@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ExpandableList } from "@/components/ui/expandable-list";
 import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
+import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
 import { AlertCircleIcon, BellIcon, CalendarIcon } from "@/components/ui/icons";
@@ -9,20 +11,8 @@ import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
-import { cn, formatRelativeDate } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
-
-/**
- * Fase 6/9/10 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — limite de itens visiveis por
- * breakpoint (3 mobile / 4 tablet / 5 desktop) sem esconder a lista inteira em RSC: os 2
- * ultimos itens (indices 3 e 4) ganham `hidden sm:block`/`hidden lg:block`. `gap` (nao
- * `space-y`) porque elementos `hidden` nao devem herdar margem de irmao anterior.
- */
-function responsiveItemVisibility(index: number) {
-  if (index === 3) return "hidden sm:block";
-  if (index === 4) return "hidden lg:block";
-  return undefined;
-}
 
 /**
  * Fase 3/8 — cabecalho contextual: uma frase, nunca metricas decorativas nem gamificacao.
@@ -115,22 +105,26 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               </h2>
               <p className="section-copy mt-1">Episodios ja lancados que ainda pedem uma acao sua.</p>
             </div>
-            <Link href="/calendar" className="link-accent shrink-0 text-sm">
-              Ver tudo
-            </Link>
+            <div className="flex shrink-0 items-center gap-3">
+              {overdue.length > 1 ? (
+                <MarkAllWatchedButton episodeIds={overdue.map((episode) => episode.id)} count={overdue.length} />
+              ) : null}
+              <Link href="/calendar" className="link-accent text-sm">
+                Ver tudo
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            {overdue.map((episode, index) => (
-              <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
-                <EpisodeActionRow
-                  episode={episode}
-                  dateLabel={formatRelativeDate(episode.airedAt)}
-                  badge={{ label: "Pendente", variant: "warning" }}
-                  action={{ kind: "mark", label: "Marcar como assistido" }}
-                />
-              </div>
+          <ExpandableList initialVisible={5} itemLabel="pendencia" listClassName="flex flex-col gap-2">
+            {overdue.map((episode) => (
+              <EpisodeActionRow
+                key={episode.id}
+                episode={episode}
+                dateLabel={formatRelativeDate(episode.airedAt)}
+                badge={{ label: "Pendente", variant: "warning" }}
+                action={{ kind: "mark", label: "Marcar como assistido" }}
+              />
             ))}
-          </div>
+          </ExpandableList>
         </section>
       ) : null}
 
@@ -157,18 +151,17 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               </Link>
             </div>
             {sinceLastVisit.length ? (
-              <div className="flex flex-col gap-2">
-                {sinceLastVisit.map((episode, index) => (
-                  <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
-                    <EpisodeActionRow
-                      episode={episode}
-                      dateLabel={formatRelativeDate(episode.airedAt)}
-                      badge={{ label: "Novo", variant: "success" }}
-                      action={{ kind: "continue", label: "Assistir", href: `/series/${episode.series.slug}/episode/${episode.id}` }}
-                    />
-                  </div>
+              <ExpandableList initialVisible={5} itemLabel="episodio" listClassName="flex flex-col gap-2">
+                {sinceLastVisit.map((episode) => (
+                  <EpisodeActionRow
+                    key={episode.id}
+                    episode={episode}
+                    dateLabel={formatRelativeDate(episode.airedAt)}
+                    badge={{ label: "Novo", variant: "success" }}
+                    action={{ kind: "continue", label: "Assistir", href: `/series/${episode.series.slug}/episode/${episode.id}` }}
+                  />
                 ))}
-              </div>
+              </ExpandableList>
             ) : (
               <Card>
                 <EmptyState

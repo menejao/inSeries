@@ -560,3 +560,52 @@ asserts depois do redesign), `e2e/dashboard-and-calendar.spec.ts` (removida a as
 `e2e/dashboard-new-user.spec.ts` (o teste "usuario novo ainda ve Atalhos rapidos e Atividade
 recente" não fazia mais sentido — testava exatamente o que acabou de ser cortado — reescrito
 pra validar o que sobra pro usuário novo: "Continuar assistindo" com CTA "Explorar catálogo").
+
+**Interatividade nova — "Marcar todos como assistidos" em Pendências.** O redesign até aqui
+foi principalmente corte + reordenação; o único pedido do usuário que faltava atacar direto
+era "super interativo". `components/dashboard/mark-all-watched-button.tsx` (novo): dispara a
+mesma mutation de sempre (`POST /api/episodes/[id]/progress`) em paralelo pra todos os
+episódios de Pendências de uma vez, atrás de `ConfirmDialog` (marcar vários episódios —
+possivelmente de séries diferentes — de uma vez é dificil de desfazer, não é um clique casual
+como marcar 1 item). Só aparece quando há mais de 1 pendência (`overdue.length > 1`).
+Validado ao vivo: clique → dialog confirma "Marcar 5 episodios como assistidos?" → 5
+`POST /api/episodes/.../progress` em paralelo, todos 200 → Dashboard atualiza mostrando as
+novas pendências (temporada seguinte) sem reload de página.
+
+**Também aplicado**: `components/ui/expandable-list.tsx` (primitivo já existente da Fase 10,
+usado no Calendário) substituiu o hack antigo `responsiveItemVisibility` em "Pendências"/"Novos
+para você" — o hack só escondia os índices 3 e 4 via CSS (`hidden sm:block`/`hidden lg:block`),
+deixando índice 5+ sempre visível sem nenhum cap real; se um usuário tivesse muitas pendências
+a lista crescia sem limite, exatamente o "parede/lista vertical muito longa" que a Fase 10 já
+tinha resolvido pro Calendário. Agora ambas as seções usam "Mostrar mais N" como o Calendário.
+
+**Infra do smoke test — achado real de scheduling, corrigido.** Rodando o smoke test de
+verdade contra o servidor pra validar essas mudanças, achei que o disparo do Discovery Engine
+(`POST /api/admin/sync/discovery`, linha ~1593 do arquivo) vinha **antes** dos checks de
+Dashboard (linha ~2495) na ordem de execução do script — ou seja, toda vez que o smoke test
+rodava até o fim (ou tentava), o trabalho em segundo plano que o Discovery Engine agenda já
+tinha começado a saturar o `next dev` bem antes de o script chegar nos checks de Dashboard,
+Feed, Notificações, Admin etc. Na prática, ~50% do arquivo (tudo depois da linha 1593) nunca
+tinha sido validado de verdade por nenhuma rodada completa até agora — só parecia estar
+passando porque o script sempre quebrava ali no meio, sem chegar a rodar (nem falhar) o resto.
+Corrigido movendo o disparo do Discovery Engine (e do sync popular) pro fim do `main()`, logo
+antes do logout do admin — agora tudo mais roda e é validado primeiro, e só o disparo em si
+(sempre a última coisa) fica exposto ao risco de saturação.
+
+**Novo achado de performance, mesmo balde do Discovery Engine — não corrigido.** Com a ordem
+corrigida, o smoke test avançou bem mais longe que em qualquer rodada anterior (passou de
+Autenticação/Catálogo/Calendário/Fundação social/Feed até Notificações, tudo OK) — mas travou
+de verdade (~13min sem progresso, processo vivo, CPU quase zero) em
+`generateNewEpisodeAvailableNotifications()` (chamada direta, 2x seguidas, pra validar
+idempotência). Esse catálogo já recebeu vários syncs reais de TMDb nesta sessão (a Discovery
+Engine já rodou mais de uma vez) — a função provavelmente varre proporcionalmente ao tamanho
+do catálogo/base de usuários, e ficou lenta o bastante pra travar o smoke test na prática.
+Não é regressão de nenhuma mudança desta sessão nem do redesign do Dashboard — é a mesma
+categoria do achado do Discovery Engine (operação que nunca tinha sido testada contra um
+catálogo de tamanho real). Processo morto manualmente pra não bloquear o resto da sessão;
+fica documentado como característica de performance conhecida, não corrigida (fora de escopo).
+
+**Nova asserção adicionada**: valida a capacidade por trás do botão "Marcar todos" direto no
+smoke test (marca N episódios da Temporada 2 em paralelo via HTTP, confirma via Prisma que
+todos ficam `watched: true` sem se perder por corrida) — mais rápido e determinístico que
+tentar reconstruir a lista exata de Pendências do Dashboard via scraping de HTML.

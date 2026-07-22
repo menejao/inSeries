@@ -1590,22 +1590,10 @@ async function main() {
     adminSyncPage.status
   );
 
-  const adminTriggersDiscovery = await request(jarAdmin, "/api/admin/sync/discovery", { method: "POST" });
-  check(
-    "admin dispara o Discovery Engine; sem TMDB key retorna erro amigavel (nao quebra)",
-    adminTriggersDiscovery.status === 200 && Boolean(adminTriggersDiscovery.body?.summary),
-    adminTriggersDiscovery.body
-  );
-
   const userTriesTriggerSync = await request(jarA, "/api/admin/sync/popular", { method: "POST" });
   check("usuario comum nao pode disparar sync (403)", userTriesTriggerSync.status === 403, userTriesTriggerSync.body);
-
-  const adminTriggersSync = await request(jarAdmin, "/api/admin/sync/popular", { method: "POST" });
-  check(
-    "admin dispara sync popular; sem TMDB key retorna erro amigavel (nao quebra)",
-    adminTriggersSync.status === 200 && Boolean(adminTriggersSync.body?.summary),
-    adminTriggersSync.body
-  );
+  // adminTriggersDiscovery/adminTriggersSync (disparo real do Discovery Engine/sync popular)
+  // movidos pro fim do script - ver comentario perto de "Encerramento" mais abaixo.
 
   const adminUsersPage = await request(jarAdmin, "/admin/users");
   check(
@@ -2493,7 +2481,7 @@ async function main() {
   );
 
   const jarShell: CookieJar = { value: "" };
-  await registerUser(jarShell, "usershell");
+  const userShell = await registerUser(jarShell, "usershell");
   // Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) esconde "Novos para voce"/"Agenda
   // resumida"/"Pendencias" inteiras quando o usuario nao acompanha nenhuma serie
   // (hasTrackedSeries=false) - os checks abaixo de "usuario ativo ve o Dashboard completo"
@@ -2687,6 +2675,44 @@ async function main() {
     "Regra global de grids (Fase 10): secoes do Dashboard usam colunas fixas por breakpoint (grid-cols-*)",
     /grid-cols-\d/.test(dashboardBody) && /sm:grid-cols-\d|lg:grid-cols-\d/.test(dashboardBody),
     null
+  );
+
+  // Redesign completo do Dashboard: botao "Marcar todos" (MarkAllWatchedButton) dispara N
+  // chamadas em paralelo pra mesma mutation que ja existe - aqui valida a capacidade de
+  // servidor por baixo do botao (chamadas concorrentes do mesmo usuario/serie nao devem
+  // corromper progresso nem se perder), nao o clique em si (isso e o papel do Playwright).
+  // Usa episodios da Temporada 2 de "Serie Teste Um" direto do catalogo (ja aired, ja
+  // conhecidos) em vez de tentar recalcular a lista exata de "Pendencias" do Dashboard aqui.
+  const seasonTwoEpisodeIds: string[] =
+    catalog.body?.data?.[0]?.seasons?.find((season: Json) => season.number === 2)?.episodes?.map((episode: Json) => episode.id) ?? [];
+  check(
+    "catalogo (redesign completo) tem episodios de Temporada 2 suficientes pra testar marcar todos em paralelo",
+    seasonTwoEpisodeIds.length > 1,
+    seasonTwoEpisodeIds.length
+  );
+  const bulkMarkResults = await Promise.all(
+    seasonTwoEpisodeIds.map((episodeId) =>
+      request(jarShell, `/api/episodes/${episodeId}/progress`, {
+        method: "POST",
+        body: JSON.stringify({ episodeId, watched: true })
+      })
+    )
+  );
+  check(
+    "Marcar todos em paralelo (redesign completo): todas as chamadas concorrentes retornam 200",
+    bulkMarkResults.every((response) => response.status === 200),
+    bulkMarkResults.map((response) => response.status)
+  );
+  const shellUser = await prisma.user.findUnique({ where: { username: userShell.username } });
+  const watchedAfterBulk = shellUser
+    ? await prisma.userEpisodeProgress.count({
+        where: { userId: shellUser.id, episodeId: { in: seasonTwoEpisodeIds }, watched: true }
+      })
+    : -1;
+  check(
+    "Marcar todos em paralelo: todos os episodios ficam marcados como assistidos, nenhum se perde por corrida",
+    watchedAfterBulk === seasonTwoEpisodeIds.length,
+    watchedAfterBulk
   );
 
 
@@ -3143,6 +3169,28 @@ async function main() {
     null
   );
   await request(jarProfile, "/api/profile", { method: "PATCH", body: JSON.stringify({ showWatchingSeries: true, showWatchedSeries: true }) });
+
+  // Disparo real do Discovery Engine/sync popular: fica por ultimo de proposito. Achado
+  // rodando o smoke test de verdade contra servidor local com catalogo grande - o endpoint
+  // em si responde rapido (o `summary` volta na hora), mas o trabalho em segundo plano que
+  // ele agenda (~442 chamadas reais ao TMDb, ~10min) satura o processo single-thread do
+  // `next dev`, e QUALQUER requisicao HTTP depois dele no mesmo processo acaba estourando em
+  // HeadersTimeoutError - nao so as proximas 2-3, o resto do script inteiro (na pratica, mais
+  // ou menos metade dos checks, tudo que vinha depois deste ponto no arquivo). Empurrar pro
+  // fim garante que tudo mais ja foi validado antes de arriscar essa saturacao.
+  const adminTriggersDiscovery = await request(jarAdmin, "/api/admin/sync/discovery", { method: "POST" });
+  check(
+    "admin dispara o Discovery Engine; sem TMDB key retorna erro amigavel (nao quebra)",
+    adminTriggersDiscovery.status === 200 && Boolean(adminTriggersDiscovery.body?.summary),
+    adminTriggersDiscovery.body
+  );
+
+  const adminTriggersSync = await request(jarAdmin, "/api/admin/sync/popular", { method: "POST" });
+  check(
+    "admin dispara sync popular; sem TMDB key retorna erro amigavel (nao quebra)",
+    adminTriggersSync.status === 200 && Boolean(adminTriggersSync.body?.summary),
+    adminTriggersSync.body
+  );
 
   await request(jarAdmin, "/api/auth/logout", { method: "POST" });
 
