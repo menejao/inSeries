@@ -9,6 +9,7 @@ import { SeriesLogoOrTitle } from "@/components/media/series-logo";
 import { CollectionTagList } from "@/components/media/collection-tag-badge";
 import { ProviderList } from "@/components/media/provider-badge";
 import { SeriesStatusActions } from "@/components/series/series-status-actions";
+import { InfoRow } from "@/components/series/info-row";
 import { SeriesContinueWatching } from "@/components/series/series-continue-watching";
 import { SeasonCard } from "@/components/series/season-card";
 import { ProductionSection } from "@/components/series/production-section";
@@ -318,15 +319,6 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       ) : null}
 
       <SeriesRecommendationsSection recommendations={recommendations} />
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-subtle">{label}</dt>
-      <dd className="mt-0.5 font-medium text-ink">{value}</dd>
     </div>
   );
 }

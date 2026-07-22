@@ -1,17 +1,9 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InfoRow } from "@/components/series/info-row";
 import { getStatusLabel } from "@/lib/catalog/status-labels";
 import type { Series } from "@/lib/types";
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-subtle">{label}</dt>
-      <dd className="mt-0.5 font-medium text-ink">{value}</dd>
-    </div>
-  );
-}
 
 /**
  * Fase 6 (INSERIES-SERIES-PAGE-PREMIUM-01) — every field is independently conditional

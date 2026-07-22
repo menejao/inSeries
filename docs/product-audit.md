@@ -344,3 +344,34 @@ Hoje/Semana/Mês (`Tabs` em `components/calendar/global-calendar.tsx`) — a par
   Docker disponível.
 - `e2e/calendar.spec.ts` (3 casos) — 64 casos E2E totais agora.
 - **Não validado visualmente** — mesma limitação de sempre.
+
+**Fase 11 (Catálogo e Descoberta) — já madura, sem ação.** `/series` já tem busca/filtro/
+ordenação/paginação real (`Filters`, `Pagination`, `DEFAULT_PAGE_SIZE=12`). `/recommendations`
+já explica o motivo de cada sugestão — `RecommendationCard` mostra `primaryReason` (vem do
+motor de recomendações, `lib/recommendations/scoring.ts`, nunca inventado na UI) — exatamente
+o que a Fase 11 pede ("porque você acompanha X", etc). Nenhuma mudança necessária.
+
+**Fase 12 (Página da Série) — avaliada, achado pontual corrigido.** A página é a mais rica do
+app (hero, ações contextuais, progresso, temporadas, próximo lançamento, produção, timeline,
+reviews, listas, recomendações) e já segue boa parte do que a Fase 12 pede: ação contextual em
+destaque no hero ("Continuar assistindo" só aparece quando há o quê continuar), metadados TMDB
+compactados numa `ProductionSection` só-quando-tem-dado (`Card` inteira retorna `null` se
+nenhum campo existe), nunca dominando a tela. Redesenho completo da página é risco grande demais
+pra tentar sem servidor pra validar visualmente — não tentado.
+
+- Achado real, pequeno: `InfoRow` (par `<dt>`/`<dd>`) estava definido **duplicado, byte a
+  byte**, em `app/series/[id]/page.tsx` (uso local) e `components/series/production-section.tsx`
+  — extraído pra `components/series/info-row.tsx`, os dois agora importam o mesmo componente.
+- **Não validado visualmente** — mesma limitação de sempre.
+
+---
+
+**Corte por hoje.** Fases 9/11 vieram "já maduras, sem ação" e a Fase 12 rendeu só um achado
+pequeno de dedup — sinal de que o que sobra fácil de achar sem rodar o app de verdade está
+ficando raro. As fases que restam (13-18, 20-44, 48) são majoritariamente redesenho visual de
+página inteira (temporadas/episódios, Feed, Listas, Estatísticas, Recap, Conquistas, Admin,
+Auth/Onboarding) ou trabalho transversal que precisa de inspeção visual real pra não ser
+arriscado (grids, responsividade em breakpoint real, motion, a11y validada de verdade,
+Storybook). Continuar no modo "achar bug pontual por leitura de código" tem retorno cada vez
+menor a partir daqui — o próximo salto de valor real provavelmente exige resolver o Docker
+Desktop local (mesmo bloqueio desde a primeira sessão deste ticket) pra validar visualmente.
