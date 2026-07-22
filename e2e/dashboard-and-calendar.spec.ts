@@ -18,6 +18,16 @@ async function registerAndLogin(page: import("@playwright/test").Page) {
 
 test("Dashboard mostra as secoes operacionais esperadas", async ({ page }) => {
   await registerAndLogin(page);
+
+  // Fase 8 esconde "Novos para voce"/"Agenda resumida" pra quem nao acompanha nenhuma
+  // serie (dashboard-new-user.spec.ts cobre esse caso) - aqui o cenario e usuario ativo,
+  // entao precisa comecar a acompanhar uma serie antes de checar as secoes operacionais.
+  await page.goto("/series");
+  await page.locator('a[href^="/series/"]').first().click();
+  await expect(page).toHaveURL(/\/series\/.+/);
+  await page.getByRole("button", { name: "Quero assistir" }).click();
+  await expect(page.getByText("Status atualizado")).toBeVisible();
+
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Continuar assistindo" })).toBeVisible();
@@ -28,6 +38,15 @@ test("Dashboard mostra as secoes operacionais esperadas", async ({ page }) => {
 
 test("usuario abre o calendario a partir do Dashboard", async ({ page }) => {
   await registerAndLogin(page);
+
+  // "Abrir calendario" vive dentro da secao "Agenda resumida", que so aparece pra quem
+  // acompanha alguma serie (Fase 8) - precisa comecar a acompanhar antes.
+  await page.goto("/series");
+  await page.locator('a[href^="/series/"]').first().click();
+  await expect(page).toHaveURL(/\/series\/.+/);
+  await page.getByRole("button", { name: "Quero assistir" }).click();
+  await expect(page.getByText("Status atualizado")).toBeVisible();
+
   await page.goto("/");
 
   await page.getByRole("link", { name: "Abrir calendario" }).click();

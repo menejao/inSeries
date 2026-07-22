@@ -44,6 +44,19 @@ export async function middleware(request: NextRequest) {
   const forwardedHeaders = new Headers(request.headers);
   forwardedHeaders.set(REQUEST_ID_HEADER, requestId);
 
+  // Checado antes do gate de protectedRoutes: "/watch-next" nunca foi adicionado a
+  // protectedRoutes (nao precisa mais de auth propria - "/" ja trata anonimo vs
+  // autenticado), entao o `return` antecipado logo abaixo pra rotas nao-protegidas nunca
+  // alcancava este bloco quando ele vinha depois - 404 real (app/watch-next/ nao existe
+  // mais), nunca redirecionava. Achado rodando o smoke test de verdade contra servidor
+  // local (Docker disponivel outra vez). Os alvos de /me/watching|completed|watchlist|lists
+  // continuam protegidos no proprio destino (prefixo "/me" ainda em protectedRoutes, ou
+  // requireUser() dentro da pagina para /lists?view=minhas) - nenhum buraco de seguranca.
+  const legacyTarget = legacyRedirects[pathname];
+  if (legacyTarget) {
+    return withRequestId(NextResponse.redirect(new URL(legacyTarget, request.url)));
+  }
+
   if (!isProtected && !isAdminRoute) {
     return withRequestId(NextResponse.next({ request: { headers: forwardedHeaders } }));
   }
@@ -57,11 +70,6 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminRoute && !adminRoles.has(session.role ?? "USER")) {
     return withRequestId(NextResponse.redirect(new URL("/", request.url)));
-  }
-
-  const legacyTarget = legacyRedirects[pathname];
-  if (legacyTarget) {
-    return withRequestId(NextResponse.redirect(new URL(legacyTarget, request.url)));
   }
 
   return withRequestId(NextResponse.next({ request: { headers: forwardedHeaders } }));

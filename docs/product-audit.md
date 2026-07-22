@@ -375,3 +375,125 @@ arriscado (grids, responsividade em breakpoint real, motion, a11y validada de ve
 Storybook). Continuar no modo "achar bug pontual por leitura de código" tem retorno cada vez
 menor a partir daqui — o próximo salto de valor real provavelmente exige resolver o Docker
 Desktop local (mesmo bloqueio desde a primeira sessão deste ticket) pra validar visualmente.
+
+---
+
+## Docker disponível — primeira validação ao vivo real do ticket
+
+O bloqueio (Docker Desktop não subia) se resolveu do lado do usuário entre sessões. Primeira
+vez desde o início deste ticket com `npm run dev` + Postgres real + `npm run smoke:test`
+rodando contra servidor de verdade — não só leitura de código/`--list`.
+
+**Setup**: `docker compose up -d` (porta 5433, já corrigida), `npx prisma migrate deploy`
+(precisou de `DATABASE_URL_UNPOOLED` no `.env` — variável que faltava, adicionada espelhando
+`DATABASE_URL`), `npm run seed:admin` + `npm run seed:dev`, `npm run dev` via
+`.claude/launch.json` (criado nesta sessão).
+
+**2 bugs reais achados e corrigidos** — só existem porque finalmente tinha servidor pra achar:
+
+1. **`/watch-next` retornava 404 real**, não o redirect esperado. Causa: `middleware.ts`
+   fazia `if (!isProtected && !isAdminRoute) return NextResponse.next()` **antes** de checar
+   `legacyRedirects` — como `/watch-next` foi removido de `protectedRoutes` de propósito
+   (Fase 2, não precisa mais de gate próprio), o `return` antecipado nunca deixava a
+   requisição chegar no redirect. `app/watch-next/` não existe mais → 404 puro do Next.
+   Corrigido: `legacyRedirects` agora é checado primeiro, incondicionalmente. Os alvos de
+   `/me/watching`/`/me/completed`/`/me/watchlist`/`/me/lists` continuam protegidos no próprio
+   destino (prefixo `/me` ainda gateado, ou `requireUser()` dentro da página) — nenhum buraco
+   de segurança introduzido. Confirmado ao vivo: `curl` foi de 404 pra `307 → /`.
+2. **`scripts/smoke-test.ts` não é determinístico com catálogo não-limpo.** O banco local
+   tinha catálogo real sincronizado de sessão bem anterior (persistido no volume Docker),
+   misturado com os 5 seeds de `seed:dev`. Todo check que assumia "a primeira série do
+   catálogo é `Serie Teste Um`" ou comparava posição relativa entre as 5 séries de teste
+   quebrava, porque séries reais (`प्रीतम और पेड्रो`, `O Incrível Circo Digital`, etc.)
+   entravam na paginação/ordenação/busca no meio. 6 checks corrigidos escopando pra
+   `?q=Serie+Teste` (ou título completo, no caso da busca "Cinco" que colidia com uma série
+   real). Nenhum dos dois é regressão desta sprint — a fragilidade dos testes sempre existiu,
+   só nunca tinha sido exercitada contra um banco não-limpo.
+
+**Resultado do smoke test** (múltiplas rodadas, iterando os fixes acima): **200/200 checks
+passando, 0 FAIL**, cobrindo autenticação, catálogo, busca, calendário, Dashboard, listas,
+reviews, follows, notificações, moderação admin — a maior parte da superfície HTTP do app,
+incluindo boa parte das mudanças desta sprint (dedup, unificação de listas, fusão do
+watch-next, Command Palette indiretamente via `/api/search`).
+
+**Achado de performance, não corrigido** (fora de escopo desta sprint, mas documentado):
+disparar o Discovery Engine (`POST /api/admin/sync/discovery`) contra um catálogo grande faz
+442 requisições reais ao TMDb e leva ~10 minutos rodando no mesmo processo Node single-thread
+do `next dev` — durante esse tempo o servidor fica praticamente sem responder a mais nada
+(um `GET /api/health` isolado levou 14.7s). Isso derrubou 3 tentativas seguidas do smoke test
+completo com `HeadersTimeoutError` bem depois do trigger, sempre no mesmo ponto. Não é bug de
+produto (endpoint responde rápido e corretamente ao cliente que disparou); é uma
+característica real de performance do Discovery Engine sob carga de catálogo grande, que só
+apareceu por ter, pela primeira vez, um catálogo não-trivial disponível pra testar.
+
+**3º bug real achado e corrigido — Fase 8, `hasTrackedSeries` falso negativo.**
+`getWatchNextForUser` (`lib/watch-next/queries.ts`) calculava `hasTrackedSeries =
+statuses.length > 0`, mas `statuses` já vinha filtrado por `ELIGIBLE_STATES =
+["WATCHING", "WANT_TO_WATCH"]`. Quando o usuário marca o último episódio pendente da única
+série que acompanha, `toggleEpisodeProgress` (`lib/progress/mutations.ts`) promove o status
+pra `COMPLETED` automaticamente — some do filtro, `hasTrackedSeries` virava `false`. Efeito:
+o Dashboard (Fase 8) mostrava "Bem-vindo ao inSeries! Explore o catálogo..." pra quem acabou
+de terminar de assistir a única série que tinha. Corrigido com uma segunda query
+(`prisma.userSeriesStatus.count({ where: { userId } })`, sem filtro de estado) rodando em
+paralelo à query principal — `hasTrackedSeries` agora reflete "o usuário já rastreou algo,
+em qualquer estado", não só "tem algo pendente agora". Achado pelos próprios asserts do smoke
+test (`serie some da lista (mas o usuario continua tendo series acompanhadas)`), confirmados
+como bug real (não sujeira de banco) lendo o código da query.
+
+**Playwright — suíte real rodada contra servidor de verdade, 8 rodadas até estabilizar.**
+Primeiras 3 rodadas: praticamente tudo falhando (3/32, depois 3/32 de novo, depois 18/32) —
+investigado a fundo em vez de aceitar como "flakiness":
+
+1. **Servidor `next dev` não aguenta os 6 workers paralelos do Playwright.** `fullyParallel:
+   true` sem `workers` fixo usa 1 worker por core (6 aqui). Contra `next build` +
+   `next start` isso seria trivial, mas `next dev` compila rotas sob demanda e é
+   single-thread — 6 navegadores batendo nele ao mesmo tempo estoura os timeouts de 30s da
+   suíte inteira. Rodando com `--workers=1` o resultado saltou de 3/32 pra 14/32 (depois 18,
+   depois 30) na mesma leva de specs, sem nenhuma mudança de produto. Não é bug de produto —
+   é uma característica real de `next dev` sob concorrência, só visível tendo servidor de
+   verdade pela primeira vez. Runs futuras de Playwright local devem usar `--workers=1`
+   (ou validar contra `next build && next start`, que não tem essa limitação).
+2. **6 specs usavam `registerViaApi(request)` com o fixture `request` avulso do Playwright**
+   (`accessibility-and-mobile`, `calendar`, `command-palette`, `dashboard-new-user`,
+   `mobile-bottom-nav`, `settings`) — um `APIRequestContext` independente do `page`, com
+   cookie jar próprio. O cookie de sessão do registro nunca chegava no browser context do
+   `page`, então todo `page.goto("/")` seguinte carregava como visitante anônimo (Landing,
+   sem Sidebar/Dashboard) mesmo com o registro retornando 201. Bug de infra de teste
+   pré-existente (nunca detectado por falta de servidor real), não de produto — corrigido
+   trocando `request` por `page.request` (mesmo cookie jar do `page`) nos 6 arquivos.
+3. **`dashboard-and-calendar.spec.ts` ficou desatualizado em relação à Fase 8.** 2 dos 3
+   testes registravam um usuário zerado (sem nenhuma série) e esperavam ver "Novos para
+   você"/"Agenda resumida" — seções que a própria Fase 8 (commit `866d887`, sessão anterior)
+   passou a esconder de propósito pra esse exato estado, evitando parede de empty state.
+   Corrigido: os 2 testes agora começam a acompanhar uma série (mesmo fluxo de
+   `catalog-and-tracking.spec.ts`) antes de checar as seções operacionais.
+4. **`command-palette.spec.ts`, busca por texto solto sem escopo.** O check de resultados
+   agrupados usava `page.getByText(/Series|Usuarios|Listas|.../)` na página inteira — o modo
+   estrito do Playwright estourava porque o mesmo regex casava com elementos fora do palette
+   (o logo "inSeries" contém a substring "Series", o link "Listas" da sidebar, etc.).
+   Corrigido escopando a busca ao `listbox` de resultados do próprio palette
+   (`role="listbox" aria-label="Resultados"`).
+5. **`command-palette.spec.ts`, corrida de hidratação no Ctrl+K.** O atalho global só é
+   registrado depois do client component hidratar; testes que mandavam `Control+k`
+   imediatamente após `page.goto("/")` às vezes corriam na frente da hidratação (falha
+   intermitente, não determinística — mesmo teste passava numa rodada e falhava na
+   seguinte). Corrigido esperando o botão "Buscar (Ctrl+K)" do header ficar visível (sinal
+   de hidratação completa do mesmo componente) antes de mandar o atalho.
+6. **Snapshots de `visual.spec.ts` desatualizados.** As 3 baselines tinham sido geradas mais
+   cedo nesta sessão, antes do Discovery Engine terminar um sync real completo — a Landing
+   muda de altura conforme o catálogo cresce. Baselines apagadas e regeneradas contra o
+   estado final do catálogo.
+
+**Resultado final, rodada isolada (`--workers=1`, sem nenhum outro processo tocando o
+servidor): 31/32 passando.** O único restante — `visual.spec.ts` "Landing page (desktop)" —
+oscila ~46px de altura entre execuções (ratio 0.03, limite configurado é 0.02); não achamos
+causa determinística em fonte/conteúdo estático, e não é regressão de nenhuma mudança desta
+sprint. Fica documentado como limitação conhecida de snapshot full-page contra uma Landing
+com dado de catálogo ao vivo — resolver de verdade pediria mascarar as regiões dinâmicas ou
+fixar os dados do teste, fora do escopo desta rodada de validação.
+
+**Screenshot/visual pixel-a-pixel**: a ferramenta de browser deste ambiente não conseguiu
+tirar screenshot (timeout consistente em `computer{action:"screenshot"}`, testado em mais de
+uma página) — mas `read_page`/`get_page_text` confirmaram conteúdo real renderizando
+corretamente (Landing com catálogo real, Sidebar/nav funcionais). Validação estrutural real
+substituiu validação de pixel nesta sessão.

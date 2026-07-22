@@ -19,24 +19,31 @@ const RECENT_THRESHOLD_DAYS = 3;
  * UserEpisodeProgress/UserSeriesStatus.
  */
 export async function getWatchNextForUser(userId: string, options: { limit?: number } = {}): Promise<WatchNextResult> {
-  const statuses = await prisma.userSeriesStatus.findMany({
-    where: { userId, state: { in: ELIGIBLE_STATES } },
-    include: {
-      series: {
-        include: {
-          seasons: {
-            orderBy: { number: "asc" },
-            include: {
-              episodes: {
-                orderBy: { number: "asc" },
-                include: { progress: { where: { userId } } }
+  const [statuses, trackedSeriesCount] = await Promise.all([
+    prisma.userSeriesStatus.findMany({
+      where: { userId, state: { in: ELIGIBLE_STATES } },
+      include: {
+        series: {
+          include: {
+            seasons: {
+              orderBy: { number: "asc" },
+              include: {
+                episodes: {
+                  orderBy: { number: "asc" },
+                  include: { progress: { where: { userId } } }
+                }
               }
             }
           }
         }
       }
-    }
-  });
+    }),
+    // Fase 8: "has the user ever tracked anything" must include COMPLETED/DROPPED/PAUSED too —
+    // `statuses` above is scoped to ELIGIBLE_STATES only, so a user whose one series just
+    // auto-completed (last episode marked watched, see lib/progress/mutations.ts) would
+    // otherwise read as hasTrackedSeries: false and get shown the brand-new-user welcome copy.
+    prisma.userSeriesStatus.count({ where: { userId } })
+  ]);
 
   const now = new Date();
   const items: WatchNextItem[] = [];
@@ -86,6 +93,6 @@ export async function getWatchNextForUser(userId: string, options: { limit?: num
 
   return {
     items: options.limit ? items.slice(0, options.limit) : items,
-    hasTrackedSeries: statuses.length > 0
+    hasTrackedSeries: trackedSeriesCount > 0
   };
 }

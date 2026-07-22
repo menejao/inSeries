@@ -5,16 +5,23 @@ import { test, expect } from "@playwright/test";
  * (responsividade/acessibilidade). Login por API direta (mais rapido/estavel para specs que
  * nao testam o proprio formulario de login).
  */
-async function registerViaApi(request: import("@playwright/test").APIRequestContext) {
+/**
+ * Usa `page.request` (nao o fixture `request` avulso): ele compartilha o cookie jar do
+ * `page`, entao a sessao criada pelo registro fica valida pro `page.goto` seguinte. O
+ * fixture `request` avulso e um APIRequestContext independente - guardaria o cookie de
+ * sessao no proprio jar, nunca visivel pro browser context do `page` (achado rodando os
+ * specs de verdade contra servidor local, Docker disponivel).
+ */
+async function registerViaApi(page: import("@playwright/test").Page) {
   const suffix = Date.now().toString(36) + Math.floor(Math.random() * 1000);
   const user = { name: `Playwright ${suffix}`, username: `pwa11y${suffix}`, email: `pwa11y${suffix}@inseries.test`, password: "senha12345" };
-  const response = await request.post("/api/auth/register", { data: user });
+  const response = await page.request.post("/api/auth/register", { data: user });
   expect(response.ok()).toBeTruthy();
   return user;
 }
 
-test("Sidebar e navegavel inteiramente por teclado", async ({ page, request }) => {
-  await registerViaApi(request);
+test("Sidebar e navegavel inteiramente por teclado", async ({ page }) => {
+  await registerViaApi(page);
   await page.goto("/");
 
   const nav = page.getByRole("navigation", { name: "Navegacao principal" });
@@ -26,8 +33,8 @@ test("Sidebar e navegavel inteiramente por teclado", async ({ page, request }) =
   await expect(focused).toBeVisible();
 });
 
-test("Dashboard sem barra horizontal em 375px (mobile)", async ({ page, request }) => {
-  await registerViaApi(request);
+test("Dashboard sem barra horizontal em 375px (mobile)", async ({ page }) => {
+  await registerViaApi(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
@@ -35,8 +42,8 @@ test("Dashboard sem barra horizontal em 375px (mobile)", async ({ page, request 
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("Dashboard sem barra horizontal em 320px (mobile)", async ({ page, request }) => {
-  await registerViaApi(request);
+test("Dashboard sem barra horizontal em 320px (mobile)", async ({ page }) => {
+  await registerViaApi(page);
   await page.setViewportSize({ width: 320, height: 780 });
   await page.goto("/");
 

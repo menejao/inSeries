@@ -182,7 +182,12 @@ async function main() {
   const meBlocked = await request({ value: "" }, "/me");
   check("/me sem sessao redireciona (307/302)", meBlocked.status === 307 || meBlocked.status === 302, meBlocked.status);
 
-  const catalog = await request(jarA, "/api/catalog/series");
+  // `?q=Serie Teste` restringe ao pool determinístico de `npm run seed:dev` (5 séries,
+  // "Serie Teste Um".."Cinco") - sem isso, `data[0]` pegava o que estivesse por acaso em
+  // primeiro no catálogo inteiro, incluindo séries reais sincronizadas de sessões anteriores
+  // (não-deterministico, quebra todo assert que assume "Serie Teste Um" = tem episódio hoje/
+  // semana/temporada futura, propriedades exatas que só o seed garante).
+  const catalog = await request(jarA, "/api/catalog/series?q=Serie+Teste");
   const seriesId: string | undefined = catalog.body?.data?.[0]?.id;
   const episodeId: string | undefined = catalog.body?.data?.[0]?.seasons?.[0]?.episodes?.[0]?.id;
   check("catalogo retorna ao menos uma serie seedada", Boolean(seriesId), catalog.body);
@@ -195,9 +200,14 @@ async function main() {
   }
 
   // ---- Descoberta e busca: filtros de /series e /api/search ----
-  const seriesNoFilter = await request(jarA, "/series");
+  // `q=Serie Teste` escopa pro pool deterministico do seed:dev nos checks que comparam
+  // posicao relativa entre series - sem isso, catalogo real sincronizado em sessoes
+  // anteriores (persistido no volume do Postgres local) polui a paginacao/ordenacao e os
+  // asserts de indexOf ficam nao-deterministicos (achado rodando de verdade contra servidor
+  // local, unica vez nesta sprint que o Docker esteve disponivel).
+  const seriesNoFilter = await request(jarA, "/series?q=Serie+Teste");
   check(
-    "/series sem filtro lista series seedadas",
+    "/series sem filtro extra lista series seedadas",
     seriesNoFilter.status === 200 && String(seriesNoFilter.body).includes("Serie Teste Um"),
     seriesNoFilter.status
   );
@@ -238,7 +248,7 @@ async function main() {
     seriesByYear.status
   );
 
-  const seriesSortPopular = await request(jarA, "/series?sort=popular");
+  const seriesSortPopular = await request(jarA, "/series?q=Serie+Teste&sort=popular");
   const popularBody = String(seriesSortPopular.body);
   check(
     "/series?sort=popular ordena por popularidade desc",
@@ -246,7 +256,7 @@ async function main() {
     seriesSortPopular.status
   );
 
-  const seriesSortLatest = await request(jarA, "/series?sort=latest");
+  const seriesSortLatest = await request(jarA, "/series?q=Serie+Teste&sort=latest");
   const latestBody = String(seriesSortLatest.body);
   check(
     "/series?sort=latest ordena por data de estreia desc",
@@ -254,7 +264,7 @@ async function main() {
     seriesSortLatest.status
   );
 
-  const seriesSortTitle = await request(jarA, "/series?sort=title");
+  const seriesSortTitle = await request(jarA, "/series?q=Serie+Teste&sort=title");
   const titleBody = String(seriesSortTitle.body);
   check(
     "/series?sort=title ordena alfabeticamente",
@@ -262,7 +272,7 @@ async function main() {
     seriesSortTitle.status
   );
 
-  const seriesSortRating = await request(jarA, "/series?sort=rating");
+  const seriesSortRating = await request(jarA, "/series?q=Serie+Teste&sort=rating");
   const ratingBody = String(seriesSortRating.body);
   check(
     "/series?sort=rating ordena por nota desc (sem nota fica por ultimo)",
@@ -278,7 +288,10 @@ async function main() {
     apiSearchAll.body
   );
 
-  const apiSearchQuery = await request(jarA, "/api/search?type=series&q=Cinco");
+  // Titulo completo, nao so "Cinco": uma palavra solta pode bater com sinopse/keyword de
+  // alguma serie real sincronizada em sessao anterior (achado real rodando contra servidor
+  // local com catalogo nao-limpo - "O Incrivel Circo Digital" tambem batia com "Cinco").
+  const apiSearchQuery = await request(jarA, "/api/search?type=series&q=Serie+Teste+Cinco");
   check(
     "/api/search?type=series&q= filtra corretamente",
     apiSearchQuery.status === 200 &&
