@@ -10,6 +10,7 @@ import { AlertCircleIcon, BellIcon, CalendarIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
+import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
 import { formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
@@ -59,9 +60,16 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     getContinueWatchingForUser(user.id, { limit: 10 })
   ]);
 
+  // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — series com 0% de progresso nao
+  // contam como "continuidade" pro dedupe (Fase 7, INSERIES-DASHBOARD-HOME-EXPERIENCE-03):
+  // sem isso, o episodio delas nunca apareceria em nenhuma secao (excluido daqui por estar
+  // em `continueWatching`, mas tambem nao renderizado la porque o Hero/lista secundaria so
+  // mostra `started`) - um buraco onde o episodio simplesmente desaparecia do Dashboard.
+  const { started: continueWatchingStarted } = splitContinueWatchingByProgress(continueWatching.items);
+
   // Fase 7 — regra de exclusividade: Continuar Assistindo > Novos para voce > Pendencias > Agenda futura.
   const { sinceLastVisit, overdue } = dedupeDashboardEpisodes({
-    continueWatching: continueWatching.items,
+    continueWatching: continueWatchingStarted,
     sinceLastVisit: calendarData.sinceLastVisit,
     overdue: calendarData.overdue
   });
@@ -70,7 +78,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const contextualMessage = getContextualMessage({
     hasTrackedSeries: continueWatching.hasTrackedSeries,
     newCount: sinceLastVisit.length,
-    hasContinueWatching: continueWatching.items.length > 0,
+    hasContinueWatching: continueWatchingStarted.length > 0,
     pendingCount: overdue.length,
     nextAgendaGroupKey: agendaGroups[0]?.key ?? null
   });
@@ -97,7 +105,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
       */}
       {overdue.length > 0 ? (
         <section className="space-y-4" aria-label="Pendencias acionaveis">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div>
               <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
                 <AlertCircleIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />

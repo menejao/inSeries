@@ -79,10 +79,89 @@ Confirmado por leitura do restante da árvore de rotas: `/calendar`, `/series`, 
 `/series/[id]/episode/[episode]` — nenhum arquivo dessas rotas será tocado por este ticket.
 Links do Dashboard continuam apontando para elas sem alterar suas interfaces.
 
+## Fase 2/4/9 — Hero real + regra de progresso 0%
+
+**Decisão de arquitetura (Fase 17 — reusar componente compartilhado em vez de criar um
+paralelo):** `ContinueWatchingCard` (`components/continue-watching/continue-watching-card.tsx`)
+ganhou um prop `variant?: "default" | "hero"` opcional (default preserva o comportamento
+exato de antes). `variant="hero"` é usado exclusivamente pelo item de maior prioridade no
+Dashboard: `w-full` (não mais o tamanho fixo de carrossel), backdrop sempre visível (não só
+no hover), tipografia maior (`text-2xl sm:text-3xl` no título), botões `size="md"`, e
+`role="group"`/`aria-label` anunciando série + episódio + progresso (Fase 19). O outro
+consumidor do componente, `components/profile/profile-collections.tsx` (`/profile`, fora do
+escopo deste ticket), continua chamando sem o prop `variant` — comportamento, texto e classes
+byte-idênticos ao que já existia, confirmado ao vivo no navegador.
+
+**Regra de progresso (Fase 9 — "episódios com 0% não devem aparecer como Continuar
+assistindo"):** nova função pura `splitContinueWatchingByProgress`
+(`lib/dashboard/continue-watching-priority.ts`, 4 testes em
+`continue-watching-priority.test.ts`) separa `started` (progresso > 0%) de `notStarted`
+(0%). `ContinueWatchingSection` só considera `started` pro Hero/lista secundária;
+`dashboard-home.tsx` reusa a mesma lista `started` (não a lista completa) como entrada do
+`dedupeDashboardEpisodes` já existente — o episódio de uma série 0% deixa de ser "reservado"
+pelo Continuar Assistindo e reaparece sozinho em Pendências/Novos, sem nenhuma lógica de
+reclassificação nova. **Validado ao vivo**: usuário rastreando 2 séries (uma com 8% de
+progresso real, outra recém-adicionada em 0%) — Hero mostra só a série com progresso; a
+série 0% não aparece em nenhum lugar como "continuidade" e seus episódios em atraso aparecem
+em Pendências ao lado dos da outra série.
+
+**Múltiplos itens em andamento (Fase 4 — "não criar um grande carrossel... não depender
+exclusivamente de interação horizontal"):** o Carousel horizontal foi removido do Dashboard
+(continua existindo como componente, reutilizável, só não é mais usado aqui). Os itens além
+do Hero (`started.slice(1)`, limitado a 3) viram uma lista vertical compacta reusando
+`EpisodeActionRow` (mesmo primitivo de Pendências/Novos — Fase 13: variar composição por
+propósito, preservar consistência via Design System).
+
+**Achado de responsividade real, corrigido:** o Hero em largura total expôs um bug
+pré-existente no `Tooltip` compartilhado (`components/ui/tooltip.tsx`) — conteúdo longo com
+`whitespace-nowrap` posicionado `side="right"`, antes "escondido" porque tanto o Carousel
+antigo quanto o `overflow-x-auto` de `/profile` absorviam esse overflow localmente. No Hero
+(bloco de página normal, sem scroll container próprio), o mesmo overflow vazava pro
+`document.documentElement.scrollWidth`. Corrigido no componente compartilhado (único
+consumidor é este arquivo): `max-w-[min(16rem,calc(100vw-2rem))]` + `whitespace-normal`
+(quebra linha em vez de forçar uma linha larga) — estritamente mais seguro pros dois
+consumidores (Dashboard e `/profile`), nunca pior. Achado incidental #2: o cabeçalho de
+"Pendências" (heading + `MarkAllWatchedButton` + "Ver tudo") não cabia lado a lado em 375px
+depois que o Hero mudou o fluxo da página — corrigido empilhando em coluna no mobile
+(`flex-col sm:flex-row`).
+
+**Validado em todos os breakpoints exigidos pela Fase 21** (320/360/375/390/412/430/480/600/
+768/820/1024/1280/1440/1600/1920/2560px, via `document.documentElement.scrollWidth` ===
+`clientWidth` em cada um): zero overflow horizontal após as correções acima. Confirmado
+também que o Hero respeita o `max-w` do layout (não estica em ultrawide — 1152px de largura
+mesmo a 2560px de viewport, herdado do container já existente).
+
+**Achado fora de escopo, não corrigido aqui:** `/profile/[username]` tem overflow horizontal
+pré-existente e não-relacionado em 375px (~649px de scrollWidth), rastreado até o card de
+cabeçalho/estatísticas do perfil (grid `grid-cols-2 sm:grid-cols-5` não colapsando
+corretamente) — confirmado que não tem relação com Continue Watching nem com a mudança do
+Tooltip (o `Tooltip` só torna o conteúdo mais estreito, nunca mais largo). Fora do escopo
+deste ticket (`/profile` está na lista explícita de páginas não autorizadas). Sinalizado
+como tarefa separada.
+
+**Playwright, suíte completa (`--workers=1`, isolado): 30/32 na primeira rodada, 31/32 na
+segunda.** As 2 falhas não têm relação com este ticket:
+- `auth.spec.ts` "login com conta existente" — mesma corrida de registro/hidratação já
+  documentada anteriormente nesta sessão (não reproduz de forma consistente; rodada seguinte
+  passou).
+- `visual.spec.ts` "Landing page desktop" — o snapshot (`fullPage: true`) não consegue nem
+  gerar uma baseline estável agora: 2 tentativas seguidas de captura, segundos uma da outra,
+  produzem alturas de página diferentes. Confirmado via accessibility tree do próprio
+  Playwright que o conteúdo está completo (dezenas de séries em varias carrosséis, nenhum
+  erro/estado quebrado) — não é conteúdo faltando, é a altura real da página variando entre
+  capturas, provavelmente pelo catálogo (que só cresce nesta sessão via syncs reais do TMDb)
+  ter algum elemento não-determinístico de ordenação/selecao que muda a contagem de
+  linhas/quebra de carrossel entre requisições. Mesma categoria já documentada mais cedo nesta
+  sessão ("Achado de performance"/"visual snapshot vs catálogo ao vivo") — não é regressão do
+  Hero (o componente da Landing não importa nada de `continue-watching`/`dashboard`) e não
+  foi perseguido mais a fundo (baixo retorno, característica do ambiente, não do código).
+
 ## Próximos passos
 
-Fase 2 em diante (arquitetura, Hero, Resumo operacional, Disponíveis agora agrupado, Séries
-acompanhadas, Atividade agrupada, hierarquia visual, responsividade, testes e evidências)
-serão implementados e documentados incrementalmente nas próximas seções deste arquivo,
+Fase 5 (Resumo operacional), Fase 8 (Disponíveis agora agrupado por série — hoje ainda é
+Pendências linha-a-linha), Fase 10 (Séries acompanhadas, seção nova), Fase 11 (Atividade
+recente agrupada, reintrodução decidida na seção de conflito acima), Fase 12 (Ações rápidas
+contextuais) e o restante (hierarquia visual fina, documentação final, evidências) serão
+implementados e documentados incrementalmente nas próximas seções deste arquivo,
 seguindo o mesmo ritmo de validação ao vivo (Docker disponível) já estabelecido no ticket
 geral: implementar → validar no navegador → testar → documentar → commit.
