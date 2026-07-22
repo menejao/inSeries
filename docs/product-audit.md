@@ -513,3 +513,50 @@ tirar screenshot (timeout consistente em `computer{action:"screenshot"}`, testad
 uma página) — mas `read_page`/`get_page_text` confirmaram conteúdo real renderizando
 corretamente (Landing com catálogo real, Sidebar/nav funcionais). Validação estrutural real
 substituiu validação de pixel nesta sessão.
+
+---
+
+## Redesign completo do Dashboard — pedido direto do usuário, validado ao vivo
+
+Com o servidor disponível pela primeira vez, o usuário pediu explicitamente um redesign
+completo do Dashboard: "super interativo, pronto pro dia a dia, útil, sem informação
+desnecessária ou inútil, pensando no que o usuário iria usar todos os dias, facilidade".
+
+**Cortado — navegação pura e timeline passiva, zero valor operacional diário:**
+
+- **"Atalhos rápidos"** (3 links: Calendário/Feed/Séries acompanhadas) — 100% redundante com
+  a Sidebar (9 itens) e o BottomNav (4 primários + "Mais" com os outros 6). Zero interação,
+  zero informação nova, só ocupava altura de página numa lista que já era longa.
+- **"Atividade recente"** — timeline das próprias ações do usuário (`getRecentActivityForUser`,
+  `where: { userId }`, não é feed social de terceiros). Já duplicada em
+  `/profile/[username]` (mesma função, mesmo dado) e sem nenhuma ação possível a partir dela —
+  puro histórico, não um "o que eu preciso fazer agora". `/feed` e `/me/recap` já cobrem
+  essa necessidade em páginas próprias.
+- `components/dashboard/activity-row.tsx` apagado (órfão — único consumidor era a seção
+  cortada).
+
+**Reordenado por urgência de ação** (era Continuar → Novos → Agenda → Pendências):
+Continuar Assistindo → **Pendências** → Novos para você → Agenda resumida. Pendências
+(episódios já lançados esperando ação) é objetivamente mais urgente que Novos (fresco, mas
+sem atraso) ou Agenda (ainda nem estreou) — a página agora lê de cima pra baixo em ordem de
+"o que precisa da minha atenção primeiro".
+
+**Validado ao vivo no navegador** (não só leitura de código):
+- Usuário registrado de verdade, série marcada como `WATCHING` via API, Dashboard carregado.
+- Ordem confirmada: Continuar assistindo → Pendências (5 itens) → Novos para você (empty
+  state correto, nada novo) → Agenda resumida ("Esta semana").
+- Confirmado "Atalhos rápidos"/"Atividade recente" ausentes.
+- Clique real em "Marcar como assistido" numa pendência: `POST /api/episodes/.../progress`
+  → 200, lista caiu de 5 para 4 itens, `ContinueWatchingCard` atualizou progresso e "Último
+  assistido: agora mesmo" — tudo sem reload de página (`router.refresh()`), confirmando a
+  interatividade pedida.
+- 375px mobile: `scrollWidth === clientWidth`, zero overflow horizontal.
+
+**Testes atualizados**: `scripts/smoke-test.ts` (o usuário `usershell` reusado pros checks de
+"Dashboard completo" agora rastreia uma série de verdade antes do fetch — sem isso os
+próprios checks estavam testando um estado que a Fase 8 já esconde; achado revisando os
+asserts depois do redesign), `e2e/dashboard-and-calendar.spec.ts` (removida a asserção de
+"Atalhos rápidos", adicionadas asserções negativas pras 2 seções cortadas),
+`e2e/dashboard-new-user.spec.ts` (o teste "usuario novo ainda ve Atalhos rapidos e Atividade
+recente" não fazia mais sentido — testava exatamente o que acabou de ser cortado — reescrito
+pra validar o que sobra pro usuário novo: "Continuar assistindo" com CTA "Explorar catálogo").

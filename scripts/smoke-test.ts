@@ -475,7 +475,7 @@ async function main() {
 
   const dashboardWithRecs = await request(jarRecsPersonal, "/");
   // INSERIES-DASHBOARD-HOME-EXPERIENCE-02 (Fase 3) — Recomendacoes removidas do Dashboard;
-  // vivem apenas em /recommendations, acessivel pelos Atalhos rapidos.
+  // vivem apenas em /recommendations, acessivel pela Sidebar/BottomNav.
   check(
     "dashboard / carrega sem erro mesmo com recomendacoes disponiveis (Recomendado removido do Dashboard)",
     dashboardWithRecs.status === 200,
@@ -631,7 +631,7 @@ async function main() {
   );
 
   // Fase 2 (INSERIES-DASHBOARD-UX-AND-NAVIGATION-01) — CTA de Recap no Dashboard foi removido
-  // (Recap agora vive apenas em /me/recap, acessivel pela Sidebar/Atalhos rapidos).
+  // (Recap agora vive apenas em /me/recap, acessivel pela Sidebar/BottomNav).
 
   // ---- Gamificacao: engine, conquistas iniciais, notificacao, nivel, dashboard, privacidade ----
   const achievementsGuestPage = await request({ value: "" }, "/me/achievements");
@@ -2494,6 +2494,15 @@ async function main() {
 
   const jarShell: CookieJar = { value: "" };
   await registerUser(jarShell, "usershell");
+  // Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) esconde "Novos para voce"/"Agenda
+  // resumida"/"Pendencias" inteiras quando o usuario nao acompanha nenhuma serie
+  // (hasTrackedSeries=false) - os checks abaixo de "usuario ativo ve o Dashboard completo"
+  // dependem de pelo menos 1 serie rastreada, senao ficam testando um estado que nao existe
+  // mais (achado revisando os proprios asserts depois do redesign do Dashboard).
+  await request(jarShell, `/api/series/${seriesId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ seriesId, state: "WATCHING" })
+  });
 
   const dashboardAuth = await request(jarShell, "/");
   check(
@@ -2635,39 +2644,38 @@ async function main() {
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
     continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
+    pendencias: dashboardBody.indexOf("Pendencias<"),
     novosParaVoce: dashboardBody.indexOf("Novos para voce<"),
-    agendaResumida: dashboardBody.indexOf("Agenda resumida<"),
-    atividade: dashboardBody.indexOf("Atividade recente<"),
-    atalhosRapidos: dashboardBody.indexOf("Atalhos rapidos<")
+    agendaResumida: dashboardBody.indexOf("Agenda resumida<")
   };
   check(
-    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) segue a nova ordem: Continuar assistindo -> Novos para voce -> Agenda resumida -> Atividade recente -> Atalhos rapidos",
+    // "usershell" acompanha uma serie com episodios ja lancados (WATCHING desde antes do
+    // fetch, ver acima) - "Pendencias" garantido presente, nao so "se houver atraso".
+    "Dashboard (redesign completo, INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) segue a ordem por urgencia de acao: Continuar assistindo -> Pendencias -> Novos para voce -> Agenda resumida",
     Object.values(sectionIndex).every((index) => index !== -1) &&
-      sectionIndex.continueWatching < sectionIndex.novosParaVoce &&
-      sectionIndex.novosParaVoce < sectionIndex.agendaResumida &&
-      sectionIndex.agendaResumida < sectionIndex.atividade &&
-      sectionIndex.atividade < sectionIndex.atalhosRapidos,
+      sectionIndex.continueWatching < sectionIndex.pendencias &&
+      sectionIndex.pendencias < sectionIndex.novosParaVoce &&
+      sectionIndex.novosParaVoce < sectionIndex.agendaResumida,
     sectionIndex
   );
   check(
     "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
-    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.novosParaVoce,
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.pendencias,
     sectionIndex
   );
   check(
-    // "Minha Lista" fica de fora desta lista de propósito: o proprio Atalho rapido para
-    // /me/minha-lista usa esse rotulo — nao e uma secao de preview duplicada, e um link.
-    "Dashboard (Fase 2/3) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais/Proximos episodios)",
+    "Dashboard (redesign completo) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais/Proximos episodios), e cortou os shelfs de navegacao pura/timeline passiva (Atalhos rapidos, Atividade recente) ja cobertos pela Sidebar/BottomNav e por /profile+/me/recap",
     !dashboardBody.includes("Bombando Agora<") &&
       !dashboardBody.includes("Lancamentos<") &&
       !dashboardBody.includes("Watch Next<") &&
       !dashboardBody.includes("Suas Estatisticas<") &&
       !dashboardBody.includes("Descobrir mais<") &&
-      !dashboardBody.includes("Proximos episodios<"),
+      !dashboardBody.includes("Proximos episodios<") &&
+      !dashboardBody.includes("Atalhos rapidos<") &&
+      !dashboardBody.includes("Atividade recente<"),
     null
   );
-  check("Dashboard (Fase 2) exibe Atalhos rapidos", dashboardBody.includes("Atalhos rapidos"), dashboardAuth.status);
-  check("Dashboard (Fase 2) exibe a secao Atividade recente", dashboardBody.includes("Atividade recente"), dashboardAuth.status);
+  check("Dashboard (redesign completo) exibe Pendencias", dashboardBody.includes("Pendencias<"), dashboardAuth.status);
   check("Dashboard (Fase 6) exibe a secao Novos para voce", dashboardBody.includes("Novos para voce"), dashboardAuth.status);
   check("Dashboard (Fase 7/8) exibe a Agenda resumida", dashboardBody.includes("Agenda resumida"), dashboardAuth.status);
   check(

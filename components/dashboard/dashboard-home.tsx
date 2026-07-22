@@ -1,30 +1,16 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FixedGrid } from "@/components/ui/fixed-grid";
 import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
-import { ActivityRow } from "@/components/dashboard/activity-row";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, BellIcon, CalendarIcon, FilmIcon, TvIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, BellIcon, CalendarIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
-import { getRecentActivityForUser } from "@/lib/social/activity";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
 import { cn, formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
-
-/**
- * Fase 2 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — "Marcar episodio" (ex-/watch-next)
- * removido: a acao ja esta evidente nas secoes "Novos para voce"/"Pendencias" logo acima
- * (Fase 27 — nao repetir uma acao ja visivel na secao imediatamente anterior).
- */
-const SHORTCUTS = [
-  { icon: CalendarIcon, label: "Calendario", href: "/calendar" },
-  { icon: FilmIcon, label: "Feed", href: "/feed" },
-  { icon: TvIcon, label: "Series acompanhadas", href: "/me/minha-lista#grupo-watching" }
-] as const;
 
 /**
  * Fase 6/9/10 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — limite de itens visiveis por
@@ -78,9 +64,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
-  const [calendarData, activity, continueWatching] = await Promise.all([
+  const [calendarData, continueWatching] = await Promise.all([
     getDashboardCalendarData(user.id, lastVisitAt),
-    getRecentActivityForUser(user.id, 5),
     getContinueWatchingForUser(user.id, { limit: 10 })
   ]);
 
@@ -108,6 +93,46 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
       </div>
 
       <ContinueWatchingSection continueWatching={continueWatching} />
+
+      {/*
+        Fase "redesign completo" (pedido do usuario, sessao com Docker/servidor ao vivo
+        disponivel pela primeira vez) — hub operacional diario, nao um mural. Cortado:
+        "Atalhos rapidos" (3 links pra Calendario/Feed/Series ja presentes na Sidebar e no
+        BottomNav — navegacao pura, zero interacao, ocupava espaco sem info nova) e
+        "Atividade recente" (timeline das proprias acoes do usuario, ja duplicada em
+        /profile/[username] e sem nenhuma acao possivel a partir dela — /feed e /me/recap ja
+        cobrem "o que eu fiz", esta pagina cobre "o que eu preciso fazer agora"). Ordem das
+        secoes tambem virou por urgencia de acao: Pendencias (ja atrasado) antes de Novos (fresco,
+        mas ainda nao urgente) e Agenda (futuro, so planejamento).
+      */}
+      {overdue.length > 0 ? (
+        <section className="space-y-4" aria-label="Pendencias acionaveis">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                <AlertCircleIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                Pendencias
+              </h2>
+              <p className="section-copy mt-1">Episodios ja lancados que ainda pedem uma acao sua.</p>
+            </div>
+            <Link href="/calendar" className="link-accent shrink-0 text-sm">
+              Ver tudo
+            </Link>
+          </div>
+          <div className="flex flex-col gap-2">
+            {overdue.map((episode, index) => (
+              <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
+                <EpisodeActionRow
+                  episode={episode}
+                  dateLabel={formatRelativeDate(episode.airedAt)}
+                  badge={{ label: "Pendente", variant: "warning" }}
+                  action={{ kind: "mark", label: "Marcar como assistido" }}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/*
         Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — "usuario novo"/"usuario sem
@@ -182,87 +207,6 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
           </section>
         </>
       ) : null}
-
-      {overdue.length > 0 ? (
-        <section className="space-y-4" aria-label="Pendencias acionaveis">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-                <AlertCircleIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-                Pendencias
-              </h2>
-              <p className="section-copy mt-1">Episodios ja lancados que ainda pedem uma acao sua.</p>
-            </div>
-            <Link href="/calendar" className="link-accent shrink-0 text-sm">
-              Ver tudo
-            </Link>
-          </div>
-          <div className="flex flex-col gap-2">
-            {overdue.map((episode, index) => (
-              <div key={episode.id} className={cn(responsiveItemVisibility(index))}>
-                <EpisodeActionRow
-                  episode={episode}
-                  dateLabel={formatRelativeDate(episode.airedAt)}
-                  badge={{ label: "Pendente", variant: "warning" }}
-                  action={{ kind: "mark", label: "Marcar como assistido" }}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="space-y-4" aria-label="Atividade recente">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-              <FilmIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-              Atividade recente
-            </h2>
-          </div>
-          <Link href="/feed" className="link-accent shrink-0 text-sm">
-            Ver feed
-          </Link>
-        </div>
-        {activity.length ? (
-          <div className="flex flex-col gap-1">
-            {activity.map((item, index) => (
-              <div key={item.id} className={cn(responsiveItemVisibility(index))}>
-                <ActivityRow activity={item} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <EmptyState
-              icon={<FilmIcon className="h-6 w-6" aria-hidden />}
-              title="Nenhuma atividade recente"
-              copy="Siga outros usuarios ou marque episodios para ver atividade aqui."
-            />
-          </Card>
-        )}
-      </section>
-
-      <section className="space-y-4" aria-label="Atalhos rapidos">
-        <h2 className="text-xl font-semibold text-ink">Atalhos rapidos</h2>
-        <FixedGrid mobile={2} desktop={3}>
-          {SHORTCUTS.map((shortcut) => (
-            <Link
-              key={shortcut.href}
-              href={shortcut.href}
-              className="group flex h-full flex-col items-start gap-3 rounded-3xl border border-border bg-surface/70 p-4 transition duration-200 hover:border-primary/40 hover:bg-surface-strong/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            >
-              <span
-                className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/12 text-primary-text transition duration-200 group-hover:bg-primary/20"
-                aria-hidden
-              >
-                <shortcut.icon className="h-4.5 w-4.5" />
-              </span>
-              <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-ink">{shortcut.label}</p>
-            </Link>
-          ))}
-        </FixedGrid>
-      </section>
     </div>
   );
 }

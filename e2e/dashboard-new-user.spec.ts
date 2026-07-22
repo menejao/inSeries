@@ -23,10 +23,14 @@ test("usuario novo (sem series) ve mensagem de boas-vindas, sem Novos/Agenda", a
   await expect(page.getByRole("heading", { name: "Agenda resumida" })).toHaveCount(0);
 });
 
-test("usuario novo ainda ve Atalhos rapidos e Atividade recente", async ({ page }) => {
+test("usuario novo ve o CTA de Continuar assistindo para comecar a acompanhar", async ({ page }) => {
   await registerViaApi(page);
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Atalhos rapidos" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Atividade recente" })).toBeVisible();
+  // Redesign completo do Dashboard (pedido do usuario, sessao com servidor ao vivo) cortou
+  // "Atalhos rapidos"/"Atividade recente" (navegacao redundante com Sidebar/BottomNav e
+  // timeline passiva ja coberta por /profile+/me/recap) - a unica secao que sobra pro
+  // usuario novo e "Continuar assistindo" com seu proprio empty state acionavel.
+  await expect(page.getByRole("heading", { name: "Continuar assistindo" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explorar catalogo" })).toBeVisible();
 });

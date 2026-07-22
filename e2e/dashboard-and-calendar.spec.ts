@@ -33,7 +33,6 @@ test("Dashboard mostra as secoes operacionais esperadas", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Continuar assistindo" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Novos para voce" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Agenda resumida" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Atalhos rapidos" })).toBeVisible();
 });
 
 test("usuario abre o calendario a partir do Dashboard", async ({ page }) => {
@@ -60,4 +59,9 @@ test("Dashboard nao repete secoes descontinuadas (Bombando Agora, Watch Next, et
   await expect(page.getByText("Bombando Agora")).toHaveCount(0);
   await expect(page.getByText("Watch Next")).toHaveCount(0);
   await expect(page.getByText("Proximos episodios")).toHaveCount(0);
+  // Redesign completo (sessao com servidor ao vivo) cortou "Atalhos rapidos"/"Atividade
+  // recente" do Dashboard - navegacao redundante com Sidebar/BottomNav e timeline passiva
+  // ja coberta por /profile+/me/recap.
+  await expect(page.getByRole("heading", { name: "Atalhos rapidos" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Atividade recente" })).toHaveCount(0);
 });
