@@ -15,7 +15,19 @@ import { useToast } from "@/components/ui/toast";
  * Reusa a mesma mutation de sempre (POST /api/episodes/[id]/progress), uma chamada por
  * episodio, em paralelo — nenhuma logica de progresso nova.
  */
-export function MarkAllWatchedButton({ episodeIds, count }: { episodeIds: string[]; count: number }) {
+export function MarkAllWatchedButton({
+  episodeIds,
+  count,
+  scope = "todas as pendencias listadas de uma vez, mesmo as de series diferentes"
+}: {
+  episodeIds: string[];
+  count: number;
+  /** Fase 8 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — o mesmo botao/mutation e reusado
+   *  no cabecalho geral (todas as series) e por grupo (uma serie so, AvailableNowGroupCard);
+   *  a descricao do dialogo de confirmacao muda de acordo, pra nunca mencionar "series
+   *  diferentes" quando na verdade e so uma. */
+  scope?: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -54,7 +66,7 @@ export function MarkAllWatchedButton({ episodeIds, count }: { episodeIds: string
         onClose={() => setOpen(false)}
         onConfirm={handleConfirm}
         title={`Marcar ${count} episodios como assistidos?`}
-        description="Isso vai marcar todas as pendencias listadas de uma vez, mesmo as de series diferentes."
+        description={`Isso vai marcar ${scope}.`}
         confirmLabel="Marcar todos"
         loading={isPending}
       />

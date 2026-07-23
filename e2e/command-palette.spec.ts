@@ -26,8 +26,13 @@ test("Ctrl+K abre o Command Palette com as acoes rapidas", async ({ page }) => {
 test("botao de busca no header abre o Command Palette", async ({ page }) => {
   await registerViaApi(page);
   await page.goto("/");
+  // Mesma corrida de hidratacao dos outros testes deste arquivo: o onClick do botao so e
+  // anexado depois que o client component hidrata, mesmo com o botao ja visivel no HTML
+  // server-renderizado - Playwright's actionability check (visible/stable) nao garante isso.
+  const searchButton = page.getByRole("button", { name: /Buscar \(Ctrl\+K\)/ });
+  await expect(searchButton).toBeVisible();
 
-  await page.getByRole("button", { name: /Buscar \(Ctrl\+K\)/ }).click();
+  await searchButton.click();
   await expect(page.getByRole("combobox", { name: /Buscar/ })).toBeVisible();
 });
 

@@ -2632,23 +2632,23 @@ async function main() {
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
     continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
-    pendencias: dashboardBody.indexOf("Pendencias<"),
+    disponiveisAgora: dashboardBody.indexOf("Disponiveis agora<"),
     novosParaVoce: dashboardBody.indexOf("Novos para voce<"),
     agendaResumida: dashboardBody.indexOf("Agenda resumida<")
   };
   check(
     // "usershell" acompanha uma serie com episodios ja lancados (WATCHING desde antes do
-    // fetch, ver acima) - "Pendencias" garantido presente, nao so "se houver atraso".
-    "Dashboard (redesign completo, INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) segue a ordem por urgencia de acao: Continuar assistindo -> Pendencias -> Novos para voce -> Agenda resumida",
+    // fetch, ver acima) - "Disponiveis agora" garantido presente, nao so "se houver atraso".
+    "Dashboard (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04, Fase 8) segue a ordem por urgencia de acao: Continuar assistindo -> Disponiveis agora -> Novos para voce -> Agenda resumida",
     Object.values(sectionIndex).every((index) => index !== -1) &&
-      sectionIndex.continueWatching < sectionIndex.pendencias &&
-      sectionIndex.pendencias < sectionIndex.novosParaVoce &&
+      sectionIndex.continueWatching < sectionIndex.disponiveisAgora &&
+      sectionIndex.disponiveisAgora < sectionIndex.novosParaVoce &&
       sectionIndex.novosParaVoce < sectionIndex.agendaResumida,
     sectionIndex
   );
   check(
     "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
-    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.pendencias,
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.disponiveisAgora,
     sectionIndex
   );
   check(
@@ -2663,7 +2663,7 @@ async function main() {
       !dashboardBody.includes("Atividade recente<"),
     null
   );
-  check("Dashboard (redesign completo) exibe Pendencias", dashboardBody.includes("Pendencias<"), dashboardAuth.status);
+  check("Dashboard (Fase 8) exibe Disponiveis agora", dashboardBody.includes("Disponiveis agora<"), dashboardAuth.status);
   check("Dashboard (Fase 6) exibe a secao Novos para voce", dashboardBody.includes("Novos para voce"), dashboardAuth.status);
   check("Dashboard (Fase 7/8) exibe a Agenda resumida", dashboardBody.includes("Agenda resumida"), dashboardAuth.status);
   check(

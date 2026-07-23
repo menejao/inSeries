@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ExpandableList } from "@/components/ui/expandable-list";
 import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
+import { AvailableNowGroupCard } from "@/components/dashboard/available-now-group-card";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
 import { AlertCircleIcon, BellIcon, CalendarIcon } from "@/components/ui/icons";
@@ -11,9 +12,21 @@ import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
+import { groupOverdueBySeries } from "@/lib/dashboard/group-by-series";
 import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
-import { formatRelativeDate } from "@/lib/utils";
+import { cn, formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
+
+/**
+ * Fase 8 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — "no maximo 3 grupos no mobile, 4 no
+ * tablet, 5 no desktop". Progressivo via CSS puro (indices 3/4 ficam escondidos ate o
+ * breakpoint certo), sem estado de cliente - "Ver tudo" (link pro calendario) cobre o resto.
+ */
+function availableNowGroupVisibility(index: number) {
+  if (index === 3) return "hidden sm:block";
+  if (index === 4) return "hidden lg:block";
+  return undefined;
+}
 
 /**
  * Fase 3/8 — cabecalho contextual: uma frase, nunca metricas decorativas nem gamificacao.
@@ -74,6 +87,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     overdue: calendarData.overdue
   });
   const agendaGroups = groupUpcomingForAgenda(calendarData.upcoming);
+  // Fase 8 — "Disponiveis agora": agrupado por serie em vez de 1 linha por episodio.
+  const availableNowGroups = groupOverdueBySeries(overdue).slice(0, 5);
 
   const contextualMessage = getContextualMessage({
     hasTrackedSeries: continueWatching.hasTrackedSeries,
@@ -104,12 +119,12 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         mas ainda nao urgente) e Agenda (futuro, so planejamento).
       */}
       {overdue.length > 0 ? (
-        <section className="space-y-4" aria-label="Pendencias acionaveis">
+        <section className="space-y-4" aria-label="Disponiveis agora">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div>
               <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
                 <AlertCircleIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-                Pendencias
+                Disponiveis agora
               </h2>
               <p className="section-copy mt-1">Episodios ja lancados que ainda pedem uma acao sua.</p>
             </div>
@@ -122,17 +137,13 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               </Link>
             </div>
           </div>
-          <ExpandableList initialVisible={5} itemLabel="pendencia" listClassName="flex flex-col gap-2">
-            {overdue.map((episode) => (
-              <EpisodeActionRow
-                key={episode.id}
-                episode={episode}
-                dateLabel={formatRelativeDate(episode.airedAt)}
-                badge={{ label: "Pendente", variant: "warning" }}
-                action={{ kind: "mark", label: "Marcar como assistido" }}
-              />
+          <div className="flex flex-col gap-2">
+            {availableNowGroups.map((group, index) => (
+              <div key={group.series.id} className={cn(availableNowGroupVisibility(index))}>
+                <AvailableNowGroupCard group={group} />
+              </div>
             ))}
-          </ExpandableList>
+          </div>
         </section>
       ) : null}
 

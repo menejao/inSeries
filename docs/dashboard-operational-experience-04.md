@@ -156,10 +156,46 @@ segunda.** As 2 falhas não têm relação com este ticket:
   Hero (o componente da Landing não importa nada de `continue-watching`/`dashboard`) e não
   foi perseguido mais a fundo (baixo retorno, característica do ambiente, não do código).
 
+## Fase 8 — "Disponíveis agora" agrupado por série
+
+**Achado #1 da auditoria (Fase 1), resolvido:** "Pendências" listava 1 `EpisodeActionRow`
+por episódio individual — um usuário com 5 episódios atrasados da mesma série via 5 linhas
+quase idênticas (poster/título repetidos). Transformado em "Disponíveis agora": 1 card por
+série, agrupado.
+
+- `lib/dashboard/group-by-series.ts` (nova, 9 testes): `groupOverdueBySeries` agrupa
+  `overdue` por `series.id`, preservando a ordem de chegada (já vem ordenado por urgência —
+  o grupo aparece na posição do episódio mais antigo que ele contém). Calcula `rangeLabel`
+  ("T0XEyy ate T0XEzz") só quando todos os episódios do grupo compartilham a mesma temporada
+  (Fase 8: "informar o intervalo, quando possível") — omite quando o grupo cobre várias
+  temporadas ou tem só 1 episódio.
+- `components/dashboard/available-now-group-card.tsx` (novo): poster + título + "N episódios
+  não assistidos" + range label opcional + ação principal "Continuar série" (leva ao episódio
+  mais antigo não assistido) + "Marcar todos" escoped a essa série (reusa
+  `MarkAllWatchedButton`, que ganhou um prop `scope` pra descrição do dialog não dizer "séries
+  diferentes" quando é só uma).
+- Cap de grupos por breakpoint (3 mobile / 4 tablet / 5 desktop, Fase 8 explícito): mesma
+  técnica CSS-only de progressive-reveal por índice já usada antes nesta sessão (índice 3
+  escondido abaixo de `sm:`, índice 4 abaixo de `lg:`), grupos além do 5º nem chegam a
+  renderizar — "Ver tudo" (já existente, → `/calendar`) cobre o resto.
+
+**Validado ao vivo**: usuário rastreando 2 séries com pendências (uma com 3 episódios
+espalhados em temporadas diferentes — sem range label — outra com 2 episódios consecutivos
+na mesma temporada — `T02E04 ate T02E05`). Clique em "Marcar todos" escopado a uma série
+marcou só os episódios dela (3 requisições, não 5); a série ganhou progresso >0% no processo
+e passou a aparecer como Hero automaticamente (interação correta entre Fase 8 e Fase 9).
+
+**Achado de responsividade real, corrigido:** o card de grupo, com dois botões
+("Marcar todos" + "Continuar série") lado a lado numa `flex` sem quebra, e "Continuar série"
+com `w-full`, estourava a largura da página especificamente em 320px (onde o card ocupa
+quase toda a largura disponível) — `w-full` num filho de flex-row que já tem outro irmão
+ocupando espaço força o container a exceder a largura do pai. Corrigido empilhando os botões
+sempre em coluna (mais robusto que tentar achar o breakpoint exato onde os dois cabem lado a
+lado). Revalidado sem overflow em 320/375/1280px.
+
 ## Próximos passos
 
-Fase 5 (Resumo operacional), Fase 8 (Disponíveis agora agrupado por série — hoje ainda é
-Pendências linha-a-linha), Fase 10 (Séries acompanhadas, seção nova), Fase 11 (Atividade
+Fase 5 (Resumo operacional), Fase 10 (Séries acompanhadas, seção nova), Fase 11 (Atividade
 recente agrupada, reintrodução decidida na seção de conflito acima), Fase 12 (Ações rápidas
 contextuais) e o restante (hierarquia visual fina, documentação final, evidências) serão
 implementados e documentados incrementalmente nas próximas seções deste arquivo,
