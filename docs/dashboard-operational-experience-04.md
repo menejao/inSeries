@@ -290,11 +290,43 @@ conhecida da ferramenta, não do código: o `<a href="#id">` é o padrão corret
 qualquer navegador real; a própria documentação do Next.js recomenda exatamente essa troca
 pra âncoras na mesma página).
 
+## Fase 11 — "Atividade recente agrupada"
+
+Reintroduzida (decisão registrada na seção "Conflito real a resolver" no início deste
+documento) — não é a "Atividade recente" antiga que o redesign anterior cortou, é uma nova
+com a regra que faltava: agrupamento. "Atividades consecutivas equivalentes devem ser
+agrupadas... agrupar por usuário, série, tipo de ação, intervalo de tempo coerente... máximo
+3 registros agrupados... manter ação Ver feed" — os 4 requisitos, todos atendidos.
+
+- `lib/dashboard/group-activity.ts` (nova, função pura, 10 testes): funde atividades
+  **consecutivas** (nunca reordena, nunca funde itens não-adjacentes na timeline) do mesmo
+  `type` + mesma chave de agrupamento (série pra a maioria dos tipos; usuário-alvo pra
+  `USER_FOLLOWED`; review pra `COMMENT_CREATED`). "Usuário" sai de graça — `activities` já
+  vem de um usuário só (`getRecentActivityForUser`); "intervalo de tempo coerente" também —
+  só funde o que já está adjacente na timeline ordenada por `createdAt desc`, nunca agrupa
+  coisas espalhadas no tempo.
+- Range label pro caso de `EPISODE_WATCHED` agrupado (`"T01E01 ate T01E05"`) calculado a
+  partir do menor/maior episódio do grupo — mesmo espírito do `rangeLabel` da Fase 8
+  (`group-by-series.ts`), agora reaproveitado como padrão pro app inteiro.
+- `components/dashboard/activity-group-row.tsx` (novo): reusa `typeIcons` de
+  `components/feed/activity-card.tsx` (mesmo mapeamento tipo→ícone do Feed) em vez de
+  duplicar o switch — "não alterar o Feed completo" cumprido literalmente, o Feed nem foi
+  tocado, só consumido.
+- Busca 15 atividades brutas (não 3) porque agrupar comprime: 5 episódios assistidos em
+  sequência viram 1 grupo só, então pedir só 3 brutas quase sempre resultaria em menos de 3
+  grupos exibidos.
+
+**Validado ao vivo**: usuário com atividade real de sessões anteriores (marcar episódios,
+completar série) — 3 grupos corretos exibidos: `"Você assistiu 1 episódio de Série Teste
+Dois"`, `"Você concluiu Série Teste Três"`, `"Você assistiu 5 episódios de Série Teste Três
+— T01E01 até T01E05"`. O `SERIES_COMPLETED` (disparado pelo auto-complete, Fase 10) e o
+`EPISODE_WATCHED` do 5º episódio aconteceram quase no mesmo instante mas **não foram
+fundidos** — tipos diferentes, corretamente 2 grupos separados. Sem overflow em 320/375px.
+
 ## Próximos passos
 
-Fase 11 (Atividade recente agrupada, reintrodução decidida na seção de conflito acima),
 Fase 12 (Ações rápidas contextuais) e o restante (hierarquia visual fina, documentação
-final, evidências) serão implementados e documentados incrementalmente nas próximas seções
-deste arquivo, seguindo o mesmo ritmo de validação ao vivo (Docker disponível) já
-estabelecido no ticket geral: implementar → validar no navegador → testar → documentar →
-commit.
+final, evidências, scorecard PASS/FAIL obrigatório) serão implementados e documentados
+incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo de validação ao
+vivo (Docker disponível) já estabelecido no ticket geral: implementar → validar no navegador
+→ testar → documentar → commit.

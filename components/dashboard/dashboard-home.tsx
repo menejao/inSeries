@@ -8,16 +8,19 @@ import { AvailableNowGroupCard } from "@/components/dashboard/available-now-grou
 import { TrackedSeriesCard } from "@/components/dashboard/tracked-series-card";
 import { OperationalSummary } from "@/components/dashboard/operational-summary";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
+import { ActivityGroupRow } from "@/components/dashboard/activity-group-row";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon, FilmIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { getTrackedSeriesSummaryForUser } from "@/lib/tracked-series";
+import { getRecentActivityForUser } from "@/lib/social/activity";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import { groupOverdueBySeries } from "@/lib/dashboard/group-by-series";
 import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
+import { groupRecentActivity } from "@/lib/dashboard/group-activity";
 import { cn, formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -73,10 +76,14 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
-  const [calendarData, continueWatching, trackedSeriesSummary] = await Promise.all([
+  const [calendarData, continueWatching, trackedSeriesSummary, recentActivity] = await Promise.all([
     getDashboardCalendarData(user.id, lastVisitAt),
     getContinueWatchingForUser(user.id, { limit: 10 }),
-    getTrackedSeriesSummaryForUser(user.id)
+    getTrackedSeriesSummaryForUser(user.id),
+    // Fase 11 — busca mais que os 3 grupos exibidos: agrupar comprime N atividades brutas em
+    // menos grupos (ex.: 5 episodios assistidos em sequencia = 1 grupo so), entao pedir so 3
+    // registros brutos quase sempre resultaria em menos de 3 grupos exibidos.
+    getRecentActivityForUser(user.id, 15)
   ]);
 
   // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — series com 0% de progresso nao
@@ -98,6 +105,9 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const availableNowGroups = allAvailableNowGroups.slice(0, 5);
   // Fase 10 — "Series acompanhadas": estado por serie, nao lista de episodios.
   const trackedSeriesItems = trackedSeriesSummary.slice(0, 5);
+  // Fase 11 — "Atividade recente agrupada": atividades consecutivas equivalentes viram 1
+  // registro (ex.: 5 "assistiu episodio" da mesma serie em sequencia = 1 grupo), max 3.
+  const activityGroups = groupRecentActivity(recentActivity).slice(0, 3);
 
   // Fase 5 — "Resumo operacional": numeros com contexto (nunca so o numero), cada um linkado
   // pra secao/pagina correspondente. `tomorrowGroup` usa `episodes.length + hiddenCount` (nao
@@ -149,14 +159,16 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
 
       {/*
         Fase "redesign completo" (pedido do usuario, sessao com Docker/servidor ao vivo
-        disponivel pela primeira vez) — hub operacional diario, nao um mural. Cortado:
-        "Atalhos rapidos" (3 links pra Calendario/Feed/Series ja presentes na Sidebar e no
-        BottomNav — navegacao pura, zero interacao, ocupava espaco sem info nova) e
-        "Atividade recente" (timeline das proprias acoes do usuario, ja duplicada em
-        /profile/[username] e sem nenhuma acao possivel a partir dela — /feed e /me/recap ja
-        cobrem "o que eu fiz", esta pagina cobre "o que eu preciso fazer agora"). Ordem das
-        secoes tambem virou por urgencia de acao: Pendencias (ja atrasado) antes de Novos (fresco,
-        mas ainda nao urgente) e Agenda (futuro, so planejamento).
+        disponivel pela primeira vez, INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — hub
+        operacional diario, nao um mural. Cortado ali: "Atalhos rapidos" (3 links pra
+        Calendario/Feed/Series ja presentes na Sidebar/BottomNav — navegacao pura, zero
+        interacao). "Atividade recente" tambem foi cortada naquela sessao pelo mesmo motivo
+        (duplicava /profile/[username] sem nenhuma acao propria) mas a Fase 11
+        (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04, ticket complementar) pede ela de volta
+        com uma regra que resolve o motivo original do corte: agrupada (ver mais abaixo, apos
+        "Series acompanhadas"), nunca mais repetitiva. Ordem das secoes tambem virou por
+        urgencia de acao: Pendencias (ja atrasado) antes de Novos (fresco, mas ainda nao
+        urgente) e Agenda (futuro, so planejamento).
       */}
       {overdue.length > 0 ? (
         <section id="disponiveis-agora" className="scroll-mt-24 space-y-4" aria-label="Disponiveis agora">
@@ -289,6 +301,42 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               </FixedGrid>
             </section>
           ) : null}
+
+          {/*
+            Fase 11 — "Atividade recente agrupada": reintroduzida (ver comentario acima, perto
+            de "Disponiveis agora") com a regra que faltava da primeira vez - atividades
+            consecutivas do mesmo tipo/serie viram 1 registro, max 3 (Fase 11 explicito).
+            `groupRecentActivity` (lib/dashboard/group-activity.ts) e a unica logica nova; o
+            Feed completo (/feed) continua usando ActivityCard sem nenhuma alteracao.
+          */}
+          <section className="space-y-4" aria-label="Atividade recente">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                  <FilmIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                  Atividade recente
+                </h2>
+              </div>
+              <Link href="/feed" className="link-accent shrink-0 text-sm">
+                Ver feed
+              </Link>
+            </div>
+            {activityGroups.length ? (
+              <div className="flex flex-col gap-2">
+                {activityGroups.map((group) => (
+                  <ActivityGroupRow key={`${group.type}-${group.latestCreatedAt.getTime()}`} group={group} />
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={<FilmIcon className="h-6 w-6" aria-hidden />}
+                  title="Nenhuma atividade recente"
+                  copy="Marque episodios ou escreva uma review para ver sua atividade aqui."
+                />
+              </Card>
+            )}
+          </section>
         </>
       ) : null}
     </div>
