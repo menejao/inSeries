@@ -5,11 +5,14 @@ import { ExpandableList } from "@/components/ui/expandable-list";
 import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
 import { AvailableNowGroupCard } from "@/components/dashboard/available-now-group-card";
+import { TrackedSeriesCard } from "@/components/dashboard/tracked-series-card";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
+import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, BellIcon, CalendarIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
+import { getTrackedSeriesSummaryForUser } from "@/lib/tracked-series";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import { groupOverdueBySeries } from "@/lib/dashboard/group-by-series";
@@ -18,11 +21,12 @@ import { cn, formatRelativeDate } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
 /**
- * Fase 8 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — "no maximo 3 grupos no mobile, 4 no
- * tablet, 5 no desktop". Progressivo via CSS puro (indices 3/4 ficam escondidos ate o
- * breakpoint certo), sem estado de cliente - "Ver tudo" (link pro calendario) cobre o resto.
+ * Fase 8/10 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — "no maximo 3 [itens] no mobile, 4
+ * no tablet, 5 no desktop" (limite explicito da Fase 8, reaproveitado pra Fase 10 pelo mesmo
+ * raciocinio: "limitar a quantidade de itens"). Progressivo via CSS puro (indices 3/4 ficam
+ * escondidos ate o breakpoint certo), sem estado de cliente - "Ver tudo" cobre o resto.
  */
-function availableNowGroupVisibility(index: number) {
+function progressiveItemVisibility(index: number) {
   if (index === 3) return "hidden sm:block";
   if (index === 4) return "hidden lg:block";
   return undefined;
@@ -68,9 +72,10 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
-  const [calendarData, continueWatching] = await Promise.all([
+  const [calendarData, continueWatching, trackedSeriesSummary] = await Promise.all([
     getDashboardCalendarData(user.id, lastVisitAt),
-    getContinueWatchingForUser(user.id, { limit: 10 })
+    getContinueWatchingForUser(user.id, { limit: 10 }),
+    getTrackedSeriesSummaryForUser(user.id)
   ]);
 
   // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — series com 0% de progresso nao
@@ -89,6 +94,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   const agendaGroups = groupUpcomingForAgenda(calendarData.upcoming);
   // Fase 8 — "Disponiveis agora": agrupado por serie em vez de 1 linha por episodio.
   const availableNowGroups = groupOverdueBySeries(overdue).slice(0, 5);
+  // Fase 10 — "Series acompanhadas": estado por serie, nao lista de episodios.
+  const trackedSeriesItems = trackedSeriesSummary.slice(0, 5);
 
   const contextualMessage = getContextualMessage({
     hasTrackedSeries: continueWatching.hasTrackedSeries,
@@ -139,7 +146,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
           </div>
           <div className="flex flex-col gap-2">
             {availableNowGroups.map((group, index) => (
-              <div key={group.series.id} className={cn(availableNowGroupVisibility(index))}>
+              <div key={group.series.id} className={cn(progressiveItemVisibility(index))}>
                 <AvailableNowGroupCard group={group} />
               </div>
             ))}
@@ -217,6 +224,38 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
               </Card>
             )}
           </section>
+
+          {/*
+            Fase 10 — "Series acompanhadas": estado por serie (nao lista de episodios), pra
+            cobrir series que nao aparecem em nenhuma outra secao (nada pendente, nada
+            estreando em 7 dias) - ex.: "Aguardando nova temporada"/"Temporada concluida".
+            `trackedSeriesSummary` ja vem vazio quando `hasTrackedSeries` e falso, mas o
+            `continueWatching.hasTrackedSeries ?` externo ja cobre isso - sem EmptyState
+            redundante aqui.
+          */}
+          {trackedSeriesItems.length ? (
+            <section className="space-y-4" aria-label="Series acompanhadas">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                    <TvIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                    Series acompanhadas
+                  </h2>
+                  <p className="section-copy mt-1">O estado de cada serie que voce acompanha.</p>
+                </div>
+                <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
+                  Ver tudo
+                </Link>
+              </div>
+              <FixedGrid mobile={1} tablet={2} desktop={3}>
+                {trackedSeriesItems.map((item, index) => (
+                  <div key={item.series.id} className={cn(progressiveItemVisibility(index))}>
+                    <TrackedSeriesCard item={item} />
+                  </div>
+                ))}
+              </FixedGrid>
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

@@ -18,9 +18,10 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number) {
  * Fase 8 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — "Pendencias" listava um
  * `EpisodeActionRow` por episodio individual, repetindo poster/titulo da mesma serie varias
  * vezes (achado real na Fase 1: usuario com 5 episodios atrasados da mesma serie via 5 linhas
- * identicas). Agrupa por serie, preservando a ordem de chegada de `overdue` (ja vem ordenado
- * por urgencia pela query de origem - o primeiro episodio de cada grupo e o mais antigo, logo
- * o grupo aparece na posicao do episodio mais urgente que ele contem).
+ * identicas). Agrupa por serie, preservando a ordem de chegada de `overdue`
+ * (`getDashboardCalendarData`, ordenado por data de exibicao mais recente primeiro — a
+ * posicao do grupo na lista reflete isso, nao necessariamente "mais urgente primeiro"; dentro
+ * de cada grupo, os episodios sao sempre reordenados por temporada/numero, nao por data).
  */
 export function groupOverdueBySeries(overdue: CalendarEpisode[]): AvailableNowGroup[] {
   const groups: AvailableNowGroup[] = [];

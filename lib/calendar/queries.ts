@@ -151,10 +151,14 @@ export async function getDashboardCalendarData(userId: string, lastVisitAt: Date
     .sort((a, b) => a.airedAt.getTime() - b.airedAt.getTime())
     .slice(0, 15);
 
-  const overdue = episodes
-    .filter((ep) => !ep.watched && ep.airedAt <= lastVisitAt)
-    .sort((a, b) => b.airedAt.getTime() - a.airedAt.getTime())
-    .slice(0, 5);
+  // Fase 8 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — sem cap aqui de proposito: o
+  // Dashboard agrupa `overdue` por serie (groupOverdueBySeries) e so entao cap a 5 GRUPOS.
+  // Um `.slice` neste nivel (episodio bruto, pre-agrupamento) truncava o total antes de
+  // agrupar - uma serie com, digamos, 10 episodios atrasados aparecia com "5 nao assistidos"
+  // (contagem errada), porque so 5 episodios (de qualquer serie) sobreviviam ao corte. Achado
+  // ao vivo: "Disponiveis agora" mostrava 5, "Series acompanhadas" (Fase 10, sem esse cap)
+  // mostrava 10 pra mesma serie do mesmo usuario.
+  const overdue = episodes.filter((ep) => !ep.watched && ep.airedAt <= lastVisitAt).sort((a, b) => b.airedAt.getTime() - a.airedAt.getTime());
 
   return { sinceLastVisit, upcoming, overdue };
 }

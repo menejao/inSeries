@@ -193,11 +193,64 @@ ocupando espaço força o container a exceder a largura do pai. Corrigido empilh
 sempre em coluna (mais robusto que tentar achar o breakpoint exato onde os dois cabem lado a
 lado). Revalidado sem overflow em 320/375/1280px.
 
+## Fase 10 — "Séries acompanhadas"
+
+Seção nova (não existia nenhuma versão anterior pra transformar/cortar). Resume o *estado*
+de cada série — nunca lista episódios (Fase 10 explícito: "não deve listar todos os
+episódios... não replicar o Catálogo ou Assistir a seguir").
+
+- `lib/tracked-series/` (novo módulo, mesmo padrão de `lib/watch-next`/`lib/continue-watching`):
+  `classify.ts` (função pura, 12 testes) decide entre os 5 estados do ticket a partir dos
+  episódios de 1 série + o `status` dela no catálogo (`RETURNING`/`ENDED`/`CANCELED`/
+  `IN_PRODUCTION`/`PILOT`): `disponivel` (N episódios), `proximo-episodio` (hoje/amanhã/em N
+  dias, com data absoluta como contexto), `aguardando-temporada` (nada pendente, série ainda
+  em produção), `concluida` (nada pendente, série encerrada/cancelada). `queries.ts` busca o
+  dado (mesma forma de query do `getWatchNextForUser`, mas **deliberadamente própria** — não
+  reaproveita aquela função porque ela só retorna séries com episódio pendente por
+  construção, nunca cobriria "aguardando nova temporada"/"concluída").
+- `components/dashboard/tracked-series-card.tsx`: card inteiro é um link pra série (poster +
+  título + estado + contexto) — a única ação que a Fase 10 pede pra esta seção.
+- `FixedGrid` (mobile=1/tablet=2/desktop=3) + mesmo cap progressivo 3/4/5 já usado na Fase 8
+  (reaproveitado como `progressiveItemVisibility`, renomeado de `availableNowGroupVisibility`
+  já que agora serve as duas seções). "Ver tudo" → `/me/minha-lista` (a listagem completa já
+  existente, não uma página nova).
+
+**Escopo de estados — decisão registrada.** `ELIGIBLE_STATES = [WATCHING, WANT_TO_WATCH,
+PAUSED]` exclui `COMPLETED` de propósito: Fase 10 pede "séries **em andamento**", e
+`/me/minha-lista` já tem seu próprio grupo "Concluídas" — replicar ali seria exatamente o
+"não replicar" que o ticket probe. Achado ao vivo confirmando que essa exclusão é a correta:
+marcar todos os episódios de uma série `WATCHING` como assistidos aciona o auto-complete
+existente (`toggleEpisodeProgress`, `lib/progress/mutations.ts`) e transiciona o
+`WatchState` pra `COMPLETED` — nesse momento a série sai de "Séries acompanhadas" (o
+esperado) e passa a viver só em "Concluídas" (Minha Lista). Na prática, o estado
+`concluida` da classificação (distinto do `WatchState.COMPLETED`) só é alcançável por uma
+série `PAUSED`/`WANT_TO_WATCH` cujos episódios sincronizados já foram todos assistidos sem
+nunca ter passado por `WATCHING` com o mutation de auto-complete — testado isoladamente
+(`classify.test.ts`), não fácil de reproduzir ao vivo pelo fluxo normal do app.
+
+**Bug real achado e corrigido (não é do Fase 10 em si, é uma interação com Fase 8):**
+`getDashboardCalendarData` (`lib/calendar/queries.ts`) cortava `overdue` pra 5 episódios
+**antes** do agrupamento por série (`groupOverdueBySeries`, Fase 8) — uma série com, por
+exemplo, 10 episódios atrasados aparecia em "Disponíveis agora" como "5 não assistidos"
+(contagem errada, porque só 5 episódios de qualquer série sobreviviam ao corte). Achado
+comparando ao vivo: "Disponíveis agora" mostrava 5 pra uma série, "Séries acompanhadas"
+(sem esse corte, conta os episódios direto) mostrava 10 pra a mesma série do mesmo usuário.
+Corrigido removendo o corte nesse nível — o cap de exibição já acontece corretamente depois,
+a 5 *grupos* (Fase 8) em vez de 5 episódios brutos. Efeito colateral correto: o cabeçalho
+contextual ("Você tem N pendências") e o "Marcar todos" do cabeçalho da seção agora refletem
+o total real, não um valor artificialmente baixo.
+
+**Validado ao vivo**: usuário rastreando 4 séries com `status` de catálogo diferentes
+(`RETURNING`, `ENDED`, `CANCELED`, `IN_PRODUCTION`) — confirmados `disponivel` (10 episódios
+de uma série `ENDED` nunca assistida) e `aguardando-temporada` (série `IN_PRODUCTION` sem
+nenhum episódio sincronizado ainda) lado a lado, contagem batendo com "Disponíveis agora"
+após o fix acima. Sem overflow em 320/375px.
+
 ## Próximos passos
 
-Fase 5 (Resumo operacional), Fase 10 (Séries acompanhadas, seção nova), Fase 11 (Atividade
-recente agrupada, reintrodução decidida na seção de conflito acima), Fase 12 (Ações rápidas
-contextuais) e o restante (hierarquia visual fina, documentação final, evidências) serão
-implementados e documentados incrementalmente nas próximas seções deste arquivo,
-seguindo o mesmo ritmo de validação ao vivo (Docker disponível) já estabelecido no ticket
+Fase 5 (Resumo operacional), Fase 11 (Atividade recente agrupada, reintrodução decidida na
+seção de conflito acima), Fase 12 (Ações rápidas contextuais) e o restante (hierarquia
+visual fina, documentação final, evidências) serão implementados e documentados
+incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo de validação ao
+vivo (Docker disponível) já estabelecido no ticket
 geral: implementar → validar no navegador → testar → documentar → commit.
