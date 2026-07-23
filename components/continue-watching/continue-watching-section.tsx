@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ContinueWatchingCard } from "@/components/continue-watching/continue-watching-card";
 import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
@@ -26,7 +27,14 @@ const MAX_SECONDARY_ITEMS = 3;
  * primitivo usado por Pendencias/Novos - Fase 13: variar composicao por proposito, mas
  * preservar consistencia via Design System), limitada a `MAX_SECONDARY_ITEMS`.
  */
-export function ContinueWatchingSection({ continueWatching }: { continueWatching: ContinueWatchingResult }) {
+export function ContinueWatchingSection({
+  continueWatching,
+  summary
+}: {
+  continueWatching: ContinueWatchingResult;
+  /** Fase 5 — "Resumo operacional": bloco compacto ao lado do hero no desktop, abaixo no mobile. */
+  summary?: ReactNode;
+}) {
   const { started } = splitContinueWatchingByProgress(continueWatching.items);
   const [hero, ...rest] = started;
   const secondary = rest.slice(0, MAX_SECONDARY_ITEMS);
@@ -60,7 +68,12 @@ export function ContinueWatchingSection({ continueWatching }: { continueWatching
   return (
     <section className="space-y-4">
       <h2 className="section-title">Continuar assistindo</h2>
-      <ContinueWatchingCard item={hero} priority variant="hero" />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+        <div className="lg:flex-1">
+          <ContinueWatchingCard item={hero} priority variant="hero" />
+        </div>
+        {summary ? <div className="lg:w-80 lg:shrink-0">{summary}</div> : null}
+      </div>
       {secondary.length ? (
         <div className="flex flex-col gap-2">
           {secondary.map((item) => (

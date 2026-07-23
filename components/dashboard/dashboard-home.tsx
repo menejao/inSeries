@@ -6,6 +6,7 @@ import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
 import { AvailableNowGroupCard } from "@/components/dashboard/available-now-group-card";
 import { TrackedSeriesCard } from "@/components/dashboard/tracked-series-card";
+import { OperationalSummary } from "@/components/dashboard/operational-summary";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
@@ -93,9 +94,18 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   });
   const agendaGroups = groupUpcomingForAgenda(calendarData.upcoming);
   // Fase 8 — "Disponiveis agora": agrupado por serie em vez de 1 linha por episodio.
-  const availableNowGroups = groupOverdueBySeries(overdue).slice(0, 5);
+  const allAvailableNowGroups = groupOverdueBySeries(overdue);
+  const availableNowGroups = allAvailableNowGroups.slice(0, 5);
   // Fase 10 — "Series acompanhadas": estado por serie, nao lista de episodios.
   const trackedSeriesItems = trackedSeriesSummary.slice(0, 5);
+
+  // Fase 5 — "Resumo operacional": numeros com contexto (nunca so o numero), cada um linkado
+  // pra secao/pagina correspondente. `tomorrowGroup` usa `episodes.length + hiddenCount` (nao
+  // so `episodes.length`) porque `groupUpcomingForAgenda` trunca o array pra EXIBICAO (Fase
+  // 7/8, INSERIES-DASHBOARD-HOME-EXPERIENCE-03) - contar so o array visivel sub-contaria,
+  // o mesmo bug que ja foi achado e corrigido pra "Disponiveis agora" (Fase 8) nesta sessao.
+  const tomorrowGroup = agendaGroups.find((group) => group.key === "amanha");
+  const tomorrowCount = tomorrowGroup ? tomorrowGroup.episodes.length + tomorrowGroup.hiddenCount : 0;
 
   const contextualMessage = getContextualMessage({
     hasTrackedSeries: continueWatching.hasTrackedSeries,
@@ -112,7 +122,30 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         <p className="section-copy mt-1 text-base text-ink sm:text-lg">{contextualMessage}</p>
       </div>
 
-      <ContinueWatchingSection continueWatching={continueWatching} />
+      <ContinueWatchingSection
+        continueWatching={continueWatching}
+        summary={
+          continueWatching.hasTrackedSeries ? (
+            <OperationalSummary
+              lines={[
+                {
+                  count: overdue.length,
+                  label: `episodio${overdue.length === 1 ? "" : "s"} ${overdue.length === 1 ? "disponivel" : "disponiveis"}`,
+                  href: "#disponiveis-agora"
+                },
+                {
+                  count: allAvailableNowGroups.length,
+                  label: `serie${allAvailableNowGroups.length === 1 ? "" : "s"} em andamento`,
+                  href: "#disponiveis-agora"
+                },
+                { count: tomorrowCount, label: `estreia${tomorrowCount === 1 ? "" : "s"} amanha`, href: "#agenda-resumida" }
+              ]}
+              ctaHref="/me/minha-lista"
+              ctaLabel="Ver acompanhamento"
+            />
+          ) : undefined
+        }
+      />
 
       {/*
         Fase "redesign completo" (pedido do usuario, sessao com Docker/servidor ao vivo
@@ -126,7 +159,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         mas ainda nao urgente) e Agenda (futuro, so planejamento).
       */}
       {overdue.length > 0 ? (
-        <section className="space-y-4" aria-label="Disponiveis agora">
+        <section id="disponiveis-agora" className="scroll-mt-24 space-y-4" aria-label="Disponiveis agora">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div>
               <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
@@ -199,7 +232,7 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
             )}
           </section>
 
-          <section className="space-y-4" aria-label="Agenda resumida">
+          <section id="agenda-resumida" className="scroll-mt-24 space-y-4" aria-label="Agenda resumida">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">

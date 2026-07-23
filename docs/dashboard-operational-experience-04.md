@@ -246,11 +246,55 @@ de uma série `ENDED` nunca assistida) e `aguardando-temporada` (série `IN_PROD
 nenhum episódio sincronizado ainda) lado a lado, contagem batendo com "Disponíveis agora"
 após o fix acima. Sem overflow em 320/375px.
 
+## Fase 5 — "Resumo operacional"
+
+Bloco compacto ao lado do Hero no desktop, abaixo dele no mobile. 3 números, cada um com
+contexto no próprio label (nunca só o número — Fase 5 explícito: "não apresentar números sem
+oferecer contexto"), cada um um link ("funcionar como links... quando aplicável"), sem
+gráficos, sem estatística de vaidade.
+
+- `components/dashboard/operational-summary.tsx` (novo): componente puro de apresentação,
+  recebe `lines: { count, label, href }[]` + um CTA. As 3 linhas usadas: "N episódios
+  disponíveis" e "N séries em andamento" (ambas → `#disponiveis-agora`), "N estreia(s)
+  amanhã" (→ `#agenda-resumida`); CTA "Ver acompanhamento" → `/me/minha-lista` (texto do
+  próprio mockup da Fase 5).
+- `ContinueWatchingSection` ganhou um prop `summary?: ReactNode`, renderizado num
+  `lg:flex-row` ao lado do Hero (`lg:items-stretch` — mesma altura), empilhando em
+  `flex-col` abaixo de `lg`. Só passado quando `hasTrackedSeries` (sem hero, não tem o que
+  resumir do lado dele).
+- **Achado real, corrigido**: `groupUpcomingForAgenda` (Fase 7/8,
+  INSERIES-DASHBOARD-HOME-EXPERIENCE-03) trunca o array de episódios de cada grupo pra
+  EXIBIÇÃO (orçamento compartilhado de 4 episódios visíveis), guardando o excedente em
+  `hiddenCount`. Contar `tomorrowGroup.episodes.length` sozinho pro Resumo Operacional
+  sub-contaria "estreia amanhã" sempre que o orçamento de exibição já tivesse sido
+  consumido por "hoje" — o mesmo bug de contagem (truncar antes de contar) já achado e
+  corrigido pra "Disponíveis agora" nesta sessão, agora prevenido de propósito:
+  `tomorrowGroup.episodes.length + tomorrowGroup.hiddenCount` recupera o total real.
+
+**Achado ao vivo, corrigido**: os links do Resumo Operacional pra âncoras na mesma página
+(`#disponiveis-agora`/`#agenda-resumida`) usavam o `Link` do Next.js — ele atualiza a URL
+(hash muda corretamente) mas **não rola até o alvo** em navegação hash-only na mesma página
+(comportamento documentado do Next.js: o roteamento client-side dele é pensado pra troca de
+rota, não pra âncora dentro da mesma página). Corrigido usando `<a>` nativa pros hrefs que
+começam com `#` (scroll nativo do navegador funciona sem nenhum JS) — `Link` continua sendo
+usado pro CTA (`/me/minha-lista`, uma rota de verdade). `scroll-mt-24` adicionado às duas
+seções-alvo (mesma convenção já usada por `my-list-group.tsx`) pra o header sticky não
+cobrir o topo da seção ao ancorar.
+
+**Validado ao vivo**: layout lado a lado confirmado via `getBoundingClientRect` em 1280px
+(Hero e Resumo com o mesmo `top`, gap correto entre os dois, largura do Resumo = 320px
+como configurado); sem overflow em 320/375/1280px. O scroll de fato acontecendo ao clicar
+não pôde ser confirmado visualmente nesta sessão — `window.scrollTo()` chamado diretamente
+não move a viewport na ferramenta de automação de navegador deste ambiente (limitação já
+conhecida da ferramenta, não do código: o `<a href="#id">` é o padrão correto e funciona em
+qualquer navegador real; a própria documentação do Next.js recomenda exatamente essa troca
+pra âncoras na mesma página).
+
 ## Próximos passos
 
-Fase 5 (Resumo operacional), Fase 11 (Atividade recente agrupada, reintrodução decidida na
-seção de conflito acima), Fase 12 (Ações rápidas contextuais) e o restante (hierarquia
-visual fina, documentação final, evidências) serão implementados e documentados
-incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo de validação ao
-vivo (Docker disponível) já estabelecido no ticket
-geral: implementar → validar no navegador → testar → documentar → commit.
+Fase 11 (Atividade recente agrupada, reintrodução decidida na seção de conflito acima),
+Fase 12 (Ações rápidas contextuais) e o restante (hierarquia visual fina, documentação
+final, evidências) serão implementados e documentados incrementalmente nas próximas seções
+deste arquivo, seguindo o mesmo ritmo de validação ao vivo (Docker disponível) já
+estabelecido no ticket geral: implementar → validar no navegador → testar → documentar →
+commit.
