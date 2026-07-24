@@ -9,6 +9,7 @@ import { TrackedSeriesCard } from "@/components/dashboard/tracked-series-card";
 import { OperationalSummary } from "@/components/dashboard/operational-summary";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { ActivityGroupRow } from "@/components/dashboard/activity-group-row";
+import { QuickActions } from "@/components/dashboard/quick-actions";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
 import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon, FilmIcon } from "@/components/ui/icons";
@@ -339,6 +340,16 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
           </section>
         </>
       ) : null}
+
+      {/*
+        Fase 12 — "Acoes rapidas contextuais": fora do bloco `hasTrackedSeries` de proposito,
+        diferente das outras secoes desta fase - buscar/descobrir series e util tanto pra
+        quem ja acompanha algo quanto pra quem esta comecando agora (o oposto do resto do
+        Dashboard, que e sobre o que o usuario ja acompanha). Ver comentario dentro de
+        components/dashboard/quick-actions.tsx pra por que so essa 1 acao (as outras 5
+        sugeridas pelo ticket ja sao a acao principal de outra secao acima).
+      */}
+      <QuickActions />
     </div>
   );
 }

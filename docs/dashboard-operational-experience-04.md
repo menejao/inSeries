@@ -323,10 +323,61 @@ Dois"`, `"Você concluiu Série Teste Três"`, `"Você assistiu 5 episódios de 
 `EPISODE_WATCHED` do 5º episódio aconteceram quase no mesmo instante mas **não foram
 fundidos** — tipos diferentes, corretamente 2 grupos separados. Sem overflow em 320/375px.
 
+## Fase 12 — "Ações rápidas contextuais"
+
+Regra do ticket: "não repetir destinos já disponíveis diretamente na Sidebar sem
+justificativa funcional... substituir atalhos de navegação redundantes por ações úteis...
+somente exibir ações existentes". Dos 6 exemplos citados pelo ticket (Buscar série / Revisar
+pendências / Atualizar progresso / Ver lançamentos da semana / Marcar episódios / Abrir
+série em andamento), **5 já são a ação principal de uma seção construída nas Fases 5/8/9/10/11
+desta sessão**: o Hero tem "Continuar episódio"/"Marcar assistido", "Disponíveis agora" tem
+"Continuar série"/"Marcar todos" por série, "Agenda resumida" tem "Abrir calendário". Repetir
+qualquer uma delas aqui violaria a mesma regra "não repetir ação já visível na seção anterior"
+já aplicada dentro do próprio Dashboard antes deste ticket (Pendências → Disponíveis agora).
+
+"Buscar série" é a única das 6 que não vive em nenhuma seção do Dashboard hoje — não é uma
+página nova nem uma ação nova, reusa o Command Palette (Fase 4,
+INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) que já existe no header. Adicionar um segundo
+ponto de entrada pra ele no corpo da página é justificável funcionalmente: o header some ao
+rolar em telas menores e o atalho de teclado (Ctrl+K) não é descoberto por usuários mobile.
+
+- `components/dashboard/quick-actions.tsx` (novo, client component): 1 botão, "Buscar
+  série", despacha o mesmo `OPEN_COMMAND_PALETTE_EVENT` que o botão do header já usa — zero
+  lógica nova de abertura de palette, só um segundo gatilho.
+- Renderizado em `dashboard-home.tsx` **fora** do bloco condicional `hasTrackedSeries`: ao
+  contrário de todas as outras seções desta fase (que só fazem sentido para quem já
+  acompanha algo), buscar/descobrir uma série é útil também pra quem está começando agora —
+  é literalmente a única ação do Dashboard que serve pro usuário zerado.
+
+**Validado ao vivo**: botão "Buscar serie" presente no fim da página (usuário com dados
+reais de sessões anteriores); clique despacha o evento e o Command Palette abre de fato
+(confirmado via inspeção do DOM — `[role="dialog"]` com o conteúdo "Ações rápidas... Abrir
+calendário... Ir para o feed..." aparece após o clique, some após Escape). Sem overflow em
+320px (`right: 151.8px` dentro de um viewport de 320px). Uma segunda cópia inerte do mesmo
+botão foi encontrada via `querySelectorAll` (`rect` zerado, ancestral `#S:0[hidden]`) — é o
+mesmo falso-alarme já documentado na Fase 5/9: template de streaming/suspense do Next.js
+oculto no DOM, não uma duplicação visual real (só 1 botão com dimensões reais existe).
+
+`npx tsc --noEmit` limpo, `eslint` limpo nos arquivos tocados (o `npm run lint` completo do
+projeto reporta ~260 erros pré-existentes, todos dentro de
+`.claude/worktrees/jolly-banach-773a78/` — um worktree de uma sessão concorrente, fora do
+escopo deste ticket). `npm run test`: 120 testes, sem novos — `QuickActions` não tem lógica
+de ramificação que justifique teste unitário próprio (1 botão, 1 `onClick`, sem estado). Suite
+completa do Playwright (`--workers=1`): 57 passaram, 7 falharam na primeira rodada — todas
+reconfirmadas em isolamento (rodadas individuais) como as categorias de instabilidade já
+documentadas nesta sessão: 2 em `command-palette.spec.ts` e 1 em `catalog-and-tracking.spec.ts`
+por saturação do servidor único do `next dev` durante a suite completa (passam limpo quando
+rodadas sozinhas), 4 em `visual.spec.ts` por ausência de baseline `win32` (`"A snapshot
+doesn't exist... writing actual"` — não é uma regressão de pixel, é a primeira execução
+dessas snapshots nesta plataforma).
+
 ## Próximos passos
 
-Fase 12 (Ações rápidas contextuais) e o restante (hierarquia visual fina, documentação
-final, evidências, scorecard PASS/FAIL obrigatório) serão implementados e documentados
-incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo de validação ao
-vivo (Docker disponível) já estabelecido no ticket geral: implementar → validar no navegador
-→ testar → documentar → commit.
+Restante do ticket (hierarquia visual fina — Fase 13, já em boa parte alcançada
+incidentalmente pela variedade Hero/card compacto/grid das fases anteriores mas não
+verificada formalmente contra o checklist específico da Fase 13 —, varredura completa de
+breakpoints com evidências, auditoria de acessibilidade, checagem de performance,
+documentação final e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será
+implementado e documentado incrementalmente nas próximas seções deste arquivo, seguindo o
+mesmo ritmo já estabelecido: implementar → validar no navegador → testar → documentar →
+commit.
