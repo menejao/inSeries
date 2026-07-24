@@ -18,13 +18,17 @@ export function WatchNextMarkButton({
   variant = "primary",
   size = "lg",
   className = "w-full sm:w-auto",
-  label = "Marcar assistido"
+  label = "Marcar assistido",
+  ariaLabel
 }: {
   episodeId: string;
   variant?: "primary" | "secondary" | "outline" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
   className?: string;
   label?: string;
+  /** Fase 16 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — nome acessivel completo ("Marcar Silo,
+   * temporada 3, episodio 4 como assistido"), independente do texto visivel curto do botao. */
+  ariaLabel?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -36,6 +40,7 @@ export function WatchNextMarkButton({
       variant={variant}
       size={size}
       className={className}
+      aria-label={ariaLabel}
       disabled={isPending || justWatched}
       loading={isPending}
       onClick={() => {

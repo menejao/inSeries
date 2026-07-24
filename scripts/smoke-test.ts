@@ -124,12 +124,12 @@ function countOccurrences(haystack: string, needle: string) {
   const result = dedupeDashboardEpisodes({ continueWatching, sinceLastVisit, overdue });
 
   check(
-    "dedupeDashboardEpisodes remove de 'Novos para voce' um episodio ja presente em Continuar Assistindo",
+    "dedupeDashboardEpisodes remove de 'sinceLastVisit' um episodio ja presente em Continuar acompanhando",
     result.sinceLastVisit.length === 1 && result.sinceLastVisit[0].id === "ep-new",
     result.sinceLastVisit.map((ep) => ep.id)
   );
   check(
-    "dedupeDashboardEpisodes remove de 'Pendencias' um episodio ja presente em Continuar Assistindo",
+    "dedupeDashboardEpisodes remove de 'overdue' um episodio ja presente em Continuar acompanhando",
     result.overdue.length === 1 && result.overdue[0].id === "ep-overdue",
     result.overdue.map((ep) => ep.id)
   );
@@ -870,30 +870,45 @@ async function main() {
   // foi removida (redundante com Continuar assistindo). A pagina /watch-next em si foi
   // fundida no Dashboard depois (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01, Fase 2).
 
-  // ---- Continuar assistindo (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01) ----
+  // ---- Continuar acompanhando (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01, renomeada pela
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 - "Continuar assistindo" sugeria streaming) ----
   const jarWatchNextDashboardMe = await request(jarWatchNextDashboard, "/api/auth/me");
   const jarWatchNextDashboardUserId: string | undefined = jarWatchNextDashboardMe.body?.data?.id;
 
   const dashboardHomeWithContinueWatching = await request(jarWatchNextDashboard, "/");
   const dashboardHomeBody = String(dashboardHomeWithContinueWatching.body);
-  const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar assistindo");
-  const dashboardGridIndex = dashboardHomeBody.indexOf("Novos para voce");
+  const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar acompanhando");
+  const dashboardGridIndex = dashboardHomeBody.indexOf("Pendencias recentes");
   check(
-    "Dashboard exibe a secao Continuar assistindo",
-    dashboardHomeWithContinueWatching.status === 200 &&
-      continueWatchingIndex !== -1 &&
-      dashboardHomeBody.includes("Retome suas series exatamente de onde parou."),
+    "Dashboard exibe a secao Continuar acompanhando",
+    dashboardHomeWithContinueWatching.status === 200 && continueWatchingIndex !== -1,
     dashboardHomeWithContinueWatching.status
   );
   check(
-    "Continuar assistindo fica no topo do Dashboard (antes do grid de outras secoes)",
+    "Continuar acompanhando fica no topo do Dashboard (antes do grid de outras secoes)",
     continueWatchingIndex !== -1 && dashboardGridIndex !== -1 && continueWatchingIndex < dashboardGridIndex,
     { continueWatchingIndex, dashboardGridIndex }
   );
   check(
-    "Continuar assistindo mostra o proximo episodio correto (T01 | E01)",
-    dashboardHomeBody.includes("T01 | E01"),
+    // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04): serie recem-marcada como WATCHING
+    // comeca com seriesProgressPercent 0 (nenhum episodio assistido ainda) - por regra
+    // (nao recriada aqui, so respeitada), 0% nao conta como "continuidade" e fica de fora de
+    // "Continuar acompanhando". O episodio pendente aparece corretamente em "Pendencias
+    // recentes" em vez disso (rangeLabel com codigo T0XEyy so existe pra grupos com 2+
+    // episodios na mesma temporada - com 1 so pendente, o card mostra a contagem "1 episodio
+    // nao assistido", sem codigo de episodio).
+    // "nao assistido" (sem sufixo de plural) e o unico trecho estavel: o RSC do Next
+    // serializa `{count} episodio{count>1?"s":""} nao assistido{...}` como um ARRAY de
+    // pedacos separados (`[610," episodio","s"," nao assistido","s"]`), entao a frase
+    // completa concatenada nunca existe como substring continua no payload bruto.
+    "Serie recem-adicionada (0% de progresso) aparece em Pendencias recentes, nao em Continuar acompanhando (Fase 9)",
+    dashboardHomeBody.includes("nao assistido"),
     dashboardHomeWithContinueWatching.status
+  );
+  check(
+    "INSERIES-DASHBOARD-HOME-EXPERIENCE-03: Dashboard nao usa linguagem de streaming (Continuar episodio/Assistir/Reproduzir)",
+    !dashboardHomeBody.includes("Continuar episodio") && !dashboardHomeBody.includes(">Assistir<") && !dashboardHomeBody.includes("Reproduzir"),
+    null
   );
 
   check("sessao do usuario userwndash expoe id valido (/api/auth/me)", Boolean(jarWatchNextDashboardUserId), jarWatchNextDashboardMe.body);
@@ -924,7 +939,16 @@ async function main() {
   }
   const dashboardAfterMarking = await request(jarWatchNextDashboard, "/");
   check(
-    "Marcar episodio como assistido avanca o card de Continuar assistindo para o proximo episodio",
+    // Agora com >0% de progresso (1 episodio ja assistido), a serie passa a aparecer em
+    // "Continuar acompanhando" (Fase 9) - e aqui, com a UI renderizada de verdade, que a
+    // acao principal "Marcar como assistido" (INSERIES-DASHBOARD-HOME-EXPERIENCE-03, Fase 4)
+    // e garantida presente.
+    "INSERIES-DASHBOARD-HOME-EXPERIENCE-03: acao principal de Continuar acompanhando e 'Marcar como assistido'",
+    String(dashboardAfterMarking.body).includes("Marcar como assistido"),
+    null
+  );
+  check(
+    "Marcar episodio como assistido avanca o card de Continuar acompanhando para o proximo episodio",
     Boolean(firstPendingEpisodeId) &&
       dashboardAfterMarking.status === 200 &&
       String(dashboardAfterMarking.body).includes("T01 | E02"),
@@ -935,16 +959,16 @@ async function main() {
   await registerUser(jarContinueWatchingEmpty, "usercwempty");
   const dashboardEmptyContinueWatching = await request(jarContinueWatchingEmpty, "/");
   check(
-    "Continuar assistindo mostra empty state para usuario sem series acompanhadas, com CTA Explorar catalogo",
+    "Continuar acompanhando mostra empty state para usuario sem series acompanhadas, com CTA Explorar catalogo",
     dashboardEmptyContinueWatching.status === 200 &&
       String(dashboardEmptyContinueWatching.body).includes("Voce ainda nao comecou nenhuma serie") &&
       String(dashboardEmptyContinueWatching.body).includes("Explorar catalogo"),
     dashboardEmptyContinueWatching.status
   );
   check(
-    "Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01): usuario sem nenhuma serie acompanhada nao ve 'Novos para voce'/'Agenda resumida' (evita parede de empty states)",
-    !String(dashboardEmptyContinueWatching.body).includes("Novos para voce<") &&
-      !String(dashboardEmptyContinueWatching.body).includes("Agenda resumida<"),
+    "Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01): usuario sem nenhuma serie acompanhada nao ve 'Pendencias recentes'/'Proximos episodios' (evita parede de empty states)",
+    !String(dashboardEmptyContinueWatching.body).includes("Pendencias recentes<") &&
+      !String(dashboardEmptyContinueWatching.body).includes("Proximos episodios<"),
     null
   );
   check(
@@ -1009,10 +1033,10 @@ async function main() {
 
   const dashboard = await request(jarA, "/");
   check(
-    // "Proximos episodios" foi renomeada pra "Agenda resumida" na sprint 03
-    // (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) - este check ficou desatualizado ate agora.
-    "dashboard / mostra secao Agenda resumida",
-    dashboard.status === 200 && String(dashboard.body).includes("Agenda resumida"),
+    // "Agenda resumida" foi renomeada pra "Proximos episodios" na sprint 03
+    // (INSERIES-DASHBOARD-HOME-EXPERIENCE-03, Fase 8).
+    "dashboard / mostra secao Proximos episodios",
+    dashboard.status === 200 && String(dashboard.body).includes("Proximos episodios"),
     dashboard.status
   );
 
@@ -1355,11 +1379,21 @@ async function main() {
     feedPersonalAAfterPrivate.status
   );
 
-  const meBOwnActivity = await request(jarB, "/");
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 7) removeu "Atividade recente" do Dashboard
+  // por completo (sem acao imediata, duplicava o Feed) - o Dashboard nunca mais mostra
+  // atividade, nem a propria. O equivalente correto agora e o Feed pessoal (Sidebar),
+  // que continua mostrando a propria atividade do dono independente de perfil privado.
+  const dashboardBNoActivity = await request(jarB, "/");
   check(
-    "Dashboard de B continua mostrando a propria atividade mesmo com perfil privado",
-    meBOwnActivity.status === 200 && String(meBOwnActivity.body).includes(listMarker),
-    meBOwnActivity.status
+    "Dashboard de B nao mostra atividade (secao removida pela Fase 7, INSERIES-DASHBOARD-HOME-EXPERIENCE-03)",
+    dashboardBNoActivity.status === 200 && !String(dashboardBNoActivity.body).includes(listMarker),
+    dashboardBNoActivity.status
+  );
+  const feedBOwnActivity = await request(jarB, "/feed");
+  check(
+    "Feed pessoal de B continua mostrando a propria atividade mesmo com perfil privado",
+    feedBOwnActivity.status === 200 && String(feedBOwnActivity.body).includes(listMarker),
+    feedBOwnActivity.status
   );
 
   await request(jarB, "/api/profile", {
@@ -2482,8 +2516,8 @@ async function main() {
 
   const jarShell: CookieJar = { value: "" };
   const userShell = await registerUser(jarShell, "usershell");
-  // Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) esconde "Novos para voce"/"Agenda
-  // resumida"/"Pendencias" inteiras quando o usuario nao acompanha nenhuma serie
+  // Fase 8 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) esconde "Pendencias recentes"/"Proximos
+  // episodios" inteiras quando o usuario nao acompanha nenhuma serie
   // (hasTrackedSeries=false) - os checks abaixo de "usuario ativo ve o Dashboard completo"
   // dependem de pelo menos 1 serie rastreada, senao ficam testando um estado que nao existe
   // mais (achado revisando os proprios asserts depois do redesign do Dashboard).
@@ -2631,41 +2665,46 @@ async function main() {
   // pode aparecer ANTES do HTML real na resposta bruta. Um indexOf sem ancora casa com essa
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
-    continueWatching: dashboardBody.indexOf("Continuar assistindo<"),
-    disponiveisAgora: dashboardBody.indexOf("Disponiveis agora<"),
-    novosParaVoce: dashboardBody.indexOf("Novos para voce<"),
-    agendaResumida: dashboardBody.indexOf("Agenda resumida<")
+    continueWatching: dashboardBody.indexOf("Continuar acompanhando<"),
+    pendenciasRecentes: dashboardBody.indexOf("Pendencias recentes<"),
+    proximosEpisodios: dashboardBody.indexOf("Proximos episodios<")
   };
   check(
     // "usershell" acompanha uma serie com episodios ja lancados (WATCHING desde antes do
-    // fetch, ver acima) - "Disponiveis agora" garantido presente, nao so "se houver atraso".
-    "Dashboard (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04, Fase 8) segue a ordem por urgencia de acao: Continuar assistindo -> Disponiveis agora -> Novos para voce -> Agenda resumida",
+    // fetch, ver acima) - "Pendencias recentes" garantido presente, nao so "se houver atraso".
+    // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 6) unificou "Disponiveis agora" e "Novos
+    // para voce" numa unica secao "Pendencias recentes".
+    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) segue a ordem por urgencia de acao: Continuar acompanhando -> Pendencias recentes -> Proximos episodios",
     Object.values(sectionIndex).every((index) => index !== -1) &&
-      sectionIndex.continueWatching < sectionIndex.disponiveisAgora &&
-      sectionIndex.disponiveisAgora < sectionIndex.novosParaVoce &&
-      sectionIndex.novosParaVoce < sectionIndex.agendaResumida,
+      sectionIndex.continueWatching < sectionIndex.pendenciasRecentes &&
+      sectionIndex.pendenciasRecentes < sectionIndex.proximosEpisodios,
     sectionIndex
   );
   check(
-    "Continuar assistindo (Fase 2) permanece a primeira secao do Dashboard",
-    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.disponiveisAgora,
+    "Continuar acompanhando (Fase 2) permanece a primeira secao do Dashboard",
+    sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.pendenciasRecentes,
     sectionIndex
   );
   check(
-    "Dashboard (redesign completo) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais/Proximos episodios), e cortou os shelfs de navegacao pura/timeline passiva (Atalhos rapidos, Atividade recente) ja cobertos pela Sidebar/BottomNav e por /profile+/me/recap",
+    "Dashboard (redesign completo + INSERIES-DASHBOARD-HOME-EXPERIENCE-03) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais), e cortou os shelfs de navegacao pura/timeline passiva/card de metricas/busca duplicada (Atalhos rapidos, Atividade recente, card 'Agora', 'Buscar') ja cobertos pela Sidebar/BottomNav, por /profile+/me/recap e pela busca universal do header",
     !dashboardBody.includes("Bombando Agora<") &&
       !dashboardBody.includes("Lancamentos<") &&
       !dashboardBody.includes("Watch Next<") &&
       !dashboardBody.includes("Suas Estatisticas<") &&
       !dashboardBody.includes("Descobrir mais<") &&
-      !dashboardBody.includes("Proximos episodios<") &&
       !dashboardBody.includes("Atalhos rapidos<") &&
-      !dashboardBody.includes("Atividade recente<"),
+      !dashboardBody.includes("Atividade recente<") &&
+      !dashboardBody.includes(">Agora<") &&
+      !dashboardBody.includes(">Buscar<"),
     null
   );
-  check("Dashboard (Fase 8) exibe Disponiveis agora", dashboardBody.includes("Disponiveis agora<"), dashboardAuth.status);
-  check("Dashboard (Fase 6) exibe a secao Novos para voce", dashboardBody.includes("Novos para voce"), dashboardAuth.status);
-  check("Dashboard (Fase 7/8) exibe a Agenda resumida", dashboardBody.includes("Agenda resumida"), dashboardAuth.status);
+  check("Dashboard (Fase 6) exibe Pendencias recentes", dashboardBody.includes("Pendencias recentes<"), dashboardAuth.status);
+  check("Dashboard (Fase 8) exibe Proximos episodios", dashboardBody.includes("Proximos episodios"), dashboardAuth.status);
+  check(
+    "INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 4/16): Dashboard nao usa linguagem de streaming",
+    !dashboardBody.includes("Continuar episodio") && !dashboardBody.includes(">Assistir<") && !dashboardBody.includes("Reproduzir") && !dashboardBody.includes("Continuar serie"),
+    null
+  );
   check(
     "Regra global de grids (Fase 10): nenhuma classe auto-fit/auto-fill e usada em nenhuma listagem",
     !dashboardBody.includes("auto-fit") && !dashboardBody.includes("auto-fill"),

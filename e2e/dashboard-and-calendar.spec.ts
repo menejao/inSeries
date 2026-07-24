@@ -30,9 +30,12 @@ test("Dashboard mostra as secoes operacionais esperadas", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Continuar assistindo" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Novos para voce" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Agenda resumida" })).toBeVisible();
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 — "Continuar assistindo" virou "Continuar
+  // acompanhando" (sem linguagem de streaming); "Disponiveis agora"/"Novos para voce"
+  // foram unificados em "Pendencias recentes"; "Agenda resumida" virou "Proximos episodios".
+  await expect(page.getByRole("heading", { name: "Continuar acompanhando" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pendencias recentes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Proximos episodios" })).toBeVisible();
 });
 
 test("usuario abre o calendario a partir do Dashboard", async ({ page }) => {
@@ -58,10 +61,12 @@ test("Dashboard nao repete secoes descontinuadas (Bombando Agora, Watch Next, et
 
   await expect(page.getByText("Bombando Agora")).toHaveCount(0);
   await expect(page.getByText("Watch Next")).toHaveCount(0);
-  await expect(page.getByText("Proximos episodios")).toHaveCount(0);
-  // Redesign completo (sessao com servidor ao vivo) cortou "Atalhos rapidos"/"Atividade
-  // recente" do Dashboard - navegacao redundante com Sidebar/BottomNav e timeline passiva
-  // ja coberta por /profile+/me/recap.
+  // Redesign completo cortou "Atalhos rapidos"/"Atividade recente" do Dashboard - navegacao
+  // redundante com Sidebar/BottomNav e timeline passiva ja coberta por /profile+/me/recap.
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 removeu o card "Agora" e a busca duplicada
+  // ("Buscar") do fim do Dashboard.
   await expect(page.getByRole("heading", { name: "Atalhos rapidos" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Atividade recente" })).toHaveCount(0);
+  await expect(page.getByText("Agora", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Buscar", exact: true })).toHaveCount(0);
 });

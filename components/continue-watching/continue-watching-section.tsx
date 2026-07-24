@@ -1,53 +1,44 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { ContinueWatchingCard } from "@/components/continue-watching/continue-watching-card";
-import { EpisodeActionRow } from "@/components/dashboard/episode-action-row";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FixedGrid } from "@/components/ui/fixed-grid";
 import { buttonVariants } from "@/components/ui/button";
-import { CompassIcon, PlayIcon } from "@/components/ui/icons";
+import { CompassIcon, TvIcon } from "@/components/ui/icons";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import type { ContinueWatchingResult } from "@/lib/continue-watching";
 
-/** Fase 4 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — no more than this many secondary (non-hero) items. */
-const MAX_SECONDARY_ITEMS = 3;
+/**
+ * Fase 4 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — "e proibido exibir apenas uma serie em um
+ * card hero gigante quando existirem varias series elegiveis... 3 ou mais series elegiveis:
+ * continuar utilizando o FixedGrid existente". Cap inicial pra nao virar lista infinita
+ * ("Muitas series em andamento: exibir quantidade limitada, disponibilizar Ver todas").
+ */
+const MAX_ITEMS = 6;
 
 /**
- * Fase 4 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — o Dashboard's primeira area, agora
- * com hero real em vez de um carrossel de cards iguais (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01,
- * substituido por este ticket). `splitContinueWatchingByProgress` (lib/dashboard) remove series
- * com 0% de progresso antes de qualquer selecao - elas nunca competem pelo hero nem aparecem
- * como "continuidade" (Fase 9); o dono do Dashboard (dashboard-home.tsx) reusa a MESMA lista
- * `started` pro dedupe, entao o episodio de uma serie 0% reaparece sozinho em
- * Pendencias/Novos, sem nenhuma logica de "reclassificacao" extra.
- *
- * O hero (`ContinueWatchingCard` variant="hero") e sempre o primeiro item de `started` (a
- * query ja ordena por atividade mais recente - Fase 3 de lib/continue-watching/queries.ts).
- * Os demais (Fase 4: "nao criar um grande carrossel... nao depender exclusivamente de
- * interacao horizontal") viram uma lista vertical compacta (`EpisodeActionRow`, mesmo
- * primitivo usado por Pendencias/Novos - Fase 13: variar composicao por proposito, mas
- * preservar consistencia via Design System), limitada a `MAX_SECONDARY_ITEMS`.
+ * Fase 4 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — "Continuar acompanhando" (nome anterior,
+ * "Continuar assistindo", sugeria reproducao dentro do sistema - o inSeries nao e uma
+ * plataforma de streaming). Antes: 1 hero gigante + lista secundaria compacta. Agora: TODAS
+ * as series elegiveis (ate `MAX_ITEMS`) entram no MESMO `FixedGrid`, mesma largura/altura/
+ * posicao de imagem/titulo/progresso/acoes por construcao (regra global de layout) - 1 serie
+ * ocupa 1 celula do grid (nao a largura toda), 2+ ficam lado a lado quando o breakpoint
+ * permitir. `splitContinueWatchingByProgress` (lib/dashboard) continua removendo series com
+ * 0% de progresso antes de qualquer selecao (Fase 9, INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04)
+ * - regra de elegibilidade reaproveitada, nao recriada.
  */
-export function ContinueWatchingSection({
-  continueWatching,
-  summary
-}: {
-  continueWatching: ContinueWatchingResult;
-  /** Fase 5 — "Resumo operacional": bloco compacto ao lado do hero no desktop, abaixo no mobile. */
-  summary?: ReactNode;
-}) {
+export function ContinueWatchingSection({ continueWatching }: { continueWatching: ContinueWatchingResult }) {
   const { started } = splitContinueWatchingByProgress(continueWatching.items);
-  const [hero, ...rest] = started;
-  const secondary = rest.slice(0, MAX_SECONDARY_ITEMS);
+  const items = started.slice(0, MAX_ITEMS);
 
-  if (!hero) {
+  if (!items.length) {
     return (
       <section className="space-y-4">
         <div>
-          <h2 className="section-title">Continuar assistindo</h2>
-          <p className="section-copy">Retome suas series exatamente de onde parou.</p>
+          <h2 className="section-title">Continuar acompanhando</h2>
+          <p className="section-copy">Series com episodios pendentes de marcar como assistidos.</p>
         </div>
         <EmptyState
-          icon={<PlayIcon className="h-6 w-6" />}
+          icon={<TvIcon className="h-6 w-6" />}
           title={continueWatching.hasTrackedSeries ? "Voce esta em dia com suas series" : "Voce ainda nao comecou nenhuma serie"}
           copy={
             continueWatching.hasTrackedSeries
@@ -67,45 +58,19 @@ export function ContinueWatchingSection({
 
   return (
     <section className="space-y-4">
-      <h2 className="section-title">Continuar assistindo</h2>
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
-        {/*
-          Fase 14/21 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — achado ao vivo, ja em
-          producao desde a Fase 5: breakpoint lado-a-lado era `lg` (1024px), mas o Hero tem um
-          minimo de conteudo real (poster fixo + titulo + progresso + 2 botoes, mesmo depois
-          de `min-w-0` deixar tudo encolher ao maximo) de ~505px - somado ao Resumo Operacional
-          fixo em 320px (`shrink-0`, por design, pra nao virar ilegível) e o gap, precisa de
-          ~841px. Em 1024px de viewport, depois da Sidebar (~256px) e do padding do `main`,
-          sobra so ~689px pro conteudo - menos que os 841px necessarios, e a linha inteira
-          transbordava a pagina inteira (`scrollWidth > clientWidth`, confirmado via bisect de
-          commits + medicao ao vivo em 1024px). Trocado de `lg` pra `xl` (1280px): abaixo
-          disso os dois empilham (comportamento ja validado, sem overflow); a partir de 1280px
-          sobra espaco de sobra pros 841px necessarios.
-        */}
-        <div className="min-w-0 xl:flex-1">
-          <ContinueWatchingCard item={hero} priority variant="hero" />
-        </div>
-        {summary ? <div className="xl:w-80 xl:shrink-0">{summary}</div> : null}
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="section-title">Continuar acompanhando</h2>
+        {started.length > MAX_ITEMS ? (
+          <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
+            Ver todas
+          </Link>
+        ) : null}
       </div>
-      {secondary.length ? (
-        <div className="flex flex-col gap-2">
-          {secondary.map((item) => (
-            <EpisodeActionRow
-              key={item.episode.id}
-              episode={{
-                id: item.episode.id,
-                title: item.episode.title,
-                number: item.episode.number,
-                seasonNumber: item.episode.seasonNumber,
-                series: { slug: item.series.slug, title: item.series.title, posterUrl: item.series.posterUrl }
-              }}
-              dateLabel={`${Math.round(item.seriesProgressPercent)}% assistida`}
-              badge={{ label: "Em andamento", variant: "outline" }}
-              action={{ kind: "continue", label: "Continuar", href: `/series/${item.series.slug}/episode/${item.episode.id}` }}
-            />
-          ))}
-        </div>
-      ) : null}
+      <FixedGrid mobile={1} tablet={2} desktop={3}>
+        {items.map((item, index) => (
+          <ContinueWatchingCard key={item.episode.id} item={item} priority={index === 0} variant="hero" />
+        ))}
+      </FixedGrid>
     </section>
   );
 }

@@ -19,7 +19,7 @@ export async function DashboardHeader() {
   if (!user) return null;
 
   return (
-    <header className="safe-pt sticky top-0 z-30 flex items-center gap-4 border-b border-border/60 bg-canvas/80 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border/60 bg-canvas/80 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-sm sm:px-6 lg:px-8">
       <Link href="/" className="flex items-center gap-2 lg:hidden">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-primary-foreground">in</span>
         <span className="text-base font-semibold text-ink">inSeries</span>
