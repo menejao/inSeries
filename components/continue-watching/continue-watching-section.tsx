@@ -68,11 +68,24 @@ export function ContinueWatchingSection({
   return (
     <section className="space-y-4">
       <h2 className="section-title">Continuar assistindo</h2>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-        <div className="lg:flex-1">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
+        {/*
+          Fase 14/21 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — achado ao vivo, ja em
+          producao desde a Fase 5: breakpoint lado-a-lado era `lg` (1024px), mas o Hero tem um
+          minimo de conteudo real (poster fixo + titulo + progresso + 2 botoes, mesmo depois
+          de `min-w-0` deixar tudo encolher ao maximo) de ~505px - somado ao Resumo Operacional
+          fixo em 320px (`shrink-0`, por design, pra nao virar ilegível) e o gap, precisa de
+          ~841px. Em 1024px de viewport, depois da Sidebar (~256px) e do padding do `main`,
+          sobra so ~689px pro conteudo - menos que os 841px necessarios, e a linha inteira
+          transbordava a pagina inteira (`scrollWidth > clientWidth`, confirmado via bisect de
+          commits + medicao ao vivo em 1024px). Trocado de `lg` pra `xl` (1280px): abaixo
+          disso os dois empilham (comportamento ja validado, sem overflow); a partir de 1280px
+          sobra espaco de sobra pros 841px necessarios.
+        */}
+        <div className="min-w-0 xl:flex-1">
           <ContinueWatchingCard item={hero} priority variant="hero" />
         </div>
-        {summary ? <div className="lg:w-80 lg:shrink-0">{summary}</div> : null}
+        {summary ? <div className="xl:w-80 xl:shrink-0">{summary}</div> : null}
       </div>
       {secondary.length ? (
         <div className="flex flex-col gap-2">

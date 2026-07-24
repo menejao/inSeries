@@ -417,10 +417,59 @@ hoje só existe 1 ação ali.
 escopo deste ticket, mesma instabilidade de catálogo já documentada nesta sessão). Sem
 overflow em 320px (`scrollWidth === clientWidth === 320`).
 
+## Fase 14 — "Layout desktop"
+
+Ticket pede composição modular, cita literalmente um mockup ASCII com "Séries acompanhadas"
+e "Atividade recente" lado a lado no desktop (par de peso 3, mesma lógica do par
+Hero+Resumo de peso 1/2 já existente desde a Fase 5). Implementado: as duas seções entram
+num `FixedGrid mobile={1} desktop={2} className="items-start"` quando há séries acompanhadas
+(sem séries, "Atividade recente" fica sozinha, largura cheia — um item só ocupando metade da
+grade pareceria quebrado). O grid interno de `TrackedSeriesCard` (Fase 10) caiu de 3 para 2
+colunas no desktop, já que a seção agora ocupa só metade da largura — 3 colunas ali dentro
+espremeria os cards.
+
+**Achado ao vivo, grave, corrigido — bug real já em produção desde a Fase 5:** o breakpoint
+sweep desta fase (os 16 breakpoints obrigatórios da Fase 21, testados juntos por
+conveniência) encontrou overflow horizontal em 1024px — não relacionado ao par novo desta
+fase, e sim ao par Hero+Resumo Operacional (`ContinueWatchingSection`, Fase 5), que já estava
+implantado em produção com esse bug havia várias fases. Causa raiz, isolada por bisect de
+commits (`git checkout <commit> -- arquivo` + teste ao vivo em cada um, não suposição):
+
+1. `<div className="lg:flex-1">` envolvendo o Hero não tinha `min-w-0` — o mínimo padrão de
+   um item flex é `auto` (tamanho do conteúdo, não 0), então o Hero se recusava a encolher
+   abaixo do próprio conteúdo intrínseco. Corrigido primeiro, mas não bastou sozinho.
+2. Mesmo com `min-w-0`, o Hero tem um mínimo real de conteúdo (~505px: poster fixo + título +
+   badge + progresso + 2 botões, mesmo depois de tudo que pode encolher/truncar já
+   encolhido). Somado ao Resumo Operacional, fixo em 320px por design (`lg:w-80 lg:shrink-0`
+   — não pode ficar mais estreito sem virar ilegível) mais o gap, o par precisa de ~841px.
+   Em 1024px de viewport, sobra só ~689px depois da Sidebar e do padding do `main` — menos
+   que o necessário, e a linha inteira transbordava a página (`scrollWidth > clientWidth`).
+
+Fix: breakpoint do lado-a-lado trocado de `lg` (1024px) para `xl` (1280px) — abaixo disso os
+dois empilham (comportamento já validado, cada um ocupando a largura cheia); a partir de
+1280px sobra espaço de sobra pros ~841px necessários.
+
+**Validado — varredura completa dos 16 breakpoints obrigatórios da Fase 21** (320, 360, 375,
+390, 412, 430, 480, 600, 768, 820, 1024, 1280, 1440, 1600, 1920, 2560px via
+`document.documentElement.scrollWidth === clientWidth` em cada um): **zero overflow em
+todos**, incluindo o 1024px que estava quebrado. Confirmado também que o par
+Hero+Resumo fica empilhado (largura cheia cada) abaixo de 1280px e lado a lado a partir
+dali (`getBoundingClientRect` em 1024 e 2560px). Par Séries acompanhadas+Atividade recente
+confirmado lado a lado a partir de 1024px (`lg`, como planejado nesta fase), sem espremer os
+cards (`TrackedSeriesCard` a 198-224px de largura, dentro do razoável).
+
+`tsc`/`eslint` limpos; `npm run test` 120/120; Playwright completo (`--workers=1`) 57/64 na
+primeira passada — as 7 falhas reconfirmadas em isolamento (rodadas individuais) como as
+mesmas categorias de instabilidade sob carga do servidor único de `next dev` já documentadas
+nesta sessão (`auth.spec.ts`, `settings.spec.ts`, `catalog-and-tracking.spec.ts` passam limpo
+sozinhas) mais a instabilidade de snapshot visual da Landing (fora do escopo deste ticket).
+
 ## Próximos passos
 
-Restante do ticket (varredura completa de breakpoints com evidências formais, auditoria de
-acessibilidade — Fase 19 —, checagem de performance — Fase 20 —, documentação final — Fase
-22 — e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será implementado e
-documentado incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo já
-estabelecido: implementar → validar no navegador → testar → documentar → commit.
+Restante do ticket (evidências visuais formais dos breakpoints — screenshots, não só
+medição via `scrollWidth`, indisponível neste ambiente de automação de navegador —,
+auditoria de acessibilidade — Fase 19 —, checagem de performance — Fase 20 —, documentação
+final — Fase 22 — e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será
+implementado e documentado incrementalmente nas próximas seções deste arquivo, seguindo o
+mesmo ritmo já estabelecido: implementar → validar no navegador → testar → documentar →
+commit.

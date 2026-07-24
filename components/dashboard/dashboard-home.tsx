@@ -126,6 +126,40 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     nextAgendaGroupKey: agendaGroups[0]?.key ?? null
   });
 
+  // Fase 11 — "Atividade recente agrupada": reintroduzida (ver comentario no JSX abaixo, perto
+  // de "Disponiveis agora") com a regra que faltava da primeira vez - atividades consecutivas
+  // do mesmo tipo/serie viram 1 registro, max 3 (Fase 11 explicito). Extraida pra variavel
+  // (Fase 14) porque e renderizada em 2 lugares possiveis: pareada com "Series acompanhadas"
+  // num grid de 2 colunas no desktop, ou sozinha, largura cheia, quando nao ha series.
+  const activitySection = (
+    <section className="space-y-3" aria-label="Atividade recente">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+          <FilmIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+          Atividade recente
+        </h2>
+        <Link href="/feed" className="link-accent shrink-0 text-sm">
+          Ver feed
+        </Link>
+      </div>
+      {activityGroups.length ? (
+        <div className="flex flex-col gap-2">
+          {activityGroups.map((group) => (
+            <ActivityGroupRow key={`${group.type}-${group.latestCreatedAt.getTime()}`} group={group} />
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <EmptyState
+            icon={<FilmIcon className="h-6 w-6" aria-hidden />}
+            title="Nenhuma atividade recente"
+            copy="Marque episodios ou escreva uma review para ver sua atividade aqui."
+          />
+        </Card>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-8">
       <div>
@@ -272,67 +306,47 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
           </section>
 
           {/*
-            Fase 10 — "Series acompanhadas": estado por serie (nao lista de episodios), pra
-            cobrir series que nao aparecem em nenhuma outra secao (nada pendente, nada
-            estreando em 7 dias) - ex.: "Aguardando nova temporada"/"Temporada concluida".
-            `trackedSeriesSummary` ja vem vazio quando `hasTrackedSeries` e falso, mas o
-            `continueWatching.hasTrackedSeries ?` externo ja cobre isso - sem EmptyState
-            redundante aqui.
+            Fase 14 — "layout desktop... composicao modular... Series acompanhadas |
+            Atividade recente" lado a lado (mockup literal do ticket). `trackedSeriesItems`
+            controla se o par existe: com series, os dois entram num FixedGrid 2 colunas no
+            desktop (`items-start` pra nao esticar a secao mais curta pra altura da mais
+            longa); sem series (usuario so com atividade de antes de desmarcar tudo, caso
+            raro mas possivel), "Atividade recente" fica sozinha, largura cheia - um item
+            unico ocupando so metade da grade pareceria quebrado.
           */}
           {trackedSeriesItems.length ? (
-            <section className="space-y-3" aria-label="Series acompanhadas">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
-                  <TvIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
-                  Series acompanhadas
-                </h2>
-                <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
-                  Ver tudo
-                </Link>
-              </div>
-              <FixedGrid mobile={1} tablet={2} desktop={3}>
-                {trackedSeriesItems.map((item, index) => (
-                  <div key={item.series.id} className={cn(progressiveItemVisibility(index))}>
-                    <TrackedSeriesCard item={item} />
-                  </div>
-                ))}
-              </FixedGrid>
-            </section>
-          ) : null}
-
-          {/*
-            Fase 11 — "Atividade recente agrupada": reintroduzida (ver comentario acima, perto
-            de "Disponiveis agora") com a regra que faltava da primeira vez - atividades
-            consecutivas do mesmo tipo/serie viram 1 registro, max 3 (Fase 11 explicito).
-            `groupRecentActivity` (lib/dashboard/group-activity.ts) e a unica logica nova; o
-            Feed completo (/feed) continua usando ActivityCard sem nenhuma alteracao.
-          */}
-          <section className="space-y-3" aria-label="Atividade recente">
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
-                <FilmIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
-                Atividade recente
-              </h2>
-              <Link href="/feed" className="link-accent shrink-0 text-sm">
-                Ver feed
-              </Link>
-            </div>
-            {activityGroups.length ? (
-              <div className="flex flex-col gap-2">
-                {activityGroups.map((group) => (
-                  <ActivityGroupRow key={`${group.type}-${group.latestCreatedAt.getTime()}`} group={group} />
-                ))}
-              </div>
-            ) : (
-              <Card>
-                <EmptyState
-                  icon={<FilmIcon className="h-6 w-6" aria-hidden />}
-                  title="Nenhuma atividade recente"
-                  copy="Marque episodios ou escreva uma review para ver sua atividade aqui."
-                />
-              </Card>
-            )}
-          </section>
+            <FixedGrid mobile={1} desktop={2} className="items-start">
+              {/*
+                Fase 10 — "Series acompanhadas": estado por serie (nao lista de episodios),
+                pra cobrir series que nao aparecem em nenhuma outra secao (nada pendente,
+                nada estreando em 7 dias) - ex.: "Aguardando nova temporada"/"Temporada
+                concluida". Grid interno reduzido de 3 pra 2 colunas no desktop (Fase 14):
+                a secao agora ocupa so metade da largura, 3 colunas ali dentro espremeria
+                os cards.
+              */}
+              <section className="space-y-3" aria-label="Series acompanhadas">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+                    <TvIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+                    Series acompanhadas
+                  </h2>
+                  <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
+                    Ver tudo
+                  </Link>
+                </div>
+                <FixedGrid mobile={1} tablet={2} desktop={2}>
+                  {trackedSeriesItems.map((item, index) => (
+                    <div key={item.series.id} className={cn(progressiveItemVisibility(index))}>
+                      <TrackedSeriesCard item={item} />
+                    </div>
+                  ))}
+                </FixedGrid>
+              </section>
+              {activitySection}
+            </FixedGrid>
+          ) : (
+            activitySection
+          )}
         </>
       ) : null}
 
