@@ -12,7 +12,7 @@ import { ActivityGroupRow } from "@/components/dashboard/activity-group-row";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon, FilmIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, BellIcon, CalendarIcon, TvIcon, FilmIcon, SparklesIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { getTrackedSeriesSummaryForUser } from "@/lib/tracked-series";
@@ -280,15 +280,12 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
             redundante aqui.
           */}
           {trackedSeriesItems.length ? (
-            <section className="space-y-4" aria-label="Series acompanhadas">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-                    <TvIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-                    Series acompanhadas
-                  </h2>
-                  <p className="section-copy mt-1">O estado de cada serie que voce acompanha.</p>
-                </div>
+            <section className="space-y-3" aria-label="Series acompanhadas">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+                  <TvIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+                  Series acompanhadas
+                </h2>
                 <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
                   Ver tudo
                 </Link>
@@ -310,14 +307,12 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
             `groupRecentActivity` (lib/dashboard/group-activity.ts) e a unica logica nova; o
             Feed completo (/feed) continua usando ActivityCard sem nenhuma alteracao.
           */}
-          <section className="space-y-4" aria-label="Atividade recente">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-                  <FilmIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-                  Atividade recente
-                </h2>
-              </div>
+          <section className="space-y-3" aria-label="Atividade recente">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+                <FilmIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+                Atividade recente
+              </h2>
               <Link href="/feed" className="link-accent shrink-0 text-sm">
                 Ver feed
               </Link>
@@ -348,8 +343,21 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         Dashboard, que e sobre o que o usuario ja acompanha). Ver comentario dentro de
         components/dashboard/quick-actions.tsx pra por que so essa 1 acao (as outras 5
         sugeridas pelo ticket ja sao a acao principal de outra secao acima).
+
+        Fase 13 — "Ações rápidas" e peso 3 (mesmo nivel de "Series acompanhadas"/"Atividade
+        recente"): envolvida num <section> com o mesmo heading reduzido dessas duas, em vez
+        de um botao solto sem contexto no fim da pagina. Heading usa "Buscar" (nao "Acoes
+        rapidas" literal) pra nao colidir em texto com o grupo "Acoes rapidas" que ja existe
+        dentro do proprio Command Palette (achado ao vivo via Playwright: colisao de texto
+        quebrava `getByText("Acoes rapidas")` do teste do palette, ambiguo entre os dois).
       */}
-      <QuickActions />
+      <section className="space-y-3" aria-label="Acoes rapidas">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+          <SparklesIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+          Buscar
+        </h2>
+        <QuickActions />
+      </section>
     </div>
   );
 }

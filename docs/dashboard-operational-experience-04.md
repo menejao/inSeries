@@ -371,13 +371,56 @@ rodadas sozinhas), 4 em `visual.spec.ts` por ausência de baseline `win32` (`"A 
 doesn't exist... writing actual"` — não é uma regressão de pixel, é a primeira execução
 dessas snapshots nesta plataforma).
 
+## Fase 13 — "Hierarquia visual"
+
+Texto exato do ticket, recuperado da transcrição desta sessão (não estava mais no contexto
+ativo após a compactação): 3 pesos nomeados — **Peso 1**: Hero de continuidade. **Peso 2**:
+Resumo operacional, Disponíveis agora, Agenda da semana. **Peso 3**: Séries acompanhadas,
+Atividade recente, Ações rápidas. "Não utilizar o mesmo padrão de card para todas as
+seções... variar a composição por propósito: hero, painel resumo, timeline, grupo por série,
+lista compacta, atalhos... preservar consistência por meio do Design System."
+
+**Composição por propósito**: já estava satisfeita antes desta fase — Hero (`variant="hero"`
+do `ContinueWatchingCard`), painel resumo (`OperationalSummary`), grupo por série
+(`AvailableNowGroupCard`), timeline (`ActivityGroupRow`), grid/lista compacta
+(`TrackedSeriesCard`), atalhos (`QuickActions`) — 6 composições distintas, nenhuma repetida.
+
+**Peso visual: era o requisito que faltava.** Auditoria encontrou que "Disponíveis agora",
+"Agenda resumida" (peso 2) e "Séries acompanhadas", "Atividade recente" (peso 3) usavam o
+**heading idêntico** (`text-xl font-semibold` + ícone `h-5 w-5`) — 4 seções de 2 pesos
+diferentes, indistinguíveis visualmente. Corrigido reduzindo o heading das seções de peso 3
+pra `text-base font-semibold` + ícone `h-4 w-4` (peso 2 ficou como estava — já é o padrão
+"normal" usado no resto do app). "Séries acompanhadas" também perdeu o parágrafo de subtítulo
+(o grid de cards já é autoexplicativo, reduzir texto reforça o peso mais leve). Resultado
+verificado ao vivo via `getComputedStyle`: Hero 30px → peso 2 (Disponíveis/Novos/Agenda) 20px
+→ peso 3 (Séries/Atividade/Ações) 16px, 3 níveis claros. ("Novos para você" não está na lista
+de 8 seções nomeadas pelo ticket — pré-existente de tickets anteriores, mantido no mesmo peso
+2 de "Disponíveis agora" por ter urgência equivalente; fora do escopo de renomear/repesar
+aqui.)
+
+"Ações rápidas" (`QuickActions`, Fase 12) não tinha nenhum heading — um botão solto no fim da
+página, sem agrupamento visual nem semântico. Envolvido num `<section>` com o mesmo heading
+reduzido de peso 3 dos outros dois.
+
+**Achado ao vivo, corrigido**: o heading novo usava o texto literal "Ações rápidas" (nome do
+ticket pra essa categoria) — colidiu com o grupo "Ações rápidas" que **já existe dentro do
+próprio Command Palette** (Fase 4, INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01, fora do escopo
+deste ticket). `npx playwright test` pegou isso de cara:
+`getByText("Acoes rapidas")` no spec do palette virou ambíguo (2 elementos), quebrando
+`e2e/command-palette.spec.ts:12`. Corrigido trocando o texto visível do heading do Dashboard
+pra "Buscar" (`aria-label` da `<section>` continua "Acoes rapidas" pra manter a categorização
+semântica da Fase 13 sem repetir a string visível) — mais preciso de qualquer forma, já que
+hoje só existe 1 ação ali.
+
+**Validado**: `tsc`/`eslint` limpos; `npm run test` 120/120; Playwright completo
+(`--workers=1`) 63/64 — a 1 falha é `visual.spec.ts` (snapshot da Landing, página fora do
+escopo deste ticket, mesma instabilidade de catálogo já documentada nesta sessão). Sem
+overflow em 320px (`scrollWidth === clientWidth === 320`).
+
 ## Próximos passos
 
-Restante do ticket (hierarquia visual fina — Fase 13, já em boa parte alcançada
-incidentalmente pela variedade Hero/card compacto/grid das fases anteriores mas não
-verificada formalmente contra o checklist específico da Fase 13 —, varredura completa de
-breakpoints com evidências, auditoria de acessibilidade, checagem de performance,
-documentação final e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será
-implementado e documentado incrementalmente nas próximas seções deste arquivo, seguindo o
-mesmo ritmo já estabelecido: implementar → validar no navegador → testar → documentar →
-commit.
+Restante do ticket (varredura completa de breakpoints com evidências formais, auditoria de
+acessibilidade — Fase 19 —, checagem de performance — Fase 20 —, documentação final — Fase
+22 — e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será implementado e
+documentado incrementalmente nas próximas seções deste arquivo, seguindo o mesmo ritmo já
+estabelecido: implementar → validar no navegador → testar → documentar → commit.
