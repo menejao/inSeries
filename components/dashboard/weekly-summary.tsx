@@ -15,11 +15,11 @@ export function WeeklySummary({ summary }: { summary: DashboardWeeklySummary }) 
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-border bg-surface-strong/40 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1 text-xs text-subtle">
       {items.map((item) => (
-        <span key={item.label} className="flex items-center gap-2 text-sm text-muted">
-          <item.icon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
-          <span className="font-semibold text-ink">{item.value}</span>
+        <span key={item.label} className="flex items-center gap-1.5">
+          <item.icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="font-medium text-muted">{item.value}</span>
           {item.label}
         </span>
       ))}
