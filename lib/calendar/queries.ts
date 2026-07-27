@@ -105,6 +105,13 @@ async function loadUserCalendarData(userId: string) {
   return { episodes, futureSeasons };
 }
 
+/**
+ * Fase 16 (INSERIES-CALENDAR-EXPERIENCE-01) — "Assistidos recentemente" removida da pagina
+ * (historico de atividade pertence a outras paginas - Feed/Perfil). Fase 6 - "Atrasados"
+ * ordenado por episodio mais antigo primeiro (era o oposto: mais recente primeiro), com
+ * favoritos (mesma definicao ja usada no Dashboard/Minha Lista: review com nota >= 4) como
+ * criterio de desempate quando a data e a mesma.
+ */
 export async function getPersonalCalendarSections(userId: string) {
   const { episodes, futureSeasons } = await loadUserCalendarData(userId);
   const now = new Date();
@@ -119,21 +126,33 @@ export async function getPersonalCalendarSections(userId: string) {
     .filter((episode) => episode.airedAt > weekEnd)
     .sort((a, b) => a.airedAt.getTime() - b.airedAt.getTime())
     .slice(0, 20);
+
+  const overdueSeriesIds = Array.from(
+    new Set(episodes.filter((episode) => episode.airedAt < today && !episode.watched).map((episode) => episode.series.id))
+  );
+  const favoriteReviews = overdueSeriesIds.length
+    ? await prisma.review.findMany({ where: { userId, seriesId: { in: overdueSeriesIds }, rating: { gte: 4 } }, select: { seriesId: true } })
+    : [];
+  const favoriteSeriesIds = new Set(favoriteReviews.map((review) => review.seriesId));
+
   const overdue = episodes
     .filter((episode) => episode.airedAt < today && !episode.watched)
-    .sort((a, b) => b.airedAt.getTime() - a.airedAt.getTime());
-  const recentlyWatched = episodes
-    .filter((episode) => episode.watched && episode.watchedAt && episode.watchedAt >= addDays(now, -14))
-    .sort((a, b) => (b.watchedAt?.getTime() ?? 0) - (a.watchedAt?.getTime() ?? 0))
-    .slice(0, 10);
+    .sort((a, b) => {
+      const airedDiff = a.airedAt.getTime() - b.airedAt.getTime();
+      if (airedDiff !== 0) return airedDiff;
+      const priorityDiff = (a.userState === "WATCHING" ? 0 : 1) - (b.userState === "WATCHING" ? 0 : 1);
+      if (priorityDiff !== 0) return priorityDiff;
+      const favoriteA = favoriteSeriesIds.has(a.series.id) ? 0 : 1;
+      const favoriteB = favoriteSeriesIds.has(b.series.id) ? 0 : 1;
+      return favoriteA - favoriteB;
+    });
 
   return {
     today: todayEpisodes,
     thisWeek,
     upcoming,
     futureSeasons,
-    overdue,
-    recentlyWatched
+    overdue
   };
 }
 

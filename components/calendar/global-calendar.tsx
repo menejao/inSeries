@@ -4,6 +4,8 @@ import { CalendarSection } from "@/components/calendar/calendar-section";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CalendarIcon } from "@/components/ui/icons";
 import { formatEpisodeCode } from "@/lib/utils";
 import { formatShortDate } from "@/lib/calendar/dates";
 import { getGlobalCalendarEpisodes, type GlobalCalendarRange } from "@/lib/calendar/queries";
@@ -81,29 +83,35 @@ export async function GlobalCalendar({
         authenticated={authenticated}
       />
 
-      <CalendarSection
-        title="Lancamentos"
-        items={episodes}
-        emptyTitle="Nenhum lancamento no periodo"
-        emptyCopy="Ajuste os filtros ou escolha outro periodo para ver lancamentos do catalogo."
-        initialVisible={10}
-        renderItem={(episode) => (
-          <Card key={episode.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Link href={`/series/${episode.series.slug}`} className="font-semibold text-ink">
-                  {episode.series.title}
-                </Link>
-                <Badge variant="secondary">{episode.series.language ?? "n/d"}</Badge>
+      {episodes.length ? (
+        <CalendarSection
+          title="Lancamentos"
+          items={episodes}
+          initialVisible={10}
+          renderItem={(episode) => (
+            <Card key={episode.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link href={`/series/${episode.series.slug}`} className="font-semibold text-ink">
+                    {episode.series.title}
+                  </Link>
+                  <Badge variant="secondary">{episode.series.language ?? "n/d"}</Badge>
+                </div>
+                <p className="text-sm text-muted">
+                  {formatEpisodeCode(episode.seasonNumber, episode.number)} · {episode.title}
+                </p>
               </div>
-              <p className="text-sm text-muted">
-                {formatEpisodeCode(episode.seasonNumber, episode.number)} · {episode.title}
-              </p>
-            </div>
-            <p className="text-xs text-subtle">{formatShortDate(episode.airedAt)}</p>
-          </Card>
-        )}
-      />
+              <p className="text-xs text-subtle">{formatShortDate(episode.airedAt)}</p>
+            </Card>
+          )}
+        />
+      ) : (
+        <EmptyState
+          icon={<CalendarIcon className="h-6 w-6" aria-hidden />}
+          title="Nenhum lancamento no periodo"
+          copy="Ajuste os filtros ou escolha outro periodo para ver lancamentos do catalogo."
+        />
+      )}
     </div>
   );
 }

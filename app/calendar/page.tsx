@@ -25,10 +25,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
+      {/*
+        Fase 3 (INSERIES-CALENDAR-EXPERIENCE-01) — cabecalho compacto, sem Hero grande:
+        so titulo + 1 frase curta. Os indicadores numericos (hoje/semana/atrasados/proximas
+        temporadas) vivem no `CalendarSummary` (Fase 4), dentro do `PersonalCalendar` -
+        repeti-los aqui tambem seria a mesma informacao 2x na mesma tela.
+      */}
       <div>
         <p className="eyebrow">Timeline</p>
         <h1 className="section-title">Calendario</h1>
-        <p className="section-copy">Episodios lancados, proximos lancamentos e temporadas futuras das suas series, direto do banco.</p>
+        <p className="section-copy">Acompanhe episodios lancados, proximos lancamentos e temporadas futuras das suas series.</p>
       </div>
 
       <Tabs
