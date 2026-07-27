@@ -189,9 +189,12 @@ export async function fetchTmdbSeriesDetails(seriesId: string | number) {
   // append_to_response piggybacks keywords+images (logos)+watch/providers onto the same
   // request — Fase 5/6 (logos/keywords, INSERIES-TMDB-CATALOG-SCALE-01) and Fase 4/11
   // (streaming providers, INSERIES-TMDB-CATALOG-QUALITY-01), all without any extra HTTP call.
+  // Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — credits (elenco/criadores) e
+  // videos (trailers/teasers/clipes) somados ao mesmo append_to_response, nenhuma chamada
+  // extra ao TMDb.
   return withLanguageFallback<TmdbSeriesDetails>(
     `tv/${seriesId}`,
-    new URLSearchParams({ append_to_response: "keywords,images,watch/providers" })
+    new URLSearchParams({ append_to_response: "keywords,images,watch/providers,credits,videos" })
   );
 }
 

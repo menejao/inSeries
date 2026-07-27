@@ -186,6 +186,15 @@ model Series {
   watchProviders      String[]                @default([])
   collectionTags      String[]                @default([])
   type                String?
+  // Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — elenco/galeria/trailers, todos
+  // vindos do mesmo `tv/{id}` details call (append_to_response: credits/images/videos), sem
+  // chamada extra ao TMDb. `cast`/`videos` sao arrays de objeto (poucos campos cada, sem
+  // necessidade de tabela propria); `backdropUrls`/`posterUrls` seguem o mesmo padrao
+  // String[] ja usado pra genres/keywords/etc.
+  cast                Json[]                  @default([])
+  videos              Json[]                  @default([])
+  backdropUrls        String[]                @default([])
+  posterUrls          String[]                @default([])
   // Fase 3 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — the Premium Discovery Score (0-100):
   // a distinct signal from qualityScore above, weighted towards *discovery* relevance
   // (trending presence, streaming priority, recency) rather than editorial completeness.

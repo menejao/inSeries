@@ -34,8 +34,20 @@ export type TmdbSeriesDetails = TmdbListSeriesItem & {
   production_countries?: Array<{ iso_3166_1?: string; name: string }>;
   production_companies?: Array<{ id: number; name: string }>;
   created_by?: Array<{ id: number; name: string }>;
-  images?: { logos?: Array<{ file_path?: string | null }> };
+  images?: {
+    logos?: Array<{ file_path?: string | null }>;
+    backdrops?: Array<{ file_path?: string | null }>;
+    posters?: Array<{ file_path?: string | null }>;
+  };
   keywords?: { results?: Array<{ id: number; name: string }> };
+  // Fase 17/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — elenco e trailers/teasers/clipes,
+  // vindos do mesmo append_to_response de sempre (lib/tmdb/service.ts).
+  credits?: {
+    cast?: Array<{ id: number; name: string; character?: string; profile_path?: string | null; order?: number }>;
+  };
+  videos?: {
+    results?: Array<{ key: string; name: string; site: string; type: string; official?: boolean }>;
+  };
   // Fase 4/8 (INSERIES-TMDB-CATALOG-QUALITY-01) — `type` (Scripted/Reality/Miniseries/...)
   // and watch/providers both come from the same `tv/{id}` call (append_to_response), never
   // an extra one. TMDb's key is literally "watch/providers" (with the slash).
@@ -98,7 +110,15 @@ export type NormalizedCatalogSeries = Series & {
   // Fase 4/8 (INSERIES-TMDB-CATALOG-QUALITY-01)
   type?: string;
   watchProviders?: string[];
+  // Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01)
+  cast?: NormalizedCastMember[];
+  videos?: NormalizedVideo[];
+  backdropUrls?: string[];
+  posterUrls?: string[];
 };
+
+export type NormalizedCastMember = { id: number; name: string; character: string; profileUrl: string | null };
+export type NormalizedVideo = { key: string; name: string; site: string; type: string };
 
 export type NormalizedCatalogSeason = Season & {
   external?: {
@@ -170,6 +190,42 @@ function extractWatchProviders(payload: TmdbSeriesDetails): string[] | undefined
   return names.size ? Array.from(names) : undefined;
 }
 
+const CAST_LIMIT = 20;
+const VIDEO_LIMIT = 12;
+const GALLERY_LIMIT = 20;
+
+/** Fase 17 — top-billed cast, ordered by TMDb's own `order` field. */
+function extractCast(payload: TmdbSeriesDetails): NormalizedCastMember[] {
+  return (payload.credits?.cast ?? [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .slice(0, CAST_LIMIT)
+    .map((member) => ({
+      id: member.id,
+      name: member.name,
+      character: member.character ?? "",
+      profileUrl: toImageUrl(member.profile_path, "w300") || null
+    }));
+}
+
+/** Fase 19 — trailer/teaser/clip/featurette from YouTube, official first. */
+function extractVideos(payload: TmdbSeriesDetails): NormalizedVideo[] {
+  const allowedTypes = new Set(["Trailer", "Teaser", "Clip", "Featurette"]);
+  return (payload.videos?.results ?? [])
+    .filter((video) => video.site === "YouTube" && allowedTypes.has(video.type))
+    .sort((a, b) => Number(b.official ?? false) - Number(a.official ?? false))
+    .slice(0, VIDEO_LIMIT)
+    .map((video) => ({ key: video.key, name: video.name, site: video.site, type: video.type }));
+}
+
+/** Fase 18 — backdrops/posters gallery, distinct from the single hero backdrop/poster already stored. */
+function extractGallery(images: Array<{ file_path?: string | null }> | undefined): string[] {
+  return (images ?? [])
+    .map((image) => toImageUrl(image.file_path, "w500"))
+    .filter((url): url is string => Boolean(url))
+    .slice(0, GALLERY_LIMIT);
+}
+
 function genresFromPayload(payload: TmdbListSeriesItem | TmdbSeriesDetails) {
   if (payload.genres?.length) {
     return payload.genres.map((genre) => genre.name);
@@ -214,6 +270,10 @@ export function normalizeTmdbSeries(payload: TmdbSeriesDetails): NormalizedCatal
     keywords: payload.keywords?.results?.map((keyword) => keyword.name) ?? [],
     watchProviders: extractWatchProviders(payload) ?? [],
     type: payload.type,
+    cast: extractCast(payload),
+    videos: extractVideos(payload),
+    backdropUrls: extractGallery(payload.images?.backdrops),
+    posterUrls: extractGallery(payload.images?.posters),
     // Computed downstream by lib/catalog/collection-tags.ts (repository.ts, right before
     // persisting) from genres/type/keywords/etc. — never read from here, just satisfies
     // the `Series` base type's required field.

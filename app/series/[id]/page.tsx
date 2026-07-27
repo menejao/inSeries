@@ -16,6 +16,9 @@ import { ProductionSection } from "@/components/series/production-section";
 import { WhereToWatchCard } from "@/components/series/where-to-watch-card";
 import { ReviewsSection } from "@/components/series/reviews-section";
 import { SeriesRecommendationsSection } from "@/components/series/series-recommendations";
+import { CastCarousel } from "@/components/series/cast-carousel";
+import { SeriesGallery } from "@/components/series/series-gallery";
+import { SeriesTrailers } from "@/components/series/series-trailers";
 import { SeriesTimeline } from "@/components/series/series-timeline";
 import { AddToListButton } from "@/components/series/add-to-list-button";
 import { ShareButton } from "@/components/series/share-button";
@@ -33,7 +36,7 @@ import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
 import { getPublicListsContainingSeries } from "@/lib/social/lists";
 import { getNextEpisodeForSeries } from "@/lib/calendar/queries";
 import { getWatchNextForUser } from "@/lib/watch-next";
-import { getSeriesAddedToListAt, getUserListsForSeries } from "@/lib/series-page/queries";
+import { getSeriesAddedToListAt, getUserListsForSeries, getSeriesMedia } from "@/lib/series-page/queries";
 import { getSeriesRecommendations } from "@/lib/series-page/recommendations";
 import { computeSeriesTimeline } from "@/lib/series-page/timeline";
 import { formatShortDate } from "@/lib/calendar/dates";
@@ -57,7 +60,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   const dbAvailable = await canUseDatabase();
   const allEpisodeIds = series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id));
 
-  const [statusRow, watchedRows, reviews, ownReview, nextEpisode, listsWithSeries, watchNextResult, addedToListAt, userLists, recommendations] =
+  const [statusRow, watchedRows, reviews, ownReview, nextEpisode, listsWithSeries, watchNextResult, addedToListAt, userLists, recommendations, media] =
     await Promise.all([
       user && dbAvailable
         ? prisma.userSeriesStatus.findUnique({ where: { userId_seriesId: { userId: user.id, seriesId: series.id } } })
@@ -75,7 +78,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       user && dbAvailable ? getWatchNextForUser(user.id) : Promise.resolve(null),
       user && dbAvailable ? getSeriesAddedToListAt(user.id, series.id) : Promise.resolve(null),
       user && dbAvailable ? getUserListsForSeries(user.id, series.id) : Promise.resolve([]),
-      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameGenre: [], sameCreator: [], trending: [] })
+      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameGenre: [], sameCreator: [], trending: [] }),
+      dbAvailable ? getSeriesMedia(series.id) : Promise.resolve({ cast: [], videos: [], backdropUrls: [], posterUrls: [] })
     ]);
 
   // Fase 12 — watchedMap keeps timestamps (not just membership) so this page can derive
@@ -275,6 +279,10 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
           )}
         </div>
       </section>
+
+      <CastCarousel cast={media.cast} />
+      <SeriesGallery backdropUrls={media.backdropUrls} posterUrls={media.posterUrls} />
+      <SeriesTrailers videos={media.videos} />
 
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <ReviewForm

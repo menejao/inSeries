@@ -315,7 +315,14 @@ export async function upsertNormalizedSeriesWithCounts(series: NormalizedCatalog
     type: series.type,
     watchProviders: series.watchProviders,
     qualityScore,
-    collectionTags
+    collectionTags,
+    // Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — same undefined-skip rule as
+    // every other detail-only field above: the lightweight discovery-sync path never has
+    // these, so an update never wipes an already-catalogued series' cast/gallery/videos.
+    cast: series.cast,
+    videos: series.videos,
+    backdropUrls: series.backdropUrls,
+    posterUrls: series.posterUrls
   };
 
   const [baseSeries] = await prisma.$transaction(async (tx) => {

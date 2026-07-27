@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import type { NormalizedCastMember, NormalizedVideo } from "@/lib/catalog/normalize";
 
 /**
  * Fase 10 (INSERIES-SERIES-PAGE-PREMIUM-01) — the one genuinely new query this sprint
@@ -24,4 +25,31 @@ export async function getUserListsForSeries(userId: string, seriesId: string) {
   });
 
   return lists.map((list) => ({ id: list.id, title: list.title, containsSeries: list.items.length > 0 }));
+}
+
+export type SeriesMedia = {
+  cast: NormalizedCastMember[];
+  videos: NormalizedVideo[];
+  backdropUrls: string[];
+  posterUrls: string[];
+};
+
+/**
+ * Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — elenco/galeria/trailers buscados
+ * direto (so os 4 campos), sem passar pelo tipo `Series` compartilhado (que o catalogo/busca
+ * tambem usam) — evita inflar toda pagina/lista que reaproveita esse tipo com dados que so a
+ * pagina da serie precisa.
+ */
+export async function getSeriesMedia(seriesId: string): Promise<SeriesMedia> {
+  const row = await prisma.series.findUnique({
+    where: { id: seriesId },
+    select: { cast: true, videos: true, backdropUrls: true, posterUrls: true }
+  });
+
+  return {
+    cast: (row?.cast ?? []) as unknown as NormalizedCastMember[],
+    videos: (row?.videos ?? []) as unknown as NormalizedVideo[],
+    backdropUrls: row?.backdropUrls ?? [],
+    posterUrls: row?.posterUrls ?? []
+  };
 }

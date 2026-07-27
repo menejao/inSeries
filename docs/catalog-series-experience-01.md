@@ -97,16 +97,50 @@ As temporadas em accordion violavam a Fase 25 (nunca isolar so 1 temporada visiv
     parecidas", "Mesmo genero" e "Em alta" populados e visualmente separados; "Do mesmo
     criador" corretamente ausente (Dan Erickson sem outras series no catalogo local).
 
+## Fase 17/18/19 — Elenco, Galeria, Trailers (implementado em rodada de continuacao)
+
+Adicionados apos o primeiro corte deste ticket, a pedido do usuario. Exigiu 3 mudancas na
+camada de dados (unica excecao a "nao tocar o pipeline de sync" — mudanca aditiva, sem alterar
+regras de negocio existentes):
+
+- **Schema** (migration `20260727201621_catalog_cast_media_fields`): 4 colunas novas em
+  `Series` — `cast Json[]`, `videos Json[]`, `backdropUrls String[]`, `posterUrls String[]`,
+  todas com `@default([])`. Nenhuma coluna existente alterada.
+- **TMDb** ([lib/tmdb/service.ts](../lib/tmdb/service.ts)): `append_to_response` de
+  `fetchTmdbSeriesDetails` ganhou `credits,videos` (mesma chamada `tv/{id}` de sempre, sem
+  request extra); `images` ja vinha, so nao extraiamos `backdrops`/`posters` (so `logos`).
+- **Normalizacao** ([lib/catalog/normalize.ts](../lib/catalog/normalize.ts)): `extractCast`
+  (top 20 por `order`), `extractVideos` (Trailer/Teaser/Clip/Featurette do YouTube, oficiais
+  primeiro), `extractGallery` (backdrops/posters, ate 20 cada).
+- **Persistencia** ([lib/catalog/repository.ts](../lib/catalog/repository.ts)): os 4 campos
+  seguem a mesma regra "undefined nunca sobrescreve" ja usada por tagline/keywords/etc — o
+  sync leve (list-only) nunca apaga elenco/midia ja salvos.
+- **Leitura** ([lib/series-page/queries.ts](../lib/series-page/queries.ts)):
+  `getSeriesMedia(seriesId)` busca so os 4 campos direto do Prisma, fora do tipo `Series`
+  compartilhado (catalogo/busca nao carregam elenco/midia à toa).
+- **UI**: [cast-carousel.tsx](../components/series/cast-carousel.tsx) (foto/nome/personagem),
+  [series-gallery.tsx](../components/series/series-gallery.tsx) (backdrops + posters em 2
+  carrosseis), [series-trailers.tsx](../components/series/series-trailers.tsx) (thumbnail do
+  YouTube + play, abre em nova aba — sem embed, evita CSP/autoplay). Todas as 3 somem por
+  completo se a serie nao tiver o dado (series ja catalogadas antes desta mudanca so ganham
+  elenco/midia na proxima sincronizacao/importacao).
+- Testado ao vivo: reimportando "Ruptura" (Severance, `POST /api/catalog/import`) populou os 3
+  campos — Elenco mostrou 8 atores reais (Adam Scott, Britt Lower, John Turturro, Christopher
+  Walken, Patricia Arquette...), Galeria mostrou 16 backdrops + 20 posters, Trailers mostrou o
+  trailer oficial com thumbnail do YouTube.
+- **Diretores/Roteiristas** (mencionados na Fase 17 "quando disponiveis") ficam fora: no TMDb,
+  esses papeis sao por episodio (`tv/{id}/season/{n}/episode/{n}/credits`), nao por serie —
+  sincronizar isso exigiria 1 chamada TMDb por episodio (proibitivo pra series com muitos
+  episodios, mesmo problema de escala do achado Tagesschau no Calendario desta sessao).
+
 ## Fases conscientemente NAO implementadas
 
-- **Fase 17/18/19** (Elenco, Galeria, Trailers) — dependem de dados TMDb (`credits`,
-  `images.backdrops/posters`, `videos`) que o pipeline de sync atual nao persiste. Adicionar
-  exigiria mudar `lib/catalog/normalize.ts`/schema do Prisma para armazenar elenco/midia, fora
-  do escopo de "so a pagina da serie" (tocaria o pipeline de sync, que o ticket pede pra nao
-  alterar business rules). Fica como ticket de continuacao.
 - **"Mesmo universo"** (parte da Fase 22, spin-offs/sequencias/universo compartilhado) — TMDb
-  expoe isso via `belongs_to_collection`, nao sincronizado atualmente. Mesma razao acima.
-- **"Mesmo elenco"** (parte da Fase 22) — precisa de dados de elenco (ver Fase 17 acima).
+  expoe isso via `belongs_to_collection`, nao sincronizado. Adicionar seguiria o mesmo padrao
+  da Fase 17/18/19 acima (schema + normalize + repository), mas fica fora desta rodada.
+- **"Mesmo elenco"** (parte da Fase 22) — agora que o elenco existe (Fase 17), essa secao virou
+  viavel (`cast` tem `id` do TMDb, da pra cruzar series por ator em comum) — fica como proximo
+  passo natural, nao feito nesta rodada por tempo.
 - **Fase 20 (Reviews)** — ja estava dividido em "Sua avaliacao" (`ReviewForm`) vs "Avaliacao da
   comunidade" (`ReviewsSection`) desde o ticket anterior (SERIES-PAGE-PREMIUM-01); nota TMDb ja
   aparece no Hero. IMDb nao e sincronizado pelo pipeline — nao adicionado.
@@ -129,8 +163,8 @@ Essas lacunas devem ser comunicadas ao usuario e podem virar um ticket de contin
 | Verificacao ao vivo `/series/[id]` (Hero, season selector, recomendacoes) | PASS |
 | `e2e/catalog-and-tracking.spec.ts` | PASS (4/4; 1 falha isolada na etapa de registro, nao relacionada ao catalogo, confirmada como flake pre-existente ao rodar sozinha) |
 | `scripts/smoke-test.ts` (bloco Catalogo/Descoberta) | PASS (160/164; as 4 falhas restantes — 2 de Watch Next T01/E01 e 2 do Calendario "hoje" — confirmadas pre-existentes via isolamento git-stash rodando o mesmo smoke test no codigo anterior a este ticket, identicas falhas) |
-| Fase 17/18/19 (Elenco/Galeria/Trailers) | NOT APPLICABLE — dados TMDb nao sincronizados, fora do escopo desta rodada |
-| Fase 22 "Mesmo universo"/"Mesmo elenco" | NOT APPLICABLE — mesma razao acima |
+| Fase 17/18/19 (Elenco/Galeria/Trailers) | PASS — implementado, migrado, testado ao vivo (reimport populou os 3) |
+| Fase 22 "Mesmo universo"/"Mesmo elenco" | NOT APPLICABLE — nao implementado nesta rodada (ver secao acima) |
 | Fase 25 (laziness de query por temporada) | CONDITIONAL — melhoria de renderizacao feita; melhoria de query nao |
 | Fase 26 (responsividade 320-ultrawide) | CONDITIONAL — grid/cards usam classes fixas responsivas consistentes com o resto do app; sem sessao de verificacao visual dedicada em todos os breakpoints |
 
@@ -138,8 +172,7 @@ Essas lacunas devem ser comunicadas ao usuario e podem virar um ticket de contin
 
 **CONDITIONAL READY** — nucleo obrigatorio implementado e verificado ao vivo (busca hibrida +
 import, filtros, ordenacao, grid, secoes editoriais, season selector, nova hierarquia de
-recomendacoes). Elenco/galeria/trailers/mesmo universo/mesmo elenco ficam fora por dependerem
-de dados que o pipeline de sync ainda nao persiste (mudanca maior, fora do escopo "so as
-paginas" pedido pelo ticket). Laziness de query por temporada (Fase 25) fica como debito.
+recomendacoes, elenco, galeria, trailers). "Mesmo universo"/"mesmo elenco" (parte da Fase 22) e
+laziness de query por temporada (Fase 25) ficam como debito.
 
 **STATUS FINAL: PASS** (para o escopo implementado; lacunas documentadas acima).
