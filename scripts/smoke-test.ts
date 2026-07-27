@@ -870,22 +870,24 @@ async function main() {
   // foi removida (redundante com Continuar assistindo). A pagina /watch-next em si foi
   // fundida no Dashboard depois (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01, Fase 2).
 
-  // ---- Continuar acompanhando (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01, renomeada pela
-  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 - "Continuar assistindo" sugeria streaming) ----
+  // ---- Assistir a seguir (INSERIES-CONTINUE-WATCHING-EXPERIENCE-01, renomeada pela
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 - "Continuar assistindo" sugeria streaming -, e
+  // de novo pela INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01 - "Continuar acompanhando"
+  // virou "Assistir a seguir") ----
   const jarWatchNextDashboardMe = await request(jarWatchNextDashboard, "/api/auth/me");
   const jarWatchNextDashboardUserId: string | undefined = jarWatchNextDashboardMe.body?.data?.id;
 
   const dashboardHomeWithContinueWatching = await request(jarWatchNextDashboard, "/");
   const dashboardHomeBody = String(dashboardHomeWithContinueWatching.body);
-  const continueWatchingIndex = dashboardHomeBody.indexOf("Continuar acompanhando");
+  const continueWatchingIndex = dashboardHomeBody.indexOf("Assistir a seguir");
   const dashboardGridIndex = dashboardHomeBody.indexOf("Pendencias recentes");
   check(
-    "Dashboard exibe a secao Continuar acompanhando",
+    "Dashboard exibe a secao Assistir a seguir",
     dashboardHomeWithContinueWatching.status === 200 && continueWatchingIndex !== -1,
     dashboardHomeWithContinueWatching.status
   );
   check(
-    "Continuar acompanhando fica no topo do Dashboard (antes do grid de outras secoes)",
+    "Assistir a seguir fica no topo do Dashboard (antes do grid de outras secoes)",
     continueWatchingIndex !== -1 && dashboardGridIndex !== -1 && continueWatchingIndex < dashboardGridIndex,
     { continueWatchingIndex, dashboardGridIndex }
   );
@@ -893,7 +895,7 @@ async function main() {
     // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04): serie recem-marcada como WATCHING
     // comeca com seriesProgressPercent 0 (nenhum episodio assistido ainda) - por regra
     // (nao recriada aqui, so respeitada), 0% nao conta como "continuidade" e fica de fora de
-    // "Continuar acompanhando". O episodio pendente aparece corretamente em "Pendencias
+    // "Assistir a seguir". O episodio pendente aparece corretamente em "Pendencias
     // recentes" em vez disso (rangeLabel com codigo T0XEyy so existe pra grupos com 2+
     // episodios na mesma temporada - com 1 so pendente, o card mostra a contagem "1 episodio
     // nao assistido", sem codigo de episodio).
@@ -901,7 +903,7 @@ async function main() {
     // serializa `{count} episodio{count>1?"s":""} nao assistido{...}` como um ARRAY de
     // pedacos separados (`[610," episodio","s"," nao assistido","s"]`), entao a frase
     // completa concatenada nunca existe como substring continua no payload bruto.
-    "Serie recem-adicionada (0% de progresso) aparece em Pendencias recentes, nao em Continuar acompanhando (Fase 9)",
+    "Serie recem-adicionada (0% de progresso) aparece em Pendencias recentes, nao em Assistir a seguir (Fase 9)",
     dashboardHomeBody.includes("nao assistido"),
     dashboardHomeWithContinueWatching.status
   );
@@ -940,18 +942,20 @@ async function main() {
   const dashboardAfterMarking = await request(jarWatchNextDashboard, "/");
   check(
     // Agora com >0% de progresso (1 episodio ja assistido), a serie passa a aparecer em
-    // "Continuar acompanhando" (Fase 9) - e aqui, com a UI renderizada de verdade, que a
+    // "Assistir a seguir" (Fase 9) - e aqui, com a UI renderizada de verdade, que a
     // acao principal "Marcar como assistido" (INSERIES-DASHBOARD-HOME-EXPERIENCE-03, Fase 4)
     // e garantida presente.
-    "INSERIES-DASHBOARD-HOME-EXPERIENCE-03: acao principal de Continuar acompanhando e 'Marcar como assistido'",
+    "INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01: acao principal de Assistir a seguir e 'Marcar como assistido'",
     String(dashboardAfterMarking.body).includes("Marcar como assistido"),
     null
   );
   check(
-    "Marcar episodio como assistido avanca o card de Continuar acompanhando para o proximo episodio",
+    // Fase 4 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) - formato "T0N • E0M" (bullet),
+    // exemplo literal do ticket, nao mais "T0N | E0M" (pipe, formato do card `default`).
+    "Marcar episodio como assistido avanca o card de Assistir a seguir para o proximo episodio",
     Boolean(firstPendingEpisodeId) &&
       dashboardAfterMarking.status === 200 &&
-      String(dashboardAfterMarking.body).includes("T01 | E02"),
+      String(dashboardAfterMarking.body).includes("T01 • E02"),
     dashboardAfterMarking.status
   );
 
@@ -959,7 +963,7 @@ async function main() {
   await registerUser(jarContinueWatchingEmpty, "usercwempty");
   const dashboardEmptyContinueWatching = await request(jarContinueWatchingEmpty, "/");
   check(
-    "Continuar acompanhando mostra empty state para usuario sem series acompanhadas, com CTA Explorar catalogo",
+    "Assistir a seguir mostra empty state para usuario sem series acompanhadas, com CTA Explorar catalogo",
     dashboardEmptyContinueWatching.status === 200 &&
       String(dashboardEmptyContinueWatching.body).includes("Voce ainda nao comecou nenhuma serie") &&
       String(dashboardEmptyContinueWatching.body).includes("Explorar catalogo"),
@@ -1380,14 +1384,15 @@ async function main() {
   );
 
   // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 7) removeu "Atividade recente" do Dashboard
-  // por completo (sem acao imediata, duplicava o Feed) - o Dashboard nunca mais mostra
-  // atividade, nem a propria. O equivalente correto agora e o Feed pessoal (Sidebar),
-  // que continua mostrando a propria atividade do dono independente de perfil privado.
-  const dashboardBNoActivity = await request(jarB, "/");
+  // por completo (sem acao imediata, duplicava o Feed). INSERIES-DASHBOARD-AND-MY-LIST-
+  // EXPERIENCE-01 (Fase 10) REINTRODUZIU a secao em versao minima (sem agrupamento, max 3
+  // itens) - o Dashboard do proprio dono volta a mostrar a propria atividade (privacidade
+  // de perfil so afeta terceiros, nunca o proprio dono vendo o proprio Dashboard/Feed).
+  const dashboardBOwnActivity = await request(jarB, "/");
   check(
-    "Dashboard de B nao mostra atividade (secao removida pela Fase 7, INSERIES-DASHBOARD-HOME-EXPERIENCE-03)",
-    dashboardBNoActivity.status === 200 && !String(dashboardBNoActivity.body).includes(listMarker),
-    dashboardBNoActivity.status
+    "Dashboard de B mostra a propria atividade (Fase 10, INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) mesmo com perfil privado",
+    dashboardBOwnActivity.status === 200 && String(dashboardBOwnActivity.body).includes(listMarker),
+    dashboardBOwnActivity.status
   );
   const feedBOwnActivity = await request(jarB, "/feed");
   check(
@@ -2665,7 +2670,7 @@ async function main() {
   // pode aparecer ANTES do HTML real na resposta bruta. Um indexOf sem ancora casa com essa
   // ocorrencia falsa e inverte a ordem aparente; "<" nunca aparece dentro do JSON escapado.
   const sectionIndex = {
-    continueWatching: dashboardBody.indexOf("Continuar acompanhando<"),
+    continueWatching: dashboardBody.indexOf("Assistir a seguir<"),
     pendenciasRecentes: dashboardBody.indexOf("Pendencias recentes<"),
     proximosEpisodios: dashboardBody.indexOf("Proximos episodios<")
   };
@@ -2673,33 +2678,47 @@ async function main() {
     // "usershell" acompanha uma serie com episodios ja lancados (WATCHING desde antes do
     // fetch, ver acima) - "Pendencias recentes" garantido presente, nao so "se houver atraso".
     // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 6) unificou "Disponiveis agora" e "Novos
-    // para voce" numa unica secao "Pendencias recentes".
-    "Dashboard (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) segue a ordem por urgencia de acao: Continuar acompanhando -> Pendencias recentes -> Proximos episodios",
+    // para voce" numa unica secao "Pendencias recentes". INSERIES-DASHBOARD-AND-MY-LIST-
+    // EXPERIENCE-01 renomeou "Continuar acompanhando" pra "Assistir a seguir" (Fase 4).
+    "Dashboard (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) segue a ordem por urgencia de acao: Assistir a seguir -> Pendencias recentes -> Proximos episodios",
     Object.values(sectionIndex).every((index) => index !== -1) &&
       sectionIndex.continueWatching < sectionIndex.pendenciasRecentes &&
       sectionIndex.pendenciasRecentes < sectionIndex.proximosEpisodios,
     sectionIndex
   );
   check(
-    "Continuar acompanhando (Fase 2) permanece a primeira secao do Dashboard",
+    "Assistir a seguir (Fase 2) permanece a primeira secao do Dashboard",
     sectionIndex.continueWatching !== -1 && sectionIndex.continueWatching < sectionIndex.pendenciasRecentes,
     sectionIndex
   );
   check(
-    "Dashboard (redesign completo + INSERIES-DASHBOARD-HOME-EXPERIENCE-03) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais), e cortou os shelfs de navegacao pura/timeline passiva/card de metricas/busca duplicada (Atalhos rapidos, Atividade recente, card 'Agora', 'Buscar') ja cobertos pela Sidebar/BottomNav, por /profile+/me/recap e pela busca universal do header",
-    !dashboardBody.includes("Bombando Agora<") &&
+    // Fase 8 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) removeu "Series acompanhadas"
+    // (redundante com "Assistir a seguir"/"Pendencias recentes"). Fase 10 REINTRODUZIU
+    // "Atividade recente" (versao minima, opcional) - removida da lista de proibidas
+    // (estava la desde a INSERIES-DASHBOARD-HOME-EXPERIENCE-03, que a tinha cortado; ver
+    // check dedicado mais abaixo confirmando que ela aparece quando ha atividade real).
+    "Dashboard (redesign completo + INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) NAO repete secoes que agora vivem em paginas proprias (Bombando Agora/Lancamentos/Watch Next/Suas Estatisticas/Descobrir mais), e cortou os shelfs de navegacao pura/card de metricas/busca duplicada/secao redundante (Atalhos rapidos, card 'Agora', 'Buscar', Series acompanhadas) ja cobertos pela Sidebar/BottomNav, pela busca universal do header e por Assistir a seguir/Pendencias recentes",
+    !dashboardBody.includes("Series acompanhadas<") &&
+      !dashboardBody.includes("Bombando Agora<") &&
       !dashboardBody.includes("Lancamentos<") &&
       !dashboardBody.includes("Watch Next<") &&
       !dashboardBody.includes("Suas Estatisticas<") &&
       !dashboardBody.includes("Descobrir mais<") &&
       !dashboardBody.includes("Atalhos rapidos<") &&
-      !dashboardBody.includes("Atividade recente<") &&
       !dashboardBody.includes(">Agora<") &&
       !dashboardBody.includes(">Buscar<"),
     null
   );
   check("Dashboard (Fase 6) exibe Pendencias recentes", dashboardBody.includes("Pendencias recentes<"), dashboardAuth.status);
   check("Dashboard (Fase 8) exibe Proximos episodios", dashboardBody.includes("Proximos episodios"), dashboardAuth.status);
+  check(
+    // Fase 10 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "usershell" marcou a serie
+    // como WATCHING via API nesta mesma execucao (SERIES_STATUS_CHANGED gera atividade), a
+    // secao deve aparecer (versao minima, sem agrupamento).
+    "Dashboard (Fase 10) exibe Atividade recente quando ha atividade real do proprio usuario",
+    dashboardBody.includes("Atividade recente<"),
+    dashboardAuth.status
+  );
   check(
     "INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (Fase 4/16): Dashboard nao usa linguagem de streaming",
     !dashboardBody.includes("Continuar episodio") && !dashboardBody.includes(">Assistir<") && !dashboardBody.includes("Reproduzir") && !dashboardBody.includes("Continuar serie"),

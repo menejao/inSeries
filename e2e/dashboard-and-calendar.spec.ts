@@ -33,7 +33,7 @@ test("Dashboard mostra as secoes operacionais esperadas", async ({ page }) => {
   // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 — "Continuar assistindo" virou "Continuar
   // acompanhando" (sem linguagem de streaming); "Disponiveis agora"/"Novos para voce"
   // foram unificados em "Pendencias recentes"; "Agenda resumida" virou "Proximos episodios".
-  await expect(page.getByRole("heading", { name: "Continuar acompanhando" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assistir a seguir" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pendencias recentes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Proximos episodios" })).toBeVisible();
 });

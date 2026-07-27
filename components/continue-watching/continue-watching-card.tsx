@@ -14,6 +14,24 @@ function formatEpisodeCode(seasonNumber: number, episodeNumber: number) {
   return `T${String(seasonNumber).padStart(2, "0")} | E${String(episodeNumber).padStart(2, "0")}`;
 }
 
+/** Fase 4 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "T05 • E01", formato dos exemplos do ticket. */
+function formatHeroEpisodeCode(seasonNumber: number, episodeNumber: number) {
+  return `T${String(seasonNumber).padStart(2, "0")} • E${String(episodeNumber).padStart(2, "0")}`;
+}
+
+/**
+ * Fase 4/5 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "Assistir a seguir" nao usa
+ * barra de progresso/porcentagem (Fase 3), so uma linha de continuidade com 3 estados
+ * possiveis, exatamente os exemplos do ticket: episodio novo (prioridade sobre os outros
+ * dois - e a informacao mais acionavel), "+N episodios disponiveis" quando ha mais pendentes
+ * depois deste, ou "Ultimo episodio disponivel" quando este e o unico pendente.
+ */
+function formatRemainingLabel(item: ContinueWatchingItem) {
+  if (item.isNew) return "Novo episodio";
+  if (item.pendingAfterNext > 0) return `+${item.pendingAfterNext} episodios disponiveis`;
+  return "Ultimo episodio disponivel";
+}
+
 function formatRuntime(minutes: number | null) {
   if (!minutes) return null;
   return `${minutes} min`;
@@ -71,7 +89,7 @@ export function ContinueWatchingCard({
       role={isHero ? "group" : undefined}
       aria-label={
         isHero
-          ? `${item.series.title}, ${episodeCode}, ${Math.round(item.seriesProgressPercent)}% da serie assistida`
+          ? `${item.series.title}, ${formatHeroEpisodeCode(item.episode.seasonNumber, item.episode.number)}, ${formatRemainingLabel(item)}`
           : undefined
       }
       className={cn(
@@ -111,45 +129,51 @@ export function ContinueWatchingCard({
         >
           {item.series.title}
         </Link>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant="outline">{episodeCode}</Badge>
-          {runtime ? <span className="text-xs text-subtle">{runtime}</span> : null}
-        </div>
-        <p className="line-clamp-1 text-sm text-muted">{item.episode.title}</p>
 
-        <div className="mt-1">
-          <div className="mb-1 flex items-center justify-between text-xs text-subtle">
-            <span className="flex items-center gap-1">
-              Progresso da serie
-              {/*
-                Fase 4 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — achado ao vivo em producao:
-                `side="right"` nao cabia mais depois que o card deixou de ser hero de largura
-                total e virou um tile estreito de grid; o tooltip (ate 256px) estourava a
-                borda direita do card e ficava cortado pelo `overflow-hidden` do proprio
-                card. `side="top"` tambem nao serve aqui: medido ao vivo, o espaco acima do
-                icone dentro do card (~113px) e menor que a altura do tooltip com o texto
-                completo (~140px, "Temporada X: NN% assistida · Ultimo assistido..."),
-                cortando o topo. `side="bottom"` tem ~168px de sobra abaixo do icone (resto
-                do card: texto de continuidade + botoes) - espaco suficiente confirmado ao
-                vivo, sem corte.
-              */}
-              <Tooltip content={hasDetails ? detailParts.join(" · ") : "Sem detalhes adicionais para este episodio"} side="bottom">
-                <IconButton
-                  label="Mais detalhes do progresso"
-                  variant="ghost"
-                  size="xs"
-                  className={cn(!hasDetails && "invisible")}
-                >
-                  <InfoIcon className="h-3.5 w-3.5" />
-                </IconButton>
-              </Tooltip>
-            </span>
-            <span>{Math.round(item.seriesProgressPercent)}%</span>
-          </div>
-          <Progress value={item.seriesProgressPercent} label={`Progresso de ${item.series.title}`} />
-        </div>
+        {isHero ? (
+          <>
+            {/*
+              Fase 3/4 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "remover do Dashboard:
+              barras de progresso, porcentagem assistida, tooltip com detalhes de progresso...
+              essas informacoes pertencem a Pagina da Serie/Estatisticas". Card mostra so
+              temporada/episodio + nome do episodio + 1 linha de continuidade (3 formatos
+              exatos dos exemplos do ticket, ver `formatRemainingLabel`).
+            */}
+            <p className="text-sm font-semibold text-ink">{formatHeroEpisodeCode(item.episode.seasonNumber, item.episode.number)}</p>
+            {item.episode.title ? <p className="line-clamp-1 text-sm text-muted">{item.episode.title}</p> : null}
+            <p className="text-xs text-subtle">{formatRemainingLabel(item)}</p>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge variant="outline">{episodeCode}</Badge>
+              {runtime ? <span className="text-xs text-subtle">{runtime}</span> : null}
+            </div>
+            <p className="line-clamp-1 text-sm text-muted">{item.episode.title}</p>
 
-        <p className="truncate text-xs text-subtle">{continuityText}</p>
+            <div className="mt-1">
+              <div className="mb-1 flex items-center justify-between text-xs text-subtle">
+                <span className="flex items-center gap-1">
+                  Progresso da serie
+                  <Tooltip content={hasDetails ? detailParts.join(" · ") : "Sem detalhes adicionais para este episodio"} side="right">
+                    <IconButton
+                      label="Mais detalhes do progresso"
+                      variant="ghost"
+                      size="xs"
+                      className={cn(!hasDetails && "invisible")}
+                    >
+                      <InfoIcon className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </Tooltip>
+                </span>
+                <span>{Math.round(item.seriesProgressPercent)}%</span>
+              </div>
+              <Progress value={item.seriesProgressPercent} label={`Progresso de ${item.series.title}`} />
+            </div>
+
+            <p className="truncate text-xs text-subtle">{continuityText}</p>
+          </>
+        )}
 
         <div className={cn("mt-auto pt-2", isHero ? "flex flex-col gap-2" : "flex flex-wrap items-center gap-2")}>
           {isHero ? (

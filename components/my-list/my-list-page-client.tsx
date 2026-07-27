@@ -15,7 +15,11 @@ import {
 } from "@/lib/my-list/filter-sort";
 import { MY_LIST_GROUP_LABELS, type MyListGroupKey, type MyListItem } from "@/lib/my-list/types";
 
-const GROUP_ORDER: MyListGroupKey[] = ["WATCHING", "WANT_TO_WATCH", "PAUSED", "COMPLETED", "DROPPED", "FAVORITES"];
+/**
+ * Fase 11 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — ordem sugerida pelo ticket:
+ * Assistindo, Quero assistir, Concluidas, Favoritas, Pausadas, Abandonadas.
+ */
+const GROUP_ORDER: MyListGroupKey[] = ["WATCHING", "WANT_TO_WATCH", "COMPLETED", "FAVORITES", "PAUSED", "DROPPED"];
 
 /**
  * Fase 2/5/6/7/8 (INSERIES-MY-LISTS-PREMIUM-01) — o orquestrador client da pagina: mantem
@@ -79,7 +83,7 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
 
       {visibleItems.length ? (
         <div className="space-y-8">
-          {GROUP_ORDER.filter((key) => key !== "FAVORITES").map((key) => (
+          {GROUP_ORDER.map((key) => (
             <MyListGroup
               key={key}
               groupKey={key}
@@ -89,13 +93,6 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
               onToggleSelect={toggleSelect}
             />
           ))}
-          <MyListGroup
-            groupKey="FAVORITES"
-            label={MY_LIST_GROUP_LABELS.FAVORITES}
-            items={groups.get("FAVORITES") ?? []}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-          />
         </div>
       ) : (
         <EmptyState title="Nenhuma serie encontrada" copy="Ajuste a busca ou os filtros para ver suas series." />

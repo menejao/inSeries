@@ -1,33 +1,26 @@
 import { MyListHeader } from "@/components/my-list/my-list-header";
-import { MyListStatsSection } from "@/components/my-list/my-list-stats-section";
 import { MyListPageClient } from "@/components/my-list/my-list-page-client";
-import { MyListDiscoverySection } from "@/components/my-list/my-list-discovery-section";
 import { requireUser } from "@/lib/auth/server";
-import { getUserStats } from "@/lib/analytics";
 import { getMyListFullForUser } from "@/lib/my-list";
-import { getMyListDiscovery } from "@/lib/my-list/recommendations";
 import { listUserLists } from "@/lib/social/lists";
 
 /**
- * INSERIES-MY-LISTS-PREMIUM-01 — a Minha Lista completa: o centro de organizacao pessoal
- * do usuario. Substitui as 3 paginas fragmentadas (/me/watching, /me/watchlist,
- * /me/completed — nenhuma cobria Pausadas/Abandonadas/Favoritas) por uma unica pagina com
- * 6 grupos, busca, filtros, ordenacao, acoes em lote, estatisticas e recomendacoes — tudo
- * reaproveitando servicos existentes (ver README para o audit completo da Fase 1).
+ * INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01 — "a pagina deve deixar de funcionar como
+ * Dashboard. Seu unico objetivo passa a ser: organizar a biblioteca." Estatisticas
+ * completas (Fase 12, `MyListStatsSection`) e recomendacoes (Fase 13, `MyListDiscoverySection`)
+ * removidas por completo desta pagina - pertencem exclusivamente as paginas
+ * Estatisticas/Recomendacoes. Documentado em detalhe em
+ * docs/dashboard-and-my-list-experience-01.md.
  */
 export default async function MinhaListaPage() {
   const user = await requireUser();
 
-  const [stats, fullList, lists] = await Promise.all([getUserStats(user.id), getMyListFullForUser(user.id), listUserLists(user.id)]);
-
-  const discovery = await getMyListDiscovery(user.id, fullList.items);
+  const [fullList, lists] = await Promise.all([getMyListFullForUser(user.id), listUserLists(user.id)]);
 
   return (
     <div className="space-y-8">
-      <MyListHeader stats={stats} />
+      <MyListHeader items={fullList.items} />
       <MyListPageClient items={fullList.items} lists={lists.map((list) => ({ id: list.id, title: list.title }))} />
-      <MyListStatsSection stats={stats} />
-      <MyListDiscoverySection discovery={discovery} />
     </div>
   );
 }

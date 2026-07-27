@@ -2,19 +2,20 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AvailableNowGroupCard } from "@/components/dashboard/available-now-group-card";
-import { TrackedSeriesCard } from "@/components/dashboard/tracked-series-card";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
-import { FixedGrid } from "@/components/ui/fixed-grid";
+import { WeeklySummary } from "@/components/dashboard/weekly-summary";
+import { DashboardActivityRow } from "@/components/dashboard/dashboard-activity-row";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
-import { AlertCircleIcon, CalendarIcon, TvIcon } from "@/components/ui/icons";
+import { AlertCircleIcon, CalendarIcon, FilmIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
-import { getTrackedSeriesSummaryForUser } from "@/lib/tracked-series";
+import { getDashboardWeeklySummary } from "@/lib/dashboard/weekly-summary";
+import { getRecentActivityForUser } from "@/lib/social/activity";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import { groupOverdueBySeries } from "@/lib/dashboard/group-by-series";
-import { groupUpcomingForAgenda } from "@/lib/dashboard/agenda";
+import { groupUpcomingForAgenda, type AgendaGroupKey } from "@/lib/dashboard/agenda";
 import { cn } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -42,7 +43,7 @@ function getContextualMessage({
   hasTrackedSeries: boolean;
   pendingCount: number;
   hasContinueWatching: boolean;
-  nextAgendaGroupKey: "hoje" | "amanha" | "estaSemana" | null;
+  nextAgendaGroupKey: AgendaGroupKey | null;
 }) {
   if (!hasTrackedSeries) {
     return "Bem-vindo ao inSeries! Explore o catalogo e comece a acompanhar suas series.";
@@ -59,29 +60,32 @@ function getContextualMessage({
 }
 
 /**
- * INSERIES-DASHBOARD-HOME-EXPERIENCE-03 — evolucao incremental sobre
- * INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04 (preservada integralmente onde nao ha
- * conflito de escopo). Mudancas desta sprint, todas documentadas em detalhe em
- * docs/dashboard-home-experience-03.md:
+ * INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01 — evolucao incremental sobre
+ * INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (preservada onde nao ha conflito de escopo).
+ * Principio central: "o Dashboard deve responder apenas: o que preciso fazer hoje?"
+ * Mudancas desta sprint, documentadas em detalhe em
+ * docs/dashboard-and-my-list-experience-01.md:
  *
- * - Fase 4: "Continuar assistindo" (hero gigante + lista secundaria) virou "Continuar
- *   acompanhando" (grid uniforme, `ContinueWatchingSection`) - sem linguagem de streaming.
- * - Fase 5: card "Agora" (`OperationalSummary`) removido, sem substituto.
- * - Fase 6: "Disponiveis agora" e "Novos para voce" unificados numa unica secao
- *   ("Pendencias recentes") - mesmo episodio nao aparecia 2x antes (dedupe ja garantia
- *   isso), mas eram 2 secoes quase identicas visualmente; agora e 1.
- * - Fase 7: "Atividade recente" removida (sem acao imediata, duplicava o Feed).
- * - Fase 9: secao de busca duplicada (`QuickActions`, "Buscar") removida - a busca
- *   universal do header ja cobre isso.
+ * - Fase 3/4: "Continuar acompanhando" virou "Assistir a seguir" - sem barra de progresso,
+ *   porcentagem ou tooltip (Fase 3 - essas informacoes pertencem a Pagina da Serie/Estatisticas).
+ * - Fase 5: ordenacao propria desta secao (hoje > ontem > favoritos > menor pendencia > resto).
+ * - Fase 6: "Pendencias recentes" reduzida a poster + serie + contagem + 1 acao.
+ * - Fase 7: "Proximos episodios" ganhou o grupo "Proxima semana".
+ * - Fase 8: "Series acompanhadas" removida - redundante com "Assistir a seguir" +
+ *   "Pendencias recentes" (toda serie acionavel ja aparece numa das duas).
+ * - Fase 9: "Resumo semanal" adicionado (episodios assistidos, horas assistidas, series
+ *   acompanhadas - nunca graficos).
+ * - Fase 10: "Atividade recente" reintroduzida, versao minima (sem agrupamento, max 3 itens).
  */
 export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" | "lastLoginAt"> }) {
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
-  const [calendarData, continueWatching, trackedSeriesSummary] = await Promise.all([
+  const [calendarData, continueWatching, weeklySummary, recentActivity] = await Promise.all([
     getDashboardCalendarData(user.id, lastVisitAt),
     getContinueWatchingForUser(user.id, { limit: 10 }),
-    getTrackedSeriesSummaryForUser(user.id)
+    getDashboardWeeklySummary(user.id),
+    getRecentActivityForUser(user.id, 3)
   ]);
 
   // Fase 9 (INSERIES-DASHBOARD-OPERATIONAL-EXPERIENCE-04) — series com 0% de progresso nao
@@ -98,13 +102,10 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
   // Fase 6 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — "Disponiveis agora" (ja atrasados) e
   // "Novos para voce" (lancados desde a ultima visita) comunicavam essencialmente a mesma
   // coisa: episodios que pedem uma acao. `dedupeDashboardEpisodes` ja garante que nenhum
-  // episodio aparece nos dois arrays ao mesmo tempo, entao concatenar e seguro - o merge so
-  // faz a UI parar de repetir a mesma estrutura (card por serie, "Marcar todos"/"Ver
-  // episodio") em 2 secoes vizinhas quase identicas. `overdue` primeiro (mais urgente).
+  // episodio aparece nos dois arrays ao mesmo tempo, entao concatenar e seguro.
   const pendingEpisodes = [...overdue, ...sinceLastVisit];
   const allPendingGroups = groupOverdueBySeries(pendingEpisodes);
   const pendingGroups = allPendingGroups.slice(0, 5);
-  const trackedSeriesItems = trackedSeriesSummary.slice(0, 5);
 
   const contextualMessage = getContextualMessage({
     hasTrackedSeries: continueWatching.hasTrackedSeries,
@@ -119,6 +120,8 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         <p className="eyebrow">Ola, {firstName}</p>
         <p className="section-copy mt-1 text-base text-ink sm:text-lg">{contextualMessage}</p>
       </div>
+
+      {continueWatching.hasTrackedSeries ? <WeeklySummary summary={weeklySummary} /> : null}
 
       <ContinueWatchingSection continueWatching={continueWatching} />
 
@@ -156,54 +159,50 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         series": sem nenhuma serie acompanhada, upcoming e sempre vazio por construcao.
       */}
       {continueWatching.hasTrackedSeries ? (
-        <>
-          <section id="agenda-resumida" className="scroll-mt-24 space-y-4" aria-label="Proximos episodios">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-                  <CalendarIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
-                  Proximos episodios
-                </h2>
-                <p className="section-copy mt-1">O que estreia nos proximos 7 dias.</p>
-              </div>
-              <Link href="/calendar" className="link-accent shrink-0 text-sm">
-                Abrir calendario
-              </Link>
+        <section id="agenda-resumida" className="scroll-mt-24 space-y-4" aria-label="Proximos episodios">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
+                <CalendarIcon className="h-5 w-5 shrink-0 text-subtle" aria-hidden />
+                Proximos episodios
+              </h2>
+              <p className="section-copy mt-1">O que estreia nas proximas 2 semanas.</p>
             </div>
-            {agendaGroups.length ? (
-              <AgendaSummary groups={agendaGroups} />
-            ) : (
-              <Card>
-                <EmptyState
-                  icon={<CalendarIcon className="h-6 w-6" aria-hidden />}
-                  title="Nenhum lancamento previsto"
-                  copy="Assim que uma serie que voce acompanha tiver um episodio agendado, ele aparece aqui."
-                />
-              </Card>
-            )}
-          </section>
+            <Link href="/calendar" className="link-accent shrink-0 text-sm">
+              Abrir calendario
+            </Link>
+          </div>
+          {agendaGroups.length ? (
+            <AgendaSummary groups={agendaGroups} />
+          ) : (
+            <Card>
+              <EmptyState
+                icon={<CalendarIcon className="h-6 w-6" aria-hidden />}
+                title="Nenhum lancamento previsto"
+                copy="Assim que uma serie que voce acompanha tiver um episodio agendado, ele aparece aqui."
+              />
+            </Card>
+          )}
+        </section>
+      ) : null}
 
-          {trackedSeriesItems.length ? (
-            <section className="space-y-3" aria-label="Series acompanhadas">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
-                  <TvIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
-                  Series acompanhadas
-                </h2>
-                <Link href="/me/minha-lista" className="link-accent shrink-0 text-sm">
-                  Ver tudo
-                </Link>
-              </div>
-              <FixedGrid mobile={1} tablet={2} desktop={3}>
-                {trackedSeriesItems.map((item, index) => (
-                  <div key={item.series.id} className={cn(progressiveItemVisibility(index))}>
-                    <TrackedSeriesCard item={item} />
-                  </div>
-                ))}
-              </FixedGrid>
-            </section>
-          ) : null}
-        </>
+      {/*
+        Fase 10 — "Atividade recente" opcional: se oculta inteira quando nao ha nada (Fase
+        16, "quando listas estiverem vazias, preferencialmente ocultar completamente a
+        secao"), nunca mostra um Empty State pra isso.
+      */}
+      {recentActivity.length ? (
+        <section className="space-y-3" aria-label="Atividade recente">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <FilmIcon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+            Atividade recente
+          </h2>
+          <div className="flex flex-col gap-2">
+            {recentActivity.map((activity) => (
+              <DashboardActivityRow key={activity.id} activity={activity} />
+            ))}
+          </div>
+        </section>
       ) : null}
     </div>
   );

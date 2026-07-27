@@ -23,15 +23,16 @@ test("usuario novo (sem series) ve mensagem de boas-vindas, sem Novos/Agenda", a
   await expect(page.getByRole("heading", { name: "Proximos episodios" })).toHaveCount(0);
 });
 
-test("usuario novo ve o CTA de Continuar acompanhando para comecar a acompanhar", async ({ page }) => {
+test("usuario novo ve o CTA de Assistir a seguir para comecar a acompanhar", async ({ page }) => {
   await registerViaApi(page);
   await page.goto("/");
 
   // Redesign completo do Dashboard cortou "Atalhos rapidos"/"Atividade recente" (navegacao
   // redundante com Sidebar/BottomNav e timeline passiva ja coberta por /profile+/me/recap).
-  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 removeu tambem o card "Agora" e a busca duplicada -
-  // a unica secao que sobra pro usuario novo e "Continuar acompanhando" com seu proprio
-  // empty state acionavel.
-  await expect(page.getByRole("heading", { name: "Continuar acompanhando" })).toBeVisible();
+  // INSERIES-DASHBOARD-HOME-EXPERIENCE-03 removeu tambem o card "Agora" e a busca duplicada;
+  // INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01 renomeou "Continuar acompanhando" pra
+  // "Assistir a seguir" - a unica secao que sobra pro usuario novo, com seu proprio empty
+  // state acionavel.
+  await expect(page.getByRole("heading", { name: "Assistir a seguir" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Explorar catalogo" })).toBeVisible();
 });

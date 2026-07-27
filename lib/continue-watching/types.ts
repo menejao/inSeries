@@ -34,6 +34,8 @@ export type ContinueWatchingItem = {
   seriesProgressPercent: number;
   /** Watched-episodes / total-episodes within the season the next episode belongs to. */
   seasonProgressPercent: number;
+  /** Fase 5 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — mesma definicao de "favorita" da Minha Lista: review com nota >= 4. */
+  isFavorite: boolean;
   lastWatchedEpisode: {
     seasonNumber: number;
     number: number;

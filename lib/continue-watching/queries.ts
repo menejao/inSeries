@@ -25,7 +25,7 @@ export async function getContinueWatchingForUser(userId: string, options: { limi
   const seriesIds = watchNext.items.map((item) => item.series.id);
   const nextEpisodeIds = watchNext.items.map((item) => item.episode.id);
 
-  const [seriesRows, statusRows, seasonRows, watchedProgressRows, nextEpisodeRows] = await Promise.all([
+  const [seriesRows, statusRows, seasonRows, watchedProgressRows, nextEpisodeRows, favoriteRows] = await Promise.all([
     prisma.series.findMany({ where: { id: { in: seriesIds } }, select: { id: true, backdropUrl: true } }),
     prisma.userSeriesStatus.findMany({
       where: { userId, seriesId: { in: seriesIds } },
@@ -40,13 +40,18 @@ export async function getContinueWatchingForUser(userId: string, options: { limi
         episode: { select: { number: true, title: true, season: { select: { number: true, seriesId: true } } } }
       }
     }),
-    prisma.episode.findMany({ where: { id: { in: nextEpisodeIds } }, select: { id: true, runtimeMinutes: true } })
+    prisma.episode.findMany({ where: { id: { in: nextEpisodeIds } }, select: { id: true, runtimeMinutes: true } }),
+    // Fase 5 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "favorita" pro Dashboard usa a
+    // mesma definicao ja estabelecida na Minha Lista (lib/my-list/queries.ts): review com
+    // nota >= 4. Uma unica query `WHERE ... IN`, mesmo padrao das demais acima.
+    prisma.review.findMany({ where: { userId, seriesId: { in: seriesIds }, rating: { gte: 4 } }, select: { seriesId: true } })
   ]);
 
   const backdropBySeriesId = new Map(seriesRows.map((row) => [row.id, row.backdropUrl]));
   const statusBySeriesId = new Map(statusRows.map((row) => [row.seriesId, row]));
   const seasonTotalsBySeriesAndNumber = new Map(seasonRows.map((row) => [`${row.seriesId}:${row.number}`, row.episodeCount]));
   const runtimeByEpisodeId = new Map(nextEpisodeRows.map((row) => [row.id, row.runtimeMinutes]));
+  const favoriteSeriesIds = new Set(favoriteRows.map((row) => row.seriesId));
 
   // Fase 2 — last watched episode + watched-count-per-season, both derived from the same
   // single query above (rows already ordered watchedAt desc, so the first occurrence per
@@ -100,6 +105,7 @@ export async function getContinueWatchingForUser(userId: string, options: { limi
       isPremiere: item.isPremiere,
       seriesProgressPercent: status?.completionPercent ?? 0,
       seasonProgressPercent: seasonTotal > 0 ? Math.round((seasonWatched / seasonTotal) * 100) : 0,
+      isFavorite: favoriteSeriesIds.has(item.series.id),
       lastWatchedEpisode: lastWatchedBySeriesId.get(item.series.id) ?? null,
       lastActivityAt: status?.lastActivityAt ?? null
     };

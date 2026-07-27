@@ -2,27 +2,29 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import Link from "next/link";
 import { MyListItemCard } from "@/components/my-list/my-list-item-card";
+import { PosterImage } from "@/components/media/poster-image";
+import { PosterBadge } from "@/components/media/poster-badge";
 import { formatRelativeDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { MyListGroupKey, MyListItem } from "@/lib/my-list/types";
 
-const EMPTY_STATE_COPY: Record<MyListGroupKey, string> = {
-  WATCHING: "Marque uma serie como \"Assistindo\" para ve-la aqui.",
-  WANT_TO_WATCH: "Adicione series que voce quer assistir para organiza-las aqui.",
-  PAUSED: "Series pausadas aparecem aqui.",
-  COMPLETED: "Series concluidas aparecem aqui.",
-  DROPPED: "Series abandonadas aparecem aqui.",
-  FAVORITES: "Avalie uma serie com 4 ou 5 estrelas para marca-la como favorita."
-};
-
 /**
  * Fase 2 (INSERIES-MY-LISTS-PREMIUM-01) — cada grupo e independente: contador, ultima
- * atividade (o `lastActivityAt`/`addedAt` mais recente do proprio grupo), expandir/recolher
- * e um empty state proprio. `FixedGrid` garante a regra global (nunca grid quebrado).
+ * atividade (o `lastActivityAt`/`addedAt` mais recente do proprio grupo), expandir/recolher.
+ * `FixedGrid` garante a regra global (nunca grid quebrado).
+ *
+ * Fase 16 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "quando listas estiverem vazias...
+ * preferencialmente ocultar completamente a secao": grupo vazio nao renderiza nada (nao
+ * renderiza mais um Empty State por grupo vazio).
+ *
+ * Fase 14 — "Concluidas": grid limpo focado no poster, sem cards grandes, posteres sem
+ * distorcao. Reusa `SeriesPosterCard` (ja usado em Landing/Series semelhantes, `variant=
+ * "collection"` mostra "Colecao completa") em vez de `MyListItemCard` - unico grupo que usa
+ * essa composicao, os demais continuam com o card completo de organizacao.
  */
 export function MyListGroup({
   groupKey,
@@ -40,6 +42,8 @@ export function MyListGroup({
   defaultExpanded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+
+  if (!items.length) return null;
 
   const lastActivity = items.reduce<Date | null>((latest, item) => {
     const candidate = item.lastActivityAt ?? item.addedAt;
@@ -66,7 +70,26 @@ export function MyListGroup({
       </button>
 
       {expanded ? (
-        items.length ? (
+        groupKey === "COMPLETED" ? (
+          <FixedGrid mobile={2} tablet={4} desktop={5} wide={6}>
+            {items.map((item) => (
+              <Link key={item.series.id} href={`/series/${item.series.slug}`} className="group block">
+                <div className="relative aspect-[2/3] overflow-hidden rounded-3xl border border-border shadow-card transition duration-300 ease-out group-hover:-translate-y-1 group-hover:border-border-strong group-hover:shadow-raised">
+                  <PosterImage
+                    src={item.series.posterUrl}
+                    alt={item.series.title}
+                    sizes="(min-width: 1024px) 190px, (min-width: 640px) 33vw, 40vw"
+                    imageClassName="transition duration-500 ease-out group-hover:scale-110"
+                  />
+                  <PosterBadge variant="secondary" className="absolute left-2 top-2">
+                    Colecao completa
+                  </PosterBadge>
+                </div>
+                <p className="mt-2 line-clamp-1 text-sm font-semibold text-ink">{item.series.title}</p>
+              </Link>
+            ))}
+          </FixedGrid>
+        ) : (
           <FixedGrid mobile={1} tablet={2} desktop={3}>
             {items.map((item) => (
               <MyListItemCard
@@ -77,8 +100,6 @@ export function MyListGroup({
               />
             ))}
           </FixedGrid>
-        ) : (
-          <EmptyState title={`Nenhuma serie ${label.toLowerCase()}`} copy={EMPTY_STATE_COPY[groupKey]} />
         )
       ) : null}
     </section>

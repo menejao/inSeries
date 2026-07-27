@@ -6,26 +6,26 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import { Select } from "@/components/ui/select";
 import { PosterImage } from "@/components/media/poster-image";
 import { SeriesLogoOrTitle } from "@/components/media/series-logo";
-import { ProviderList } from "@/components/media/provider-badge";
-import { CollectionTagList } from "@/components/media/collection-tag-badge";
-import { FlameIcon, SparklesIcon, StarIcon, TrashIcon } from "@/components/ui/icons";
+import { TrashIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
-import { formatRelativeDate } from "@/lib/utils";
 import { WATCH_STATE_ORDER, getWatchStateLabel } from "@/lib/progress/labels";
 import type { MyListItem } from "@/lib/my-list/types";
 import type { WatchState } from "@/lib/types";
 
 /**
- * Fase 4 (INSERIES-MY-LISTS-PREMIUM-01) — o card premium de cada serie na Minha Lista:
- * poster, logo oficial com fallback (`SeriesLogoOrTitle`, ja existente), nota, Discovery
- * Score, Quality Score, providers, Collection Tags, progresso, status, ultima atividade e
- * acoes rapidas (mudar status/remover). Mudar status reaproveita `POST /api/series/[id]/status`
- * (o mesmo endpoint de `SeriesStatusActions`); remover usa o novo `DELETE` aditivo
- * (Fase 7). Hover premium padronizado (`-translate-y-1`), igual a todo outro card do app.
+ * Fase 15 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "reduzir drasticamente a
+ * quantidade de informacoes... cada card deve possuir somente: poster, titulo,
+ * temporada/episodio (quando aplicavel), status, plataforma (quando relevante), acao
+ * principal... mover informacoes secundarias pra modal/drawer/pagina da serie... nao
+ * depender de hover". Removidos desta sessao: nota (voteAverage), Quality Score, Discovery
+ * Score, badge "Favorita" redundante, Collection Tags, barra de progresso + porcentagem
+ * (mesma razao da Fase 3 do Dashboard - pertence a Pagina da Serie/Estatisticas), texto de
+ * ultima atividade. A "acao principal" e o seletor de status (reorganizar a biblioteca e
+ * literalmente o unico objetivo desta pagina - Fase 11); remover da lista continua
+ * disponivel como acao utilitaria pequena, nao conta como "informacao".
  */
 export function MyListItemCard({
   item,
@@ -72,6 +72,8 @@ export function MyListItemCard({
 
   if (removed) return null;
 
+  const platform = item.series.watchProviders[0] ?? null;
+
   return (
     <Card
       padding="sm"
@@ -112,40 +114,8 @@ export function MyListItemCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary">{item.state ? getWatchStateLabel(item.state) : "Sem status"}</Badge>
-          {typeof item.series.voteAverage === "number" ? (
-            <Badge variant="warning">
-              <StarIcon className="h-3 w-3 fill-current" /> {item.series.voteAverage.toFixed(1)}
-            </Badge>
-          ) : null}
-          {typeof item.series.qualityScore === "number" ? (
-            <Badge variant="primary">
-              <SparklesIcon className="h-3 w-3" /> {Math.round(item.series.qualityScore)}
-            </Badge>
-          ) : null}
-          {typeof item.series.discoveryScore === "number" ? (
-            <Badge variant="secondary">
-              <FlameIcon className="h-3 w-3" /> {Math.round(item.series.discoveryScore)}
-            </Badge>
-          ) : null}
-          {item.isFavorite ? <Badge variant="danger">Favorita</Badge> : null}
+          {platform ? <Badge variant="outline">{platform}</Badge> : null}
         </div>
-
-        <ProviderList providers={item.series.watchProviders} limit={3} />
-        <CollectionTagList tags={item.series.collectionTags} limit={2} />
-
-        {item.completionPercent > 0 ? (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-subtle">
-              <span>Progresso</span>
-              <span>{Math.round(item.completionPercent)}%</span>
-            </div>
-            <Progress value={item.completionPercent} label={`Progresso de ${item.series.title}`} />
-          </div>
-        ) : null}
-
-        <p className="text-xs text-subtle">
-          {item.lastActivityAt ? `Ultima atividade ${formatRelativeDate(item.lastActivityAt)}` : `Adicionada ${formatRelativeDate(item.addedAt)}`}
-        </p>
 
         <div className="mt-1 max-w-[220px]">
           <Select

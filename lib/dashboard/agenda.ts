@@ -1,7 +1,7 @@
 import { addDays, isSameDay, startOfDay } from "@/lib/calendar/dates";
 import type { CalendarEpisode } from "@/lib/calendar/queries";
 
-export type AgendaGroupKey = "hoje" | "amanha" | "estaSemana";
+export type AgendaGroupKey = "hoje" | "amanha" | "estaSemana" | "proximaSemana";
 
 export type AgendaGroup = {
   key: AgendaGroupKey;
@@ -14,30 +14,32 @@ const MAX_VISIBLE_EPISODES = 4;
 const LABELS: Record<AgendaGroupKey, string> = {
   hoje: "Hoje",
   amanha: "Amanha",
-  estaSemana: "Esta semana"
+  estaSemana: "Esta semana",
+  proximaSemana: "Proxima semana"
 };
 
 /**
- * Fase 7/8 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — "Agenda resumida" nunca deve virar uma
- * copia do calendario: agrupa `upcoming` (sempre `airedAt > now`, ja filtrado por series
- * acompanhadas em getDashboardCalendarData) em hoje/amanha/esta semana (proximos 7 dias),
- * limita a no maximo 4 episodios visiveis no total — quando um grupo estoura o restante do
- * orcamento, o excedente vira `hiddenCount` (renderizado como "+N mais" pelo componente, sem
- * criar mais uma lista longa).
+ * Fase 7 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "Proximos episodios" agrupado por
+ * Hoje/Amanha/Esta semana/Proxima semana (era so ate "esta semana"). `upcoming` ja vem sem
+ * corte de data (so `airedAt > now`, capado por CONTAGEM em 15 itens em
+ * `getDashboardCalendarData`), entao o bucket adicional nao precisa de nenhuma query nova -
+ * so mais uma janela de data sobre o mesmo array.
  */
 export function groupUpcomingForAgenda(upcoming: CalendarEpisode[]): AgendaGroup[] {
   const now = new Date();
   const today = startOfDay(now);
   const tomorrow = addDays(today, 1);
   const weekEnd = addDays(today, 7);
+  const nextWeekEnd = addDays(today, 14);
 
   const buckets: Record<AgendaGroupKey, CalendarEpisode[]> = {
     hoje: upcoming.filter((episode) => isSameDay(episode.airedAt, now)),
     amanha: upcoming.filter((episode) => isSameDay(episode.airedAt, tomorrow)),
-    estaSemana: upcoming.filter((episode) => episode.airedAt > tomorrow && episode.airedAt <= weekEnd)
+    estaSemana: upcoming.filter((episode) => episode.airedAt > tomorrow && episode.airedAt <= weekEnd),
+    proximaSemana: upcoming.filter((episode) => episode.airedAt > weekEnd && episode.airedAt <= nextWeekEnd)
   };
 
-  const groups: AgendaGroup[] = (["hoje", "amanha", "estaSemana"] as const)
+  const groups: AgendaGroup[] = (["hoje", "amanha", "estaSemana", "proximaSemana"] as const)
     .map((key) => ({ key, label: LABELS[key], episodes: buckets[key], hiddenCount: 0 }))
     .filter((group) => group.episodes.length > 0);
 
