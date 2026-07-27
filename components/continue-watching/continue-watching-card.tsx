@@ -121,7 +121,19 @@ export function ContinueWatchingCard({
           <div className="mb-1 flex items-center justify-between text-xs text-subtle">
             <span className="flex items-center gap-1">
               Progresso da serie
-              <Tooltip content={hasDetails ? detailParts.join(" · ") : "Sem detalhes adicionais para este episodio"} side="right">
+              {/*
+                Fase 4 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — achado ao vivo em producao:
+                `side="right"` nao cabia mais depois que o card deixou de ser hero de largura
+                total e virou um tile estreito de grid; o tooltip (ate 256px) estourava a
+                borda direita do card e ficava cortado pelo `overflow-hidden` do proprio
+                card. `side="top"` tambem nao serve aqui: medido ao vivo, o espaco acima do
+                icone dentro do card (~113px) e menor que a altura do tooltip com o texto
+                completo (~140px, "Temporada X: NN% assistida · Ultimo assistido..."),
+                cortando o topo. `side="bottom"` tem ~168px de sobra abaixo do icone (resto
+                do card: texto de continuidade + botoes) - espaco suficiente confirmado ao
+                vivo, sem corte.
+              */}
+              <Tooltip content={hasDetails ? detailParts.join(" · ") : "Sem detalhes adicionais para este episodio"} side="bottom">
                 <IconButton
                   label="Mais detalhes do progresso"
                   variant="ghost"
@@ -139,18 +151,26 @@ export function ContinueWatchingCard({
 
         <p className="truncate text-xs text-subtle">{continuityText}</p>
 
-        <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+        <div className={cn("mt-auto pt-2", isHero ? "flex flex-col gap-2" : "flex flex-wrap items-center gap-2")}>
           {isHero ? (
             <>
+              {/*
+                Fase 4 (INSERIES-DASHBOARD-HOME-EXPERIENCE-03) — achado ao vivo em producao:
+                `whitespace-nowrap` + botao sem largura fixa numa linha `flex flex-wrap`
+                deixava o texto "Marcar como assistido" estourar a borda do card (card virou
+                um tile estreito de grid, nao cabia mais o texto todo numa linha). Botoes
+                empilhados (`w-full` via `buttonVariants`/`WatchNextMarkButton`), mesmo
+                padrao ja usado em `AvailableNowGroupCard` pra esse tipo de card estreito.
+              */}
               <WatchNextMarkButton
                 episodeId={item.episode.id}
                 size="md"
                 variant="primary"
-                className="whitespace-nowrap"
+                className="w-full whitespace-nowrap"
                 label="Marcar como assistido"
                 ariaLabel={markLabel}
               />
-              <Link href={`/series/${item.series.slug}`} className={buttonVariants({ variant: "secondary", size: "md" })}>
+              <Link href={`/series/${item.series.slug}`} className={cn(buttonVariants({ variant: "secondary", size: "md" }), "w-full")}>
                 <TvIcon className="h-4 w-4" />
                 Abrir serie
               </Link>
