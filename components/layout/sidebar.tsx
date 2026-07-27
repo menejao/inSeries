@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn, isNavItemActive } from "@/lib/utils";
 import {
+  BookIcon,
   CalendarIcon,
   ChartIcon,
   CompassIcon,
@@ -21,9 +22,15 @@ import {
 
 type SidebarItem = { href: string; label: string; icon: (props: IconProps) => React.ReactElement };
 
-/** Fase 5's suggested list, minus Perfil/Configuracoes — those live in the avatar dropdown now (Fase 6/10). */
+/**
+ * Fase 5's suggested list, minus Perfil/Configuracoes — those live in the avatar dropdown
+ * now (Fase 6/10). Achado ao vivo em producao (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01):
+ * "Minha Lista" nunca teve entrada na Sidebar desktop, so no BottomNav mobile (onde e o
+ * 2o item, logo apos "Inicio") - mesma posicao replicada aqui.
+ */
 const ITEMS: SidebarItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
+  { href: "/me/minha-lista", label: "Minha Lista", icon: BookIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
   { href: "/series", label: "Catalogo", icon: TvIcon },
   { href: "/feed", label: "Feed", icon: FilmIcon },
