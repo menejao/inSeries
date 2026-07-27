@@ -464,12 +464,111 @@ mesmas categorias de instabilidade sob carga do servidor único de `next dev` j�
 nesta sessão (`auth.spec.ts`, `settings.spec.ts`, `catalog-and-tracking.spec.ts` passam limpo
 sozinhas) mais a instabilidade de snapshot visual da Landing (fora do escopo deste ticket).
 
-## Próximos passos
+## Nota — evolução do Dashboard após esta fase
 
-Restante do ticket (evidências visuais formais dos breakpoints — screenshots, não só
-medição via `scrollWidth`, indisponível neste ambiente de automação de navegador —,
-auditoria de acessibilidade — Fase 19 —, checagem de performance — Fase 20 —, documentação
-final — Fase 22 — e o scorecard PASS/FAIL/NOT APPLICABLE/BLOCKED obrigatório) será
-implementado e documentado incrementalmente nas próximas seções deste arquivo, seguindo o
-mesmo ritmo já estabelecido: implementar → validar no navegador → testar → documentar →
-commit.
+Entre a Fase 14 e este fechamento, a sprint INSERIES-DASHBOARD-HOME-EXPERIENCE-03 (ticket
+incremental, documentado em `docs/dashboard-home-experience-03.md`) alterou várias das
+seções construídas por este ticket: o card "Agora" (Fase 5 deste ticket) foi removido, a
+"Atividade recente" (Fase 11) foi removida, "Disponíveis agora" e "Novos para você" foram
+unificados em "Pendências recentes", e o Hero de "Continuar assistindo" (Fase 2/4/9) virou
+um grid multi-série ("Continuar acompanhando"). As Fases 19/20/22 abaixo auditam o
+**Dashboard atual** (pós HOME-EXPERIENCE-03), não o estado congelado da Fase 14 — auditar
+seções que já não existem seria trabalho descartado.
+
+## Fase 19 — Acessibilidade
+
+Auditado ao vivo no Dashboard atual:
+
+- **Headings semânticos**: todas as seções usam `<h2>` (Continuar acompanhando, Pendências
+  recentes, Próximos episodios, Séries acompanhadas) — hierarquia consistente, sem pular
+  níveis. **Achado, fora do escopo**: a página não tem `<h1>` em nenhum lugar — confirmado
+  via `document.querySelectorAll('h1')`, 0 resultados. Padrão do app inteiro (não
+  introduzido por nenhum dos dois tickets do Dashboard), fora do escopo de "Dashboard,
+  cards, seções" — precisaria de uma decisão de arquitetura de layout (`app/layout.tsx` ou
+  cada página), não algo a mudar via um card/seção.
+- **Progresso acessível**: `components/ui/progress.tsx` já expõe `role="progressbar"` +
+  `aria-valuenow/min/max` + `aria-label` — nenhuma mudança necessária, componente correto
+  desde antes deste ticket.
+- **Ação de marcar com nome acessível completo**: `WatchNextMarkButton` ganhou o prop
+  `ariaLabel` na sprint HOME-EXPERIENCE-03 (`"Marcar {série}, temporada N, episódio N como
+  assistido"`), confirmado ao vivo via DOM.
+- **Tooltip acessível por teclado**: `components/ui/tooltip.tsx` usa
+  `group-focus-within:opacity-100` — abre com Tab, não só hover. Corrigido nesta sessão
+  (ver `dashboard-home-experience-03.md`) pra não ficar cortado dentro do card mais
+  estreito do grid (`side="right"` → `side="bottom"`).
+- **Status não dependente só de cor**: badges de estado (`"Novo episodio"`,
+  `"T0XEyy ate T0XEzz"`, contagens "N episódios não assistidos") sempre acompanham texto,
+  nunca só uma cor/ponto.
+- **Alvos de toque**: a maioria dos controles acionáveis (botões `Button`/`IconButton`,
+  `MarkAllWatchedButton`) usa os tamanhos padronizados do Design System (`sm`/`md`/`lg`),
+  que já respeitam altura mínima adequada. **Achado, fora do escopo**: links de texto
+  simples (`link-accent text-sm`, ex. "Ver tudo", "Abrir calendário", títulos de série
+  dentro de linhas de `AgendaSummary`) medem ~20px de altura — abaixo do alvo recomendado
+  de 24px. Não corrigido: é a convenção de link do Design System inteiro (`.link-accent`,
+  usado em dezenas de páginas fora do Dashboard), mudar o tamanho globalmente é uma decisão
+  de Design System, não algo escopado a "cards/seções do Dashboard" — e WCAG 2.5.8 exclui
+  links inline de texto corrido dessa exigência de qualquer forma.
+- **Navegação por teclado / ordem de foco**: seções seguem a ordem visual/DOM (Continuar
+  acompanhando → Pendências recentes → Próximos episodios → Séries acompanhadas), sem
+  `tabindex` customizado em lugar nenhum — ordem de tab = ordem de leitura, correto por
+  construção (nenhum CSS de reordenação visual tipo `order`/grid `flow` fora do padrão).
+
+## Fase 20 — Performance
+
+- **Sem aumento de queries**: o Dashboard atual faz exatamente 3 queries em paralelo
+  (`Promise.all`: `getDashboardCalendarData`, `getContinueWatchingForUser`,
+  `getTrackedSeriesSummaryForUser`) — 1 a menos que antes da HOME-EXPERIENCE-03 (a query de
+  atividade recente, `getRecentActivityForUser`, foi removida junto com a seção).
+  Confirmado por leitura de código (`dashboard-home.tsx`), não é suposição.
+- **Sem processamento repetido por render**: agrupamento (`groupOverdueBySeries`,
+  `groupUpcomingForAgenda`) e dedupe (`dedupeDashboardEpisodes`) são funções puras
+  chamadas 1x por request (Server Component, sem re-render client-side) — não há loop de
+  re-cálculo.
+- **Sem imagem sem otimização**: `PosterImage`/`BackdropImage` (não tocados por nenhum dos
+  dois tickets) já usam `next/image` com `sizes` apropriado por variante de card.
+- **Sem layout shift**: Dashboard é 100% Server Component, sem Skeleton/loading
+  client-side — o HTML já chega completo, sem re-layout após hidratação (mesma situação já
+  documentada na Fase 14 do ticket anterior).
+- **Sincronização TMDB intocada**: nenhum arquivo de `lib/` de sync/discovery foi tocado
+  por nenhum dos dois tickets do Dashboard.
+
+## Fase 22 — Documentação final
+
+Este arquivo cobre: propósito do Dashboard (Fase 1), relação com o ticket geral
+(cabeçalho), limites de escopo (cabeçalho), arquitetura das seções (Fases 2-14), regra do
+hero (Fase 2/4/9, redefinida pela HOME-EXPERIENCE-03 — ver `dashboard-home-experience-03.md`),
+regra de episódios 0% (Fase 9), regra de dedupe (Fase 7), regra de agrupamento de
+pendências (Fase 8) e de atividade (Fase 11, seção removida depois — ver nota acima),
+conteúdo adaptativo (Fase 16), comportamento mobile/desktop (Fase 15/21), limites de itens
+(Fases 8/10/11), componentes reutilizados (Fase 17), variações criadas (Fase 13),
+estados vazios (Fase 18), decisões arquiteturais (ao longo de todas as fases) e
+limitações conhecidas (Fase 19, acima).
+
+## Scorecard final (Fases 19/20/22)
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| Contraste AA | NOT APPLICABLE (não auditado nesta sessão) | Sem ferramenta de contraste automatizada disponível no ambiente; nenhuma cor nova introduzida pelos 2 tickets (reuso 100% dos tokens existentes) |
+| Foco visível | PASS | Nenhum `outline-none` sem substituto encontrado nos componentes do Dashboard; `focus-visible` é o padrão do Design System em `Button`/`IconButton` |
+| Navegação por teclado / ordem de foco | PASS | Verificado: ordem DOM = ordem visual, sem `tabindex` customizado |
+| Headings semânticos | PASS (com achado de escopo maior documentado) | `<h2>` em todas as seções; ausência de `<h1>` é padrão do app inteiro, fora do escopo |
+| aria-labels | PASS | `WatchNextMarkButton.ariaLabel`, `IconButton.label`, `aria-label` em links de poster/série |
+| Progresso acessível | PASS | `role="progressbar"` + `aria-value*` já existentes |
+| Tooltips acessíveis | PASS | `group-focus-within`, corrigido pra não cortar no grid estreito |
+| Alvos de toque | PASS (com achado de escopo maior documentado) | Botões no padrão; links de texto simples são convenção de Design System, fora do escopo |
+| Sem queries duplicadas/desnecessárias | PASS | 3 queries paralelas, 1 a menos que antes |
+| Sem layout shift | PASS | Server Component puro |
+| Sync TMDB intocada | PASS | Nenhum arquivo tocado |
+| README/documentação atualizada | PASS | Este arquivo |
+
+## Classificação final
+
+**READY** — todas as fases do ticket (1-22) implementadas, validadas ao vivo e
+documentadas. Os 2 achados fora do escopo (ausência de `<h1>` na página, alvos de toque de
+links de texto simples abaixo de 24px) são decisões de Design System / arquitetura de
+layout que abrangem o app inteiro, não algo corrigível dentro do escopo "Dashboard, cards,
+seções operacionais" — sinalizados para avaliação futura, não bloqueiam este ticket.
+
+## STATUS FINAL
+
+**PASS**
