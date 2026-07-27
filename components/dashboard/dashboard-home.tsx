@@ -4,13 +4,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AvailableNowGroupCard } from "@/components/dashboard/available-now-group-card";
 import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
-import { WeeklySummary } from "@/components/dashboard/weekly-summary";
 import { DashboardActivityRow } from "@/components/dashboard/dashboard-activity-row";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
 import { AlertCircleIcon, CalendarIcon, FilmIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
-import { getDashboardWeeklySummary } from "@/lib/dashboard/weekly-summary";
 import { getRecentActivityForUser } from "@/lib/social/activity";
 import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
@@ -73,18 +71,18 @@ function getContextualMessage({
  * - Fase 7: "Proximos episodios" ganhou o grupo "Proxima semana".
  * - Fase 8: "Series acompanhadas" removida - redundante com "Assistir a seguir" +
  *   "Pendencias recentes" (toda serie acionavel ja aparece numa das duas).
- * - Fase 9: "Resumo semanal" adicionado (episodios assistidos, horas assistidas, series
- *   acompanhadas - nunca graficos).
+ * - Fase 9: "Resumo semanal" adicionado e depois removido - achado ao vivo em producao
+ *   apos o deploy: nao ficou bem junto ao resto do Dashboard, o proprio ticket ja tratava
+ *   isso como opcional ("o Dashboard PODE possuir apenas um pequeno resumo semanal").
  * - Fase 10: "Atividade recente" reintroduzida, versao minima (sem agrupamento, max 3 itens).
  */
 export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" | "lastLoginAt"> }) {
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
-  const [calendarData, continueWatching, weeklySummary, recentActivity] = await Promise.all([
+  const [calendarData, continueWatching, recentActivity] = await Promise.all([
     getDashboardCalendarData(user.id, lastVisitAt),
     getContinueWatchingForUser(user.id, { limit: 10 }),
-    getDashboardWeeklySummary(user.id),
     getRecentActivityForUser(user.id, 3)
   ]);
 
@@ -120,8 +118,6 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
         <p className="eyebrow">Ola, {firstName}</p>
         <p className="section-copy mt-1 text-base text-ink sm:text-lg">{contextualMessage}</p>
       </div>
-
-      {continueWatching.hasTrackedSeries ? <WeeklySummary summary={weeklySummary} /> : null}
 
       <ContinueWatchingSection continueWatching={continueWatching} />
 
