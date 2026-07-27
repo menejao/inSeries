@@ -75,6 +75,16 @@ export function SeriesCard({ series }: { series: Series }) {
               className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100"
             />
           ) : null}
+          {/* Fase 7 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — sinopse curta + temporadas + acao "Abrir" so no hover (desktop); nunca competindo com titulo/nota/status, sempre visiveis. */}
+          <div className="hidden opacity-0 transition duration-200 group-hover:opacity-100 sm:block">
+            <p className="line-clamp-2 text-xs text-ink/85">{series.overview}</p>
+            {typeof series.numberOfSeasons === "number" && series.numberOfSeasons > 0 ? (
+              <p className="mt-1 text-[11px] text-muted">
+                {series.numberOfSeasons} temporada{series.numberOfSeasons === 1 ? "" : "s"}
+              </p>
+            ) : null}
+            <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary-text">Abrir</span>
+          </div>
         </div>
       </div>
     </Link>

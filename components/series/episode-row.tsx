@@ -5,7 +5,10 @@ import { cn, formatEpisodeCode } from "@/lib/utils";
 import type { Episode } from "@/lib/types";
 import { EpisodeWatchButton } from "@/components/series/episode-watch-button";
 
-/** Fase 5 (INSERIES-SERIES-PAGE-PREMIUM-01) — image always visible (mobile included, previously `hidden sm:block`), premium hover lift consistent with every other card in the app. */
+/**
+ * Fase 5 (INSERIES-SERIES-PAGE-PREMIUM-01) — image always visible (mobile included, previously `hidden sm:block`), premium hover lift consistent with every other card in the app.
+ * Fase 14 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — sinopse removida ("evitar cards excessivamente altos"; mostra apenas numero/titulo/runtime/data/status/acao).
+ */
 export function EpisodeRow({
   episode,
   seasonNumber,
@@ -33,7 +36,6 @@ export function EpisodeRow({
             <p className="font-semibold text-ink">{episode.title}</p>
             {episode.watched ? <Badge variant="success">Assistido</Badge> : null}
           </div>
-          <p className="line-clamp-2 text-sm text-muted">{episode.overview || "Sinopse indisponivel."}</p>
           <p className="text-xs text-subtle">
             {episode.runtimeMinutes || "n/d"} min · {episode.airedOn || "n/d"}
           </p>

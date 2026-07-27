@@ -195,6 +195,17 @@ export async function fetchTmdbSeriesDetails(seriesId: string | number) {
   );
 }
 
+/**
+ * Fase 22 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — "Series parecidas" prioriza TMDb Similar
+ * (semelhanca narrativa real, curada pelo TMDb) sobre heuristicas internas de tag/keyword.
+ * Chamada dedicada (nao usa append_to_response de fetchTmdbSeriesDetails) pra nao acoplar o
+ * pipeline de import ao motor de recomendacoes da pagina da serie.
+ */
+export async function fetchTmdbSimilarSeries(seriesId: string | number, page = 1) {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>(`tv/${seriesId}/similar`, new URLSearchParams({ page: String(page) }));
+  return payload.results;
+}
+
 export async function fetchTmdbSeasonDetails(seriesId: string | number, seasonNumber: string | number) {
   return withLanguageFallback<TmdbSeasonDetails>(`tv/${seriesId}/season/${seasonNumber}`);
 }

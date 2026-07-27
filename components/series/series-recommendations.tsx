@@ -1,20 +1,14 @@
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { SeriesPosterCard } from "@/components/media/series-poster-card";
-import { RecommendationCard } from "@/components/recommendations/recommendation-card";
 import type { SeriesRecommendations } from "@/lib/series-page/recommendations";
 
 /**
- * Fase 9 (INSERIES-SERIES-PAGE-PREMIUM-01) — 4 subsections, each hidden entirely when
- * empty (a section with zero personalized signal never renders a generic fallback).
- * `FixedGrid` (mobile=2, tablet=4, desktop=4) matches the 8-item section limit
- * (lib/series-page/recommendations.ts) exactly — no partial row on a full section.
+ * Fase 21/22 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — 4 secoes, cada uma com 1 criterio
+ * unico e nunca misturado com outro; escondida por completo quando vazia. "Em alta" e sempre
+ * separada de "Series parecidas" (nunca a mesma secao).
  */
 export function SeriesRecommendationsSection({ recommendations }: { recommendations: SeriesRecommendations }) {
-  const hasAny =
-    recommendations.similar.length ||
-    recommendations.sameCategory.length ||
-    recommendations.marathons.length ||
-    (recommendations.personalized?.enabled && recommendations.personalized.items.length);
+  const hasAny = recommendations.similar.length || recommendations.sameGenre.length || recommendations.sameCreator.length || recommendations.trending.length;
 
   if (!hasAny) return null;
 
@@ -31,34 +25,34 @@ export function SeriesRecommendationsSection({ recommendations }: { recommendati
         </section>
       ) : null}
 
-      {recommendations.personalized?.enabled && recommendations.personalized.items.length ? (
+      {recommendations.sameGenre.length ? (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-ink">Voce tambem pode gostar</h2>
+          <h2 className="text-lg font-semibold text-ink">Mesmo genero</h2>
           <FixedGrid mobile={2} tablet={4} desktop={4}>
-            {recommendations.personalized.items.map((item) => (
-              <RecommendationCard key={item.series.id} recommendation={item} />
-            ))}
-          </FixedGrid>
-        </section>
-      ) : null}
-
-      {recommendations.sameCategory.length ? (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-ink">Mais da mesma categoria</h2>
-          <FixedGrid mobile={2} tablet={4} desktop={4}>
-            {recommendations.sameCategory.map((series) => (
+            {recommendations.sameGenre.map((series) => (
               <SeriesPosterCard key={series.id} series={series} variant="episodes" />
             ))}
           </FixedGrid>
         </section>
       ) : null}
 
-      {recommendations.marathons.length ? (
+      {recommendations.sameCreator.length ? (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-ink">Maratonas</h2>
+          <h2 className="text-lg font-semibold text-ink">Do mesmo criador</h2>
           <FixedGrid mobile={2} tablet={4} desktop={4}>
-            {recommendations.marathons.map((series) => (
+            {recommendations.sameCreator.map((series) => (
               <SeriesPosterCard key={series.id} series={series} variant="episodes" />
+            ))}
+          </FixedGrid>
+        </section>
+      ) : null}
+
+      {recommendations.trending.length ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-ink">Em alta</h2>
+          <FixedGrid mobile={2} tablet={4} desktop={4}>
+            {recommendations.trending.map((series) => (
+              <SeriesPosterCard key={series.id} series={series} variant="rating" />
             ))}
           </FixedGrid>
         </section>

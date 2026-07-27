@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { mockSeries } from "@/lib/catalog/mock-data";
 import type { Series } from "@/lib/types";
 
-export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality" | "discovery";
+export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality" | "discovery" | "seasons" | "episodes";
 
 /**
  * Fase 8 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — tag/provider/country/language
@@ -143,6 +143,12 @@ function buildOrderBy(sort?: SeriesSortOption): Prisma.SeriesOrderByWithRelation
       return [{ voteAverage: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     case "quality":
       return [{ qualityScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
+    // Fase 5 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — TMDb-reported totals, same fields
+    // the Hero/catalog card already display; no new columns needed.
+    case "seasons":
+      return [{ numberOfSeasons: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
+    case "episodes":
+      return [{ numberOfEpisodes: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     // Fase 9/10 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — "Ver tudo" from Bombando Agora/Hero.
     case "discovery":
       return [{ discoveryScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];

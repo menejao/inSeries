@@ -11,7 +11,7 @@ import { ProviderList } from "@/components/media/provider-badge";
 import { SeriesStatusActions } from "@/components/series/series-status-actions";
 import { InfoRow } from "@/components/series/info-row";
 import { SeriesContinueWatching } from "@/components/series/series-continue-watching";
-import { SeasonCard } from "@/components/series/season-card";
+import { SeasonSelector } from "@/components/series/season-selector";
 import { ProductionSection } from "@/components/series/production-section";
 import { WhereToWatchCard } from "@/components/series/where-to-watch-card";
 import { ReviewsSection } from "@/components/series/reviews-section";
@@ -75,7 +75,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       user && dbAvailable ? getWatchNextForUser(user.id) : Promise.resolve(null),
       user && dbAvailable ? getSeriesAddedToListAt(user.id, series.id) : Promise.resolve(null),
       user && dbAvailable ? getUserListsForSeries(user.id, series.id) : Promise.resolve([]),
-      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameCategory: [], marathons: [], personalized: null })
+      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameGenre: [], sameCreator: [], trending: [] })
     ]);
 
   // Fase 12 — watchedMap keeps timestamps (not just membership) so this page can derive
@@ -171,6 +171,12 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                 </span>
               ))}
             </div>
+            {/* Fase 10 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — temporadas/episodios/criadores agora no Hero (antes so no card "Resumo", abaixo do fold). */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+              <span>{series.numberOfSeasons ?? hydratedSeasons.length} temporada{(series.numberOfSeasons ?? hydratedSeasons.length) === 1 ? "" : "s"}</span>
+              <span>{series.numberOfEpisodes ?? totalEpisodes} episodios</span>
+              {series.createdBy.length ? <span>Criado por {series.createdBy.slice(0, 2).join(", ")}</span> : null}
+            </div>
             <CollectionTagList tags={series.collectionTags} />
             <ProviderList providers={series.watchProviders} limit={5} />
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -263,11 +269,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-ink">Temporadas</h2>
           {hydratedSeasons.length ? (
-            <div className="space-y-4">
-              {hydratedSeasons.map((season, index) => (
-                <SeasonCard key={season.id} season={season} authenticated={Boolean(user)} defaultExpanded={index === 0} />
-              ))}
-            </div>
+            <SeasonSelector seasons={hydratedSeasons} authenticated={Boolean(user)} />
           ) : (
             <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
           )}
