@@ -74,6 +74,17 @@ export function toSeriesView(model: Prisma.SeriesGetPayload<{ include: { seasons
   };
 }
 
+/**
+ * Fase 25 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — same shape as `toSeriesView`, but seasons
+ * never carry episodes (the query behind this never joins the Episode table at all). Used by
+ * the series detail page, which now only needs per-season summary fields (year/episodeCount/
+ * poster) up front — full episode lists are fetched per-season, on demand, by
+ * `getSeasonEpisodes` below.
+ */
+export function toSeriesSummaryView(model: Prisma.SeriesGetPayload<{ include: { seasons: true } }>): Series {
+  return toSeriesView({ ...model, seasons: model.seasons.map((season) => ({ ...season, episodes: [] })) });
+}
+
 function filterMockSeries(query?: string) {
   if (!query) return mockSeries;
   const normalized = query.toLowerCase();
@@ -147,6 +158,58 @@ export async function getCatalogSeriesBySlug(slug: string) {
       return mockSeries.find((series) => series.slug === slug || series.id === slug);
     }
 
+    throw error;
+  }
+}
+
+/** Fase 25 — same lookup as `getCatalogSeriesBySlug`, without ever joining episodes. */
+export async function getCatalogSeriesSummaryBySlug(slug: string) {
+  if (!(await canUseDatabase())) {
+    return mockSeries.find((series) => series.slug === slug || series.id === slug);
+  }
+
+  try {
+    const row = await prisma.series.findFirst({
+      where: { OR: [{ slug }, { id: slug }] },
+      include: { seasons: true }
+    });
+
+    return row ? toSeriesSummaryView(row) : mockSeries.find((series) => series.slug === slug || series.id === slug);
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return mockSeries.find((series) => series.slug === slug || series.id === slug);
+    }
+    throw error;
+  }
+}
+
+/** Fase 25 — episodes for exactly one season, fetched on demand (season switch in the UI), never all seasons at once. */
+export async function getSeasonEpisodes(seriesId: string, seasonNumber: number) {
+  if (!(await canUseDatabase())) {
+    const series = mockSeries.find((item) => item.id === seriesId || item.slug === seriesId);
+    return series?.seasons.find((season) => season.number === seasonNumber)?.episodes ?? [];
+  }
+
+  try {
+    const season = await prisma.season.findFirst({
+      where: { seriesId, number: seasonNumber },
+      include: { episodes: { orderBy: { number: "asc" } } }
+    });
+
+    if (!season) return [];
+
+    return season.episodes.map((episode) => ({
+      id: episode.id,
+      number: episode.number,
+      title: episode.title,
+      overview: episode.overview ?? "Sinopse indisponivel.",
+      runtimeMinutes: episode.runtimeMinutes ?? 0,
+      airedOn: episode.airedAt?.toISOString().slice(0, 10) ?? "",
+      watched: false,
+      stillUrl: episode.stillUrl ?? ""
+    }));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
     throw error;
   }
 }

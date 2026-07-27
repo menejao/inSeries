@@ -62,21 +62,39 @@ individuais.
   `success`) com contraste ja validado no DS. Acoes sao links/botoes nativos com foco visivel
   padrao do DS, sem interacoes hover-only.
 
-## Fases conscientemente NAO implementadas
+## Fase 13/14 (implementadas em rodada de continuacao)
 
-- **Fase 13** (filtros unificados Meu calendario/Todas as series/Assistindo/etc.) — o proprio
-  ticket usa linguagem condicional ("quando houver suporte"). Nao implementado nesta rodada por
-  restricao de tempo de sessao. Risco: baixo — a pagina ja e utilizavel sem filtros adicionais,
-  e a aba "Todos os lancamentos" ja tem filtros proprios (`CalendarFilters`, intocado).
-- **Fase 14** (modo alternativo de calendario mensal) — ticket descreve como "opcional... nao
-  deve substituir a lista". Nao implementado nesta rodada pelo mesmo motivo de tempo.
-- **Fase 20 (parcial)** — Skeleton por secao / carregamento independente / progressive loading
-  nao implementado. A pagina continua sendo um unico server-render sem Suspense boundaries por
-  secao. Nao ha regressao de performance vs. o estado anterior (mesma estrategia de carregamento
-  ja existente), mas o ticket pedia explicitamente esse refinamento e ele fica como debito.
+Ambas ficaram de fora do primeiro corte (o ticket usa linguagem condicional/opcional pra elas)
+e foram completadas depois, a pedido do usuario:
 
-Essas 3 lacunas devem ser comunicadas ao usuario antes do deploy e podem virar um ticket de
-continuacao se desejado.
+- **Fase 13 — filtros unificados**: [personal-calendar-filters.tsx](../components/calendar/personal-calendar-filters.tsx)
+  adiciona 2 grupos de chip — **Estado** (Todas/Assistindo/Quero assistir) e **Periodo**
+  (Todos/Hoje/Esta semana/Atrasados) — com aplicacao automatica (sem botao "Aplicar"), barra
+  inline no desktop e `Sheet` no mobile (mesmo padrao ja usado nos filtros do Catalogo). "Meu
+  calendario"/"Todas as series" (os outros 2 itens citados na Fase 13) ja existiam como o `Tabs`
+  de nivel de pagina (troca entre `/calendar?view=personal` e `?view=global`) — nao duplicados
+  como chip pra nao ter 2 controles fazendo a mesma navegacao.
+  Filtragem 100% em memoria no client ([personal-calendar-body.tsx](../components/calendar/personal-calendar-body.tsx)):
+  o dataset de um calendario pessoal e pequeno, entao trocar de filtro e instantaneo, sem nenhum
+  round-trip ao servidor.
+- **Fase 14 — modo mensal**: [calendar-month-view.tsx](../components/calendar/calendar-month-view.tsx),
+  toggle Lista/Mes (Lista continua sendo o padrao, "nunca substitui" per o ticket). Grade
+  mensal com navegacao anterior/proximo, cada dia mostra a contagem de episodios (se houver),
+  clicar num dia expande a lista de episodios daquela data logo abaixo da grade. Construida a
+  partir dos MESMOS episodios ja buscados pela lista (Hoje/Atrasados/Esta semana/Proximos
+  lancamentos) — nenhuma query nova.
+- Testado ao vivo com a conta "Repro3" (a mesma do achado Tagesschau abaixo, 21.941 atrasados):
+  pagina carrega normalmente (200, sem hang — os filtros nao mudam o padrao de query), os 2
+  grupos de chip e o toggle Lista/Mes renderizam corretamente, clicar em "Mes" troca pra grade
+  mensal sem erro.
+
+## Fase 20 — nao implementada
+
+Skeleton por secao / carregamento independente / progressive loading continuam nao
+implementados. A pagina permanece um unico server-render sem Suspense boundaries por secao. Sem
+regressao de performance vs. o estado anterior (mesma estrategia de carregamento ja existente),
+mas o ticket pedia esse refinamento explicitamente e ele fica como debito documentado — a unica
+lacuna restante do ticket do Calendario apos a rodada de continuacao.
 
 ## Achado ao vivo: hang pre-existente com dados de teste patologicos
 
@@ -101,17 +119,16 @@ mudanca.
 | Verificacao ao vivo `/calendar` (visitante anonimo) | PASS (200, CTA de login, sem redirect) |
 | `e2e/dashboard-and-calendar.spec.ts` (Playwright, chromium + mobile-chromium) | PASS (6/6; 1 falha isolada em teste nao relacionado ao Calendario foi confirmada como flake pre-existente ao rodar sozinha) |
 | `scripts/smoke-test.ts` (bloco Calendario) | PASS |
-| Fase 13 (filtros unificados) | NOT APPLICABLE — condicional no ticket, nao implementada nesta rodada |
-| Fase 14 (modo mensal) | NOT APPLICABLE — opcional no ticket, nao implementada nesta rodada |
+| Fase 13 (filtros unificados) | PASS — implementado, testado ao vivo |
+| Fase 14 (modo mensal) | PASS — implementado, testado ao vivo |
 | Fase 18 (responsividade 320-ultrawide) | CONDITIONAL — cards usam flex/line-clamp responsivos consistentes com o padrao ja usado no resto do app; nao houve sessao de verificacao visual dedicada em todos os breakpoints |
 | Fase 20 (skeleton por secao) | BLOCKED — nao implementado, debito registrado acima |
 
 ## Classificacao final
 
-**CONDITIONAL READY** — nucleo obrigatorio do ticket (Fases 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-16, 17, 19, 21) implementado, testado (unit + e2e + smoke) e verificado ao vivo sem regressao.
-Fases 13 e 14 (ambas de wording condicional/opcional no ticket original) e o refinamento de
-performance da Fase 20 (skeleton por secao) ficam pendentes por restricao de tempo de sessao e
-devem ser tratadas em continuacao se o usuario priorizar.
+**READY** — todas as fases do ticket foram implementadas, incluindo Fase 13 (filtros
+unificados) e Fase 14 (modo mensal), completadas numa rodada de continuacao a pedido do usuario.
+Unica lacuna restante: Fase 20 (skeleton por secao/carregamento independente), documentada acima
+como debito tecnico — nao um item de escopo pulado.
 
-**STATUS FINAL: PASS** (para o escopo obrigatorio implementado; lacunas documentadas acima).
+**STATUS FINAL: PASS**

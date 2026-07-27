@@ -9,11 +9,12 @@ import { Progress } from "@/components/ui/progress";
 import { EpisodeRow } from "@/components/series/episode-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InfoRow } from "@/components/series/info-row";
+import { LoaderIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/lib/types";
 
-export type HydratedSeason = {
+export type SeasonSummary = {
   id: string;
   number: number;
   title: string;
@@ -21,39 +22,56 @@ export type HydratedSeason = {
   episodeCount: number;
   posterUrl: string;
   overview?: string;
-  episodes: Episode[];
 };
 
 /**
- * Fase 12/13/14 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — accordion trocado por navegacao
- * dedicada: pills de temporada + 1 "Resumo da temporada" + lista de episodios, sempre so da
- * temporada selecionada renderizada no DOM (Fase 25 — nunca todas simultaneamente). Os dados
- * de todas as temporadas ja chegam prontos do server (mesma query de antes, ver Fase 1 audit
- * em docs/catalog-series-experience-01.md sobre o limite dessa abordagem), mas so uma e
- * montada na arvore React por vez.
+ * Fase 12/13/14/25 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — pills de temporada + "Resumo da
+ * temporada" + lista de episodios, sempre so da temporada selecionada. Diferente da versao
+ * anterior desta mesma fase: agora os episodios de cada temporada sao buscados sob demanda
+ * (`GET /api/series/[id]/season/[number]`) na troca de aba, nunca todos de uma vez no server —
+ * a query nao escala mais com o numero total de episodios da serie inteira.
  */
-export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSeason[]; authenticated: boolean }) {
+export function SeasonSelector({
+  seriesId,
+  seasons,
+  initialSeasonNumber,
+  initialEpisodes,
+  authenticated
+}: {
+  seriesId: string;
+  seasons: SeasonSummary[];
+  initialSeasonNumber: number;
+  initialEpisodes: Episode[];
+  authenticated: boolean;
+}) {
   const router = useRouter();
   const { toast } = useToast();
-  const [selectedNumber, setSelectedNumber] = useState(seasons[0]?.number ?? 1);
+  const [selectedNumber, setSelectedNumber] = useState(initialSeasonNumber);
+  const [episodesByNumber, setEpisodesByNumber] = useState<Record<number, Episode[]>>({ [initialSeasonNumber]: initialEpisodes });
+  const [loadingNumber, setLoadingNumber] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const season = useMemo(() => seasons.find((item) => item.number === selectedNumber) ?? seasons[0], [seasons, selectedNumber]);
+  const episodes = season ? episodesByNumber[season.number] : undefined;
+  const isLoadingEpisodes = season ? loadingNumber === season.number : false;
 
-  if (!season) {
-    return <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />;
+  async function selectSeason(number: number) {
+    setSelectedNumber(number);
+    if (episodesByNumber[number]) return;
+
+    setLoadingNumber(number);
+    try {
+      const response = await fetch(`/api/series/${seriesId}/season/${number}`);
+      const payload = await response.json();
+      setEpisodesByNumber((current) => ({ ...current, [number]: payload.data ?? [] }));
+    } finally {
+      setLoadingNumber((current) => (current === number ? null : current));
+    }
   }
 
-  const watchedInSeason = season.episodes.filter((episode) => episode.watched).length;
-  const remaining = season.episodeCount - watchedInSeason;
-  const allWatched = season.episodes.length > 0 && watchedInSeason === season.episodes.length;
-  const progressPercent = season.episodeCount > 0 ? (watchedInSeason / season.episodeCount) * 100 : 0;
-  const remainingMinutes = season.episodes.filter((episode) => !episode.watched).reduce((sum, episode) => sum + (episode.runtimeMinutes || 0), 0);
-  const lastWatched = [...season.episodes].reverse().find((episode) => episode.watched);
-  const nextEpisode = season.episodes.find((episode) => !episode.watched);
-
   function markWholeSeasonWatched() {
-    const unwatchedIds = season!.episodes.filter((episode) => !episode.watched).map((episode) => episode.id);
+    if (!season || !episodes) return;
+    const unwatchedIds = episodes.filter((episode) => !episode.watched).map((episode) => episode.id);
     if (!unwatchedIds.length) return;
 
     startTransition(async () => {
@@ -72,10 +90,26 @@ export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSe
         return;
       }
 
-      toast({ title: `Temporada ${season!.number} marcada como assistida`, variant: "success" });
+      setEpisodesByNumber((current) => ({
+        ...current,
+        [season.number]: (current[season.number] ?? []).map((episode) => ({ ...episode, watched: true }))
+      }));
+      toast({ title: `Temporada ${season.number} marcada como assistida`, variant: "success" });
       router.refresh();
     });
   }
+
+  if (!season) {
+    return <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />;
+  }
+
+  const watchedInSeason = episodes?.filter((episode) => episode.watched).length ?? 0;
+  const remaining = season.episodeCount - watchedInSeason;
+  const allWatched = Boolean(episodes?.length) && watchedInSeason === episodes?.length;
+  const progressPercent = season.episodeCount > 0 ? (watchedInSeason / season.episodeCount) * 100 : 0;
+  const remainingMinutes = episodes?.filter((episode) => !episode.watched).reduce((sum, episode) => sum + (episode.runtimeMinutes || 0), 0) ?? 0;
+  const lastWatched = episodes ? [...episodes].reverse().find((episode) => episode.watched) : undefined;
+  const nextEpisode = episodes?.find((episode) => !episode.watched);
 
   return (
     <div className="space-y-4">
@@ -86,7 +120,7 @@ export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSe
             type="button"
             role="tab"
             aria-selected={item.number === season.number}
-            onClick={() => setSelectedNumber(item.number)}
+            onClick={() => selectSeason(item.number)}
             className={cn(
               "min-h-9 rounded-full border px-4 text-sm font-medium transition",
               item.number === season.number
@@ -110,7 +144,7 @@ export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSe
           <Badge variant="outline">Temporada {season.number}</Badge>
         </div>
 
-        {authenticated && season.episodeCount > 0 ? (
+        {authenticated && season.episodeCount > 0 && episodes ? (
           <div className="space-y-3 border-t border-border pt-4">
             <Progress value={progressPercent} label={`Progresso da temporada ${season.number}`} />
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -119,7 +153,11 @@ export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSe
               <InfoRow label="Tempo restante" value={remainingMinutes > 0 ? `${remainingMinutes} min` : "0 min"} />
               <InfoRow label="Ultimo episodio" value={lastWatched ? `E${lastWatched.number}` : "Nenhum"} />
             </dl>
-            {nextEpisode ? <p className="text-xs text-subtle">Proximo: E{nextEpisode.number} · {nextEpisode.title}</p> : null}
+            {nextEpisode ? (
+              <p className="text-xs text-subtle">
+                Proximo: E{nextEpisode.number} · {nextEpisode.title}
+              </p>
+            ) : null}
             <Button variant={allWatched ? "secondary" : "primary"} size="sm" disabled={allWatched || isPending} loading={isPending} onClick={markWholeSeasonWatched}>
               {allWatched ? "Temporada assistida" : "Marcar temporada como assistida"}
             </Button>
@@ -128,8 +166,13 @@ export function SeasonSelector({ seasons, authenticated }: { seasons: HydratedSe
       </Card>
 
       <div className="space-y-3">
-        {season.episodes.length ? (
-          season.episodes.map((episode) => <EpisodeRow key={episode.id} episode={episode} seasonNumber={season.number} authenticated={authenticated} />)
+        {isLoadingEpisodes ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+            <LoaderIcon className="h-4 w-4 animate-spin" />
+            Carregando episodios...
+          </div>
+        ) : episodes?.length ? (
+          episodes.map((episode) => <EpisodeRow key={episode.id} episode={episode} seasonNumber={season.number} authenticated={authenticated} />)
         ) : (
           <EmptyState title="Episodios nao importados" copy="Temporada existe, mas episodios ainda nao foram sincronizados." />
         )}

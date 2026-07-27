@@ -4,7 +4,7 @@ import { EpisodeRow } from "@/components/series/episode-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ChevronLeftIcon } from "@/components/ui/icons";
 import { getCurrentUser } from "@/lib/auth/server";
-import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
+import { getCatalogSeriesSummaryBySlug, getSeasonEpisodes } from "@/lib/catalog/repository";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 
@@ -14,11 +14,14 @@ export default async function SeasonPage({
   params: Promise<{ id: string; season: string }>;
 }) {
   const { id, season } = await params;
-  const series = await getCatalogSeriesBySlug(id);
+  const series = await getCatalogSeriesSummaryBySlug(id);
   const user = await getCurrentUser();
   const selectedSeason = series?.seasons.find((item) => item.number === Number(season));
 
   if (!series || !selectedSeason) notFound();
+
+  // Fase 25 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — episodios de so esta temporada, nunca de todas.
+  const episodes = await getSeasonEpisodes(series.id, selectedSeason.number);
 
   const watchedMap = user && (await canUseDatabase())
     ? new Set(
@@ -27,7 +30,7 @@ export default async function SeasonPage({
             where: {
               userId: user.id,
               episodeId: {
-                in: selectedSeason.episodes.map((episode) => episode.id)
+                in: episodes.map((episode) => episode.id)
               },
               watched: true
             }
@@ -45,11 +48,11 @@ export default async function SeasonPage({
       <div>
         <p className="eyebrow">Temporada {selectedSeason.number}</p>
         <h1 className="section-title">{selectedSeason.title}</h1>
-        <p className="section-copy">{selectedSeason.episodes.length} episodio(s) nesta temporada.</p>
+        <p className="section-copy">{episodes.length} episodio(s) nesta temporada.</p>
       </div>
       <div className="grid gap-4">
-        {selectedSeason.episodes.length ? (
-          selectedSeason.episodes.map((episode) => (
+        {episodes.length ? (
+          episodes.map((episode) => (
             <EpisodeRow
               key={episode.id}
               episode={{ ...episode, watched: watchedMap.has(episode.id) }}

@@ -1,8 +1,10 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
 import { searchSeries, toSeriesSummary } from "@/lib/discovery/search";
 import { fetchTmdbSimilarSeries, TmdbConfigurationError } from "@/lib/tmdb/service";
 import { getTmdbCredentials } from "@/lib/config";
+import type { NormalizedCastMember } from "@/lib/catalog/normalize";
 import type { Series } from "@/lib/types";
 
 const SECTION_LIMIT = 8;
@@ -16,13 +18,20 @@ const SECTION_LIMIT = 8;
  *   local; cai pro heuristica de tag/keyword so quando TMDb esta indisponivel/nao configurado
  *   ou sem match local.
  * - sameGenre: apenas genero principal, ordenado por Quality Score (nao popularidade).
+ * - sameUniverse: TMDb TV nao tem `belongs_to_collection` (isso e exclusivo de filmes) — usa
+ *   como proxy overlap de >=2 keywords OU keyword+produtora em comum (franquias/universos
+ *   compartilhados costumam compartilhar termos especificos, ex.: "arrowverse", "mcu",
+ *   nomes de saga), nunca 1 unico sinal fraco isolado.
  * - sameCreator: overlap em `createdBy`, quando a serie tem criador(es) conhecidos.
+ * - sameCast: overlap de atores (por id do TMDb) com o elenco desta serie (Fase 17).
  * - trending: Discovery Score, SEMPRE em secao separada — nunca misturado com "parecidas".
  */
 export type SeriesRecommendations = {
   similar: Series[];
   sameGenre: Series[];
+  sameUniverse: Series[];
   sameCreator: Series[];
+  sameCast: Series[];
   trending: Series[];
 };
 
@@ -76,16 +85,75 @@ async function getSameCreatorSeries(series: Series): Promise<Series[]> {
   return rows.map(toSeriesSummary);
 }
 
+async function getSameUniverseSeries(series: Series): Promise<Series[]> {
+  if (!(await canUseDatabase())) return [];
+  if (series.keywords.length < 2 && !series.productionCompanies.length) return [];
+
+  const orFilters: Prisma.SeriesWhereInput[] = [];
+  if (series.keywords.length) orFilters.push({ keywords: { hasSome: series.keywords } });
+  if (series.productionCompanies.length) orFilters.push({ productionCompanies: { hasSome: series.productionCompanies } });
+  if (!orFilters.length) return [];
+
+  const candidates = await prisma.series.findMany({
+    where: { id: { not: series.id }, OR: orFilters },
+    take: 60
+  });
+
+  const keywordSet = new Set(series.keywords);
+  const companySet = new Set(series.productionCompanies);
+
+  return candidates
+    .map((candidate) => {
+      const keywordOverlap = candidate.keywords.filter((keyword) => keywordSet.has(keyword)).length;
+      const companyOverlap = candidate.productionCompanies.filter((company) => companySet.has(company)).length;
+      // >=2 shared keywords, or 1 keyword + 1 production company — a single weak signal alone never qualifies.
+      return { candidate, score: keywordOverlap * 2 + companyOverlap, qualifies: keywordOverlap >= 2 || (keywordOverlap >= 1 && companyOverlap >= 1) };
+    })
+    .filter((item) => item.qualifies)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, SECTION_LIMIT)
+    .map((item) => toSeriesSummary(item.candidate));
+}
+
+async function getSameCastSeries(seriesId: string, castIds: number[]): Promise<Series[]> {
+  if (!castIds.length || !(await canUseDatabase())) return [];
+
+  const idSet = new Set(castIds);
+  const candidates = await prisma.series.findMany({
+    where: { id: { not: seriesId }, cast: { isEmpty: false } },
+    take: 60
+  });
+
+  return candidates
+    .map((candidate) => {
+      const candidateCast = candidate.cast as unknown as NormalizedCastMember[];
+      const overlap = candidateCast.filter((member) => idSet.has(member.id)).length;
+      return { candidate, overlap };
+    })
+    .filter((item) => item.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, SECTION_LIMIT)
+    .map((item) => toSeriesSummary(item.candidate));
+}
+
 export async function getSeriesRecommendations(series: Series, userId?: string | null): Promise<SeriesRecommendations> {
   void userId; // personalized ("voce tambem pode gostar") removido — usava popularidade/favoritos, fora dos criterios permitidos (Fase 21).
 
-  const externalIdRow = (await canUseDatabase())
-    ? await prisma.externalSourceMapping.findFirst({ where: { seriesId: series.id, source: "TMDB", entityType: "SERIES" }, select: { externalId: true } })
-    : null;
+  const dbAvailable = await canUseDatabase();
+  const [externalIdRow, castRow] = dbAvailable
+    ? await Promise.all([
+        prisma.externalSourceMapping.findFirst({ where: { seriesId: series.id, source: "TMDB", entityType: "SERIES" }, select: { externalId: true } }),
+        prisma.series.findUnique({ where: { id: series.id }, select: { cast: true } })
+      ])
+    : [null, null];
 
-  const [tmdbSimilar, sameCreator, trendingResult] = await Promise.all([
+  const seriesCastIds = ((castRow?.cast ?? []) as unknown as NormalizedCastMember[]).map((member) => member.id);
+
+  const [tmdbSimilar, sameCreator, sameUniverse, sameCast, trendingResult] = await Promise.all([
     getTmdbSimilarLocalMatches(externalIdRow?.externalId ?? null),
     getSameCreatorSeries(series),
+    getSameUniverseSeries(series),
+    getSameCastSeries(series.id, seriesCastIds),
     searchSeries({ sort: "discovery", pageSize: SECTION_LIMIT + 1 })
   ]);
 
@@ -111,5 +179,5 @@ export async function getSeriesRecommendations(series: Series, userId?: string |
 
   const trending = excludeSelf(trendingResult.items, series.id).slice(0, SECTION_LIMIT);
 
-  return { similar, sameGenre, sameCreator, trending };
+  return { similar, sameGenre, sameUniverse, sameCreator, sameCast, trending };
 }

@@ -27,11 +27,11 @@ import { FixedGrid } from "@/components/ui/fixed-grid";
 import { CalendarIcon, FlameIcon, ListIcon, PlayIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/server";
-import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
+import { getCatalogSeriesSummaryBySlug, getSeasonEpisodes } from "@/lib/catalog/repository";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { prisma } from "@/lib/db/prisma";
 import { canUseDatabase } from "@/lib/db/health";
-import { computeSeriesProgressFromEpisodes } from "@/lib/progress/calculate";
+import { getSeriesProgressSummary } from "@/lib/progress/series-summary";
 import { getOwnReview, getSeriesReviews } from "@/lib/social/reviews";
 import { getPublicListsContainingSeries } from "@/lib/social/lists";
 import { getNextEpisodeForSeries } from "@/lib/calendar/queries";
@@ -52,25 +52,31 @@ import { formatEpisodeCode, formatDate } from "@/lib/utils";
  */
 export default async function SeriesDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const series = await getCatalogSeriesBySlug(id);
+  const series = await getCatalogSeriesSummaryBySlug(id);
 
   if (!series) notFound();
 
   const user = await getCurrentUser();
   const dbAvailable = await canUseDatabase();
-  const allEpisodeIds = series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id));
+  const firstSeason = series.seasons[0] ?? null;
 
-  const [statusRow, watchedRows, reviews, ownReview, nextEpisode, listsWithSeries, watchNextResult, addedToListAt, userLists, recommendations, media] =
+  const [statusRow, progressSummary, initialSeasonEpisodesRaw, reviews, ownReview, nextEpisode, listsWithSeries, watchNextResult, addedToListAt, userLists, recommendations, media] =
     await Promise.all([
       user && dbAvailable
         ? prisma.userSeriesStatus.findUnique({ where: { userId_seriesId: { userId: user.id, seriesId: series.id } } })
         : Promise.resolve(null),
+      // Fase 25 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — bounded by watched count, not by
+      // the catalog's total episode count (ver lib/progress/series-summary.ts).
       user && dbAvailable
-        ? prisma.userEpisodeProgress.findMany({
-            where: { userId: user.id, episodeId: { in: allEpisodeIds }, watched: true },
-            select: { episodeId: true, watchedAt: true }
-          })
-        : Promise.resolve([]),
+        ? getSeriesProgressSummary(
+            user.id,
+            series.id,
+            series.seasons.map((season) => ({ number: season.number, episodeCount: season.episodeCount }))
+          )
+        : Promise.resolve(null),
+      // Only the first season's episodes are fetched server-side (for the initial render);
+      // every other season is fetched client-side, on demand, by SeasonSelector.
+      firstSeason ? getSeasonEpisodes(series.id, firstSeason.number) : Promise.resolve([]),
       dbAvailable ? getSeriesReviews(series.id, user?.id) : Promise.resolve([]),
       user && dbAvailable ? getOwnReview(user.id, series.id) : Promise.resolve(null),
       dbAvailable ? getNextEpisodeForSeries(series.id) : Promise.resolve(null),
@@ -78,44 +84,32 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       user && dbAvailable ? getWatchNextForUser(user.id) : Promise.resolve(null),
       user && dbAvailable ? getSeriesAddedToListAt(user.id, series.id) : Promise.resolve(null),
       user && dbAvailable ? getUserListsForSeries(user.id, series.id) : Promise.resolve([]),
-      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ similar: [], sameGenre: [], sameCreator: [], trending: [] }),
+      dbAvailable
+        ? getSeriesRecommendations(series, user?.id)
+        : Promise.resolve({ similar: [], sameGenre: [], sameUniverse: [], sameCreator: [], sameCast: [], trending: [] }),
       dbAvailable ? getSeriesMedia(series.id) : Promise.resolve({ cast: [], videos: [], backdropUrls: [], posterUrls: [] })
     ]);
 
-  // Fase 12 — watchedMap keeps timestamps (not just membership) so this page can derive
-  // progress/last-watched-episode/completed-seasons locally instead of re-fetching the
-  // same series+progress rows a second time via calculateSeriesProgress.
-  const watchedMap = new Map(watchedRows.filter((row) => row.watchedAt).map((row) => [row.episodeId, row.watchedAt as Date]));
+  let initialSeasonEpisodes = initialSeasonEpisodesRaw;
+  if (user && dbAvailable && initialSeasonEpisodesRaw.length) {
+    const watchedRows = await prisma.userEpisodeProgress.findMany({
+      where: { userId: user.id, episodeId: { in: initialSeasonEpisodesRaw.map((episode) => episode.id) }, watched: true },
+      select: { episodeId: true }
+    });
+    const watchedIds = new Set(watchedRows.map((row) => row.episodeId));
+    initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) }));
+  }
 
-  const hydratedSeasons = series.seasons.map((season) => ({
-    ...season,
-    episodes: season.episodes.map((episode) => ({ ...episode, watched: watchedMap.has(episode.id) }))
-  }));
-
-  const allEpisodesFlat = hydratedSeasons.flatMap((season) => season.episodes.map((episode) => ({ ...episode, seasonNumber: season.number })));
-  const totalEpisodes = hydratedSeasons.reduce((sum, item) => sum + item.episodeCount, 0);
-  const progress = user ? computeSeriesProgressFromEpisodes(allEpisodesFlat, new Set(watchedMap.keys())) : null;
-
-  const lastWatchedEntry = [...watchedMap.entries()].sort((a, b) => b[1].getTime() - a[1].getTime())[0];
-  const lastWatchedEpisode = lastWatchedEntry
-    ? (() => {
-        const episode = allEpisodesFlat.find((item) => item.id === lastWatchedEntry[0]);
-        return episode ? { seasonNumber: episode.seasonNumber, number: episode.number, title: episode.title, watchedAt: lastWatchedEntry[1] } : null;
-      })()
+  const totalEpisodes = series.numberOfEpisodes ?? series.seasons.reduce((sum, item) => sum + item.episodeCount, 0);
+  const progress = progressSummary
+    ? { percentage: progressSummary.percentage, watchedEpisodes: progressSummary.watchedEpisodes }
     : null;
-
-  const completedSeasons = hydratedSeasons
-    .filter((season) => season.episodeCount > 0 && season.episodes.length > 0 && season.episodes.every((episode) => episode.watched))
-    .map((season) => ({
-      number: season.number,
-      completedAt: new Date(Math.max(...season.episodes.map((episode) => watchedMap.get(episode.id)?.getTime() ?? 0)))
-    }));
 
   const timelineEvents = user
     ? computeSeriesTimeline({
         startedAt: statusRow?.startedAt ?? null,
-        lastWatchedEpisode,
-        completedSeasons,
+        lastWatchedEpisode: progressSummary?.lastWatchedEpisode ?? null,
+        completedSeasons: (progressSummary?.completedSeasonNumbers ?? []).map((number) => ({ number, completedAt: progressSummary?.lastWatchedEpisode?.watchedAt ?? new Date() })),
         reviewedAt: ownReview?.updatedAt ?? null,
         addedToListAt
       })
@@ -177,7 +171,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             </div>
             {/* Fase 10 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — temporadas/episodios/criadores agora no Hero (antes so no card "Resumo", abaixo do fold). */}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-              <span>{series.numberOfSeasons ?? hydratedSeasons.length} temporada{(series.numberOfSeasons ?? hydratedSeasons.length) === 1 ? "" : "s"}</span>
+              <span>{series.numberOfSeasons ?? series.seasons.length} temporada{(series.numberOfSeasons ?? series.seasons.length) === 1 ? "" : "s"}</span>
               <span>{series.numberOfEpisodes ?? totalEpisodes} episodios</span>
               {series.createdBy.length ? <span>Criado por {series.createdBy.slice(0, 2).join(", ")}</span> : null}
             </div>
@@ -209,7 +203,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
           item={watchNextItemForSeries}
           seriesSlug={series.slug}
           seriesProgressPercent={progress?.percentage ?? 0}
-          lastWatchedLabel={lastWatchedEpisode ? formatShortDate(lastWatchedEpisode.watchedAt) : null}
+          lastWatchedLabel={progressSummary?.lastWatchedEpisode ? formatShortDate(progressSummary.lastWatchedEpisode.watchedAt) : null}
         />
       ) : null}
 
@@ -220,7 +214,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <InfoRow label="Idioma" value={series.language || "Nao informado"} />
               <InfoRow label="Plataforma" value={series.platform || "Nao informado"} />
-              <InfoRow label="Temporadas" value={String(series.numberOfSeasons ?? hydratedSeasons.length)} />
+              <InfoRow label="Temporadas" value={String(series.numberOfSeasons ?? series.seasons.length)} />
               <InfoRow label="Episodios" value={String(series.numberOfEpisodes ?? totalEpisodes)} />
               <InfoRow label="Pais de origem" value={series.originCountry.length ? series.originCountry.join(", ") : "Nao informado"} />
             </dl>
@@ -272,8 +266,14 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-ink">Temporadas</h2>
-          {hydratedSeasons.length ? (
-            <SeasonSelector seasons={hydratedSeasons} authenticated={Boolean(user)} />
+          {series.seasons.length && firstSeason ? (
+            <SeasonSelector
+              seriesId={series.id}
+              seasons={series.seasons}
+              initialSeasonNumber={firstSeason.number}
+              initialEpisodes={initialSeasonEpisodes}
+              authenticated={Boolean(user)}
+            />
           ) : (
             <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
           )}
