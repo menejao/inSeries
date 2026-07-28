@@ -122,6 +122,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     ...(canSeeWatching ? watchingSeries.map((series) => ({ ...series, state: "WATCHING" as const })) : []),
     ...(canSeeCompleted ? completedSeries.map((series) => ({ ...series, state: "COMPLETED" as const })) : [])
   ].sort((a, b) => {
+    // Assistindo sempre primeiro; dentro de cada grupo, mais recente primeiro.
+    if (a.state !== b.state) return a.state === "WATCHING" ? -1 : 1;
     const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
     const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
     return bTime - aTime;
