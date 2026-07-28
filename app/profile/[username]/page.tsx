@@ -72,7 +72,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, reviewStats, mostReviewedSeries] =
     await Promise.all([
-    canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING") : Promise.resolve([]),
+    canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING", 12) : Promise.resolve([]),
+    // Sem limite: a secao "Concluidas" deve listar TODAS as series que o usuario assistiu.
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
     canSeeLists
       ? isOwner

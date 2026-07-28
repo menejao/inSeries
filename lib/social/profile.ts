@@ -34,13 +34,18 @@ export async function isFollowing(followerId: string, followingId: string) {
  * Fase 1/6 (INSERIES-PROFILE-PREMIUM-01) — aditivo: alem da serie, agora tambem devolve
  * `completionPercent`/`lastActivityAt` (ja existiam em `UserSeriesStatus`, so nao eram
  * selecionados). Unico consumidor e a pagina de perfil; nenhuma assinatura publica quebrada.
+ *
+ * `limit` — sem valor, retorna TODAS as series nesse estado (usado pela secao "Concluidas" do
+ * perfil, que deve listar tudo que o usuario assistiu, nao so uma amostra). `ProfileCollections`
+ * (teaser "Concluidas recentemente") continua fatiando o array pra 6 do lado dele, entao nenhum
+ * consumidor existente precisa de um cap aqui.
  */
-export async function getWatchStateSeries(userId: string, state: "WATCHING" | "COMPLETED") {
+export async function getWatchStateSeries(userId: string, state: "WATCHING" | "COMPLETED", limit?: number) {
   const statuses = await prisma.userSeriesStatus.findMany({
     where: { userId, state },
     include: { series: true },
     orderBy: { updatedAt: "desc" },
-    take: 12
+    take: limit
   });
 
   return statuses.map((status) => ({
