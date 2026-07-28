@@ -6,6 +6,7 @@ import { CompassIcon } from "@/components/ui/icons";
 import { CatalogSearchBar } from "@/components/catalog/catalog-search-bar";
 import { CatalogSortSelect } from "@/components/catalog/catalog-sort-select";
 import { CatalogGrid } from "@/components/catalog/catalog-grid";
+import { CatalogPagination } from "@/components/catalog/catalog-pagination";
 import { HybridSearchResults } from "@/components/catalog/hybrid-search-results";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 
@@ -26,12 +27,9 @@ type SeriesPageSearchParams = {
 };
 
 /**
- * INSERIES-CATALOG-SERIES-EXPERIENCE-V2 — Fase 2/3: as secoes editoriais (Em alta/Populares/
- * Lancamentos/Melhor avaliadas) foram removidas por completo. Elas repetiam as mesmas series
- * varias vezes na tela (o catalogo de seed tem ~85 series; 4 secoes de 10 cada, com overlap
- * alto entre "popular"/"discovery"/"rating", faziam a mesma serie aparecer 2-3x antes mesmo do
- * grid principal) — o oposto de "percepcao de variedade". Estrutura agora e exatamente
- * Buscar -> Filtros -> Ordenacao -> Grid -> Carregar mais, nada alem disso.
+ * Estrutura: Buscar + Filtros + Ordenacao numa linha so -> Grid -> Paginacao. O total exato de
+ * series nunca e mostrado ao usuario (busca sempre pode complementar via TMDb, entao um numero
+ * "de X series" seria enganoso — ver HybridSearchResults).
  */
 export default async function SeriesPage({ searchParams }: { searchParams: Promise<SeriesPageSearchParams> }) {
   const params = await searchParams;
@@ -68,37 +66,35 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
         <p className="section-copy">Explore series populares, recentes e bem avaliadas.</p>
       </div>
 
-      <div className="space-y-3">
-        <CatalogSearchBar defaultValue={params.q} />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Filters
-            genre={params.genre}
-            status={params.status}
-            year={params.year}
-            tag={params.tag}
-            provider={params.provider}
-            country={params.country}
-            language={params.language}
-            metadata={metadata}
-          />
-          <CatalogSortSelect sort={sort} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-[200px] flex-1">
+          <CatalogSearchBar defaultValue={params.q} />
         </div>
+        <Filters
+          genre={params.genre}
+          status={params.status}
+          year={params.year}
+          tag={params.tag}
+          provider={params.provider}
+          country={params.country}
+          language={params.language}
+          metadata={metadata}
+        />
+        <CatalogSortSelect sort={sort} />
       </div>
 
-      <div className="space-y-3">
-        <p className="text-sm text-muted">
-          {result.total} serie{result.total === 1 ? "" : "s"} encontrada{result.total === 1 ? "" : "s"}
-          {params.q ? (
-            <>
-              {" "}
-              para <span className="font-semibold text-ink">&ldquo;{params.q}&rdquo;</span>
-            </>
-          ) : null}
-          .
-        </p>
+      <div className="space-y-6">
+        {params.q ? (
+          <p className="text-sm text-muted">
+            Resultados para <span className="font-semibold text-ink">&ldquo;{params.q}&rdquo;</span>
+          </p>
+        ) : null}
 
         {result.items.length ? (
-          <CatalogGrid initialItems={result.items} initialPage={result.page} totalPages={result.totalPages} />
+          <>
+            <CatalogGrid items={result.items} />
+            <CatalogPagination page={result.page} totalPages={result.totalPages} />
+          </>
         ) : params.q ? (
           // Fase 27 (V3) — busca local vazia so mostra Empty State depois de tentar o TMDb (HybridSearchResults faz essa segunda consulta).
           <HybridSearchResults query={params.q} />
