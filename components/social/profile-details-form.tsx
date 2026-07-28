@@ -98,8 +98,8 @@ export function ProfileDetailsForm({ initial }: { initial: ProfileDetails }) {
             onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value.toLowerCase() }))}
             minLength={3}
             maxLength={24}
-            pattern="^[a-z0-9](?:[a-z0-9._]{1,22}[a-z0-9])?$"
-            title="Apenas letras minusculas, numeros, ponto e underline"
+            pattern="^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$"
+            title="Apenas letras minusculas, numeros, ponto, underline e hifen"
             required
           />
         </div>

@@ -4,7 +4,7 @@ export const usernameSchema = z
   .string()
   .min(3)
   .max(24)
-  .regex(/^[a-z0-9](?:[a-z0-9._]{1,22}[a-z0-9])?$/, "username_invalid");
+  .regex(/^[a-z0-9](?:[a-z0-9._-]{1,22}[a-z0-9])?$/, "username_invalid");
 
 export const profileUpdateSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),

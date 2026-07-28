@@ -78,7 +78,7 @@ export default async function StatsPage() {
 
           <section className="space-y-3">
             <h2 className="text-xl font-semibold text-ink">Resumo geral</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatTile label="Series concluidas" value={overview.seriesCompleted} />
               <StatTile label="Assistindo" value={overview.seriesWatching} />
               <StatTile label="Pausadas" value={overview.seriesPaused} />
@@ -106,7 +106,7 @@ export default async function StatsPage() {
               <FilmIcon className="h-5 w-5 text-subtle" />
               Tempo assistido
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatTile label="Horas assistidas" value={watchTime.hoursWatched} />
               <StatTile label="Dias equivalentes" value={watchTime.daysWatched} />
               <StatTile label="Media por episodio" value={watchTime.averageMinutesPerEpisode ? `${watchTime.averageMinutesPerEpisode} min` : "n/d"} />
@@ -154,7 +154,7 @@ export default async function StatsPage() {
               <ListIcon className="h-5 w-5 text-subtle" />
               Sequencias
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatTile label="Sequencia atual" value={`${streaks.currentStreakDays} dia(s)`} />
               <StatTile label="Maior sequencia" value={`${streaks.longestStreakDays} dia(s)`} />
               <StatTile label="Dias ativos" value={streaks.activeDays} />

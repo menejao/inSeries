@@ -40,7 +40,7 @@ export default async function RecapIndexPage() {
                 <SparklesIcon className="h-5 w-5 text-subtle" />
                 Recaps anuais
               </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {result.availability.years.map((period) => (
                   <Link key={period.year} href={`/me/recap/${period.year}`}>
                     <Card interactive padding="sm">
@@ -56,7 +56,7 @@ export default async function RecapIndexPage() {
           {result.availability.months.length ? (
             <section className="space-y-3">
               <h2 className="text-xl font-semibold text-ink">Recaps mensais</h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {result.availability.months.map((period) => (
                   <Link key={`${period.year}-${period.month}`} href={`/me/recap/${period.year}/${period.month}`}>
                     <Card interactive padding="sm">

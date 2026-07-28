@@ -57,7 +57,7 @@ export function CalendarFilters({
           </div>
         </>
       ) : null}
-      <Button type="submit" className="xl:col-span-6">
+      <Button type="submit" className="col-span-full">
         Filtrar
       </Button>
     </Card>

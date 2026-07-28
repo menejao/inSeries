@@ -22,7 +22,7 @@ export default async function AchievementsPage() {
         <AchievementsUnavailable />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <LevelProgressCard level={result.overview.level} points={result.overview.points} />
             </div>
@@ -43,7 +43,7 @@ export default async function AchievementsPage() {
                   <TrophyIcon className="h-5 w-5 text-subtle" />
                   {CATEGORY_LABELS[category]}
                 </h2>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                   {unlockedInCategory.map((achievement) => (
                     <AchievementCard key={achievement.slug} achievement={achievement} unlocked />
                   ))}
