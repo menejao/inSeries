@@ -26,7 +26,10 @@ test("usuario encontra uma serie pelo catalogo e comeca a acompanhar", async ({ 
   await firstSeriesCard.click();
 
   await expect(page).toHaveURL(/\/series\/.+/);
-  await page.getByRole("button", { name: "Quero assistir" }).click();
+  // Fase 13 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — status de acompanhamento virou um menu
+  // ("Acompanhar" abre a lista de estados), nao mais 5 botoes sempre visiveis.
+  await page.getByRole("button", { name: "Acompanhar" }).click();
+  await page.getByRole("menuitem", { name: "Quero assistir" }).click();
   await expect(page.getByText("Status atualizado")).toBeVisible();
 });
 
@@ -37,16 +40,11 @@ test("usuario marca um episodio como assistido a partir da temporada", async ({ 
   await page.locator('a[href^="/series/"]').first().click();
   await expect(page).toHaveURL(/\/series\/.+/);
 
-  await page.getByRole("button", { name: "Assistindo" }).click();
+  await page.getByRole("button", { name: "Acompanhar" }).click();
+  await page.getByRole("menuitem", { name: "Assistindo" }).click();
   await expect(page.getByText("Status atualizado")).toBeVisible();
 
-  const firstSeasonLink = page.locator('a[href*="/season/"]').first();
-  if (await firstSeasonLink.count()) {
-    await firstSeasonLink.click();
-    await expect(page).toHaveURL(/\/season\/\d+/);
-
-    const markWatchedButton = page.getByRole("button", { name: /marcar/i }).first();
-    await expect(markWatchedButton).toBeVisible();
-    await markWatchedButton.click();
-  }
+  const markWatchedButton = page.getByRole("button", { name: /marcar/i }).first();
+  await expect(markWatchedButton).toBeVisible();
+  await markWatchedButton.click();
 });

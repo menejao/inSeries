@@ -9,10 +9,15 @@ import { Progress } from "@/components/ui/progress";
 import { EpisodeRow } from "@/components/series/episode-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InfoRow } from "@/components/series/info-row";
-import { LoaderIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, LoaderIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { Episode } from "@/lib/types";
+
+// Fase 15/17 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — "nunca expandir indefinidamente":
+// revela em lotes fixos, nao tudo de uma vez — mesmo uma temporada com centenas de episodios
+// nunca renderiza mais que BATCH_SIZE de cada vez no DOM.
+const BATCH_SIZE = 20;
 
 export type SeasonSummary = {
   id: string;
@@ -49,6 +54,7 @@ export function SeasonSelector({
   const [selectedNumber, setSelectedNumber] = useState(initialSeasonNumber);
   const [episodesByNumber, setEpisodesByNumber] = useState<Record<number, Episode[]>>({ [initialSeasonNumber]: initialEpisodes });
   const [loadingNumber, setLoadingNumber] = useState<number | null>(null);
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
   const [isPending, startTransition] = useTransition();
 
   const season = useMemo(() => seasons.find((item) => item.number === selectedNumber) ?? seasons[0], [seasons, selectedNumber]);
@@ -57,6 +63,7 @@ export function SeasonSelector({
 
   async function selectSeason(number: number) {
     setSelectedNumber(number);
+    setVisibleCount(BATCH_SIZE);
     if (episodesByNumber[number]) return;
 
     setLoadingNumber(number);
@@ -165,6 +172,7 @@ export function SeasonSelector({
         ) : null}
       </Card>
 
+      {/* Fase 15/17 — altura controlada: nunca mais que BATCH_SIZE episodios no DOM de uma vez, mesmo em temporadas com centenas. */}
       <div className="space-y-3">
         {isLoadingEpisodes ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
@@ -172,7 +180,17 @@ export function SeasonSelector({
             Carregando episodios...
           </div>
         ) : episodes?.length ? (
-          episodes.map((episode) => <EpisodeRow key={episode.id} episode={episode} seasonNumber={season.number} authenticated={authenticated} />)
+          <>
+            {episodes.slice(0, visibleCount).map((episode) => (
+              <EpisodeRow key={episode.id} episode={episode} seasonNumber={season.number} authenticated={authenticated} />
+            ))}
+            {episodes.length > visibleCount ? (
+              <Button variant="ghost" size="sm" onClick={() => setVisibleCount((count) => count + BATCH_SIZE)} className="w-full justify-center">
+                Mostrar mais {Math.min(BATCH_SIZE, episodes.length - visibleCount)} episodios
+                <ChevronDownIcon className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </>
         ) : (
           <EmptyState title="Episodios nao importados" copy="Temporada existe, mas episodios ainda nao foram sincronizados." />
         )}

@@ -4,12 +4,10 @@ import { CompassIcon } from "@/components/ui/icons";
 import { CatalogSearchBar } from "@/components/catalog/catalog-search-bar";
 import { CatalogSortSelect } from "@/components/catalog/catalog-sort-select";
 import { CatalogGrid } from "@/components/catalog/catalog-grid";
-import { CatalogDiscoverySections } from "@/components/catalog/catalog-discovery-sections";
 import { HybridSearchResults } from "@/components/catalog/hybrid-search-results";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
-import { getCatalogDiscoverySections } from "@/lib/catalog/discovery-sections";
 
-const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality", "discovery", "seasons", "episodes"];
+const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "seasons", "episodes"];
 
 type SeriesPageSearchParams = {
   q?: string;
@@ -26,11 +24,12 @@ type SeriesPageSearchParams = {
 };
 
 /**
- * INSERIES-CATALOG-SERIES-EXPERIENCE-01 — Catalogo como plataforma de descoberta, nao CRUD.
- * Fase 2/3: busca (hibrida: local -> TMDb) e a peca central. Fase 4/5: filtros num Sheet
- * (auto-apply) + ordenacao dedicada, form tradicional removido. Fase 6/7/8/9: grid mais denso,
- * cards com hover rico, "Carregar mais" no lugar de paginacao, secoes editoriais quando nao ha
- * busca/filtro ativo. Ver docs/catalog-series-experience-01.md pro audit completo.
+ * INSERIES-CATALOG-SERIES-EXPERIENCE-V2 — Fase 2/3: as secoes editoriais (Em alta/Populares/
+ * Lancamentos/Melhor avaliadas) foram removidas por completo. Elas repetiam as mesmas series
+ * varias vezes na tela (o catalogo de seed tem ~85 series; 4 secoes de 10 cada, com overlap
+ * alto entre "popular"/"discovery"/"rating", faziam a mesma serie aparecer 2-3x antes mesmo do
+ * grid principal) — o oposto de "percepcao de variedade". Estrutura agora e exatamente
+ * Buscar -> Filtros -> Ordenacao -> Grid -> Carregar mais, nada alem disso.
  */
 export default async function SeriesPage({ searchParams }: { searchParams: Promise<SeriesPageSearchParams> }) {
   const params = await searchParams;
@@ -38,11 +37,7 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   const year = params.year ? Number(params.year) : undefined;
   const page = params.page ? Number(params.page) : 1;
 
-  const hasActiveFilters = Boolean(
-    params.q || params.genre || params.status || params.year || params.tag || params.provider || params.country || params.language
-  );
-
-  const [result, metadata, discoverySections] = await Promise.all([
+  const [result, metadata] = await Promise.all([
     searchSeries({
       q: params.q,
       genre: params.genre,
@@ -56,8 +51,7 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
       sort,
       page
     }),
-    getCatalogFilterMetadata(),
-    hasActiveFilters ? Promise.resolve(null) : getCatalogDiscoverySections()
+    getCatalogFilterMetadata()
   ]);
 
   return (
@@ -85,10 +79,7 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
         </div>
       </div>
 
-      {discoverySections ? <CatalogDiscoverySections sections={discoverySections} /> : null}
-
       <div className="space-y-3">
-        {discoverySections ? <h2 className="text-lg font-semibold text-ink">Todos os resultados</h2> : null}
         <p className="text-sm text-muted">
           {result.total} serie{result.total === 1 ? "" : "s"} encontrada{result.total === 1 ? "" : "s"}
           {params.q ? (

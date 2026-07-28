@@ -209,6 +209,12 @@ export async function fetchTmdbSimilarSeries(seriesId: string | number, page = 1
   return payload.results;
 }
 
+/** Fase 23 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — segundo passo da hierarquia interna de "Voce tambem pode gostar", usado so quando TMDb Similar nao rende resultados locais suficientes. */
+export async function fetchTmdbRecommendedSeries(seriesId: string | number, page = 1) {
+  const payload = await withLanguageFallback<{ results: TmdbListSeriesItem[] }>(`tv/${seriesId}/recommendations`, new URLSearchParams({ page: String(page) }));
+  return payload.results;
+}
+
 export async function fetchTmdbSeasonDetails(seriesId: string | number, seasonNumber: string | number) {
   return withLanguageFallback<TmdbSeasonDetails>(`tv/${seriesId}/season/${seasonNumber}`);
 }

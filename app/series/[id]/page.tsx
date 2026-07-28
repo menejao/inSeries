@@ -3,17 +3,13 @@ import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { BackdropImage, PosterImage } from "@/components/media/poster-image";
 import { SeriesLogoOrTitle } from "@/components/media/series-logo";
-import { CollectionTagList } from "@/components/media/collection-tag-badge";
-import { ProviderList } from "@/components/media/provider-badge";
 import { SeriesStatusActions } from "@/components/series/series-status-actions";
-import { InfoRow } from "@/components/series/info-row";
+import { SeriesMoreActions } from "@/components/series/series-more-actions";
+import { SeriesInfoBlock } from "@/components/series/series-info-block";
 import { SeriesContinueWatching } from "@/components/series/series-continue-watching";
 import { SeasonSelector } from "@/components/series/season-selector";
-import { ProductionSection } from "@/components/series/production-section";
-import { WhereToWatchCard } from "@/components/series/where-to-watch-card";
 import { ReviewsSection } from "@/components/series/reviews-section";
 import { SeriesRecommendationsSection } from "@/components/series/series-recommendations";
 import { CastCarousel } from "@/components/series/cast-carousel";
@@ -21,10 +17,9 @@ import { SeriesGallery } from "@/components/series/series-gallery";
 import { SeriesTrailers } from "@/components/series/series-trailers";
 import { SeriesTimeline } from "@/components/series/series-timeline";
 import { AddToListButton } from "@/components/series/add-to-list-button";
-import { ShareButton } from "@/components/series/share-button";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { FixedGrid } from "@/components/ui/fixed-grid";
-import { CalendarIcon, FlameIcon, ListIcon, PlayIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
+import { CalendarIcon, ListIcon, StarIcon } from "@/components/ui/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCatalogSeriesSummaryBySlug, getSeasonEpisodes } from "@/lib/catalog/repository";
@@ -84,9 +79,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       user && dbAvailable ? getWatchNextForUser(user.id) : Promise.resolve(null),
       user && dbAvailable ? getSeriesAddedToListAt(user.id, series.id) : Promise.resolve(null),
       user && dbAvailable ? getUserListsForSeries(user.id, series.id) : Promise.resolve([]),
-      dbAvailable
-        ? getSeriesRecommendations(series, user?.id)
-        : Promise.resolve({ similar: [], sameGenre: [], sameUniverse: [], sameCreator: [], sameCast: [], trending: [] }),
+      dbAvailable ? getSeriesRecommendations(series, user?.id) : Promise.resolve({ youMayLike: [], officialUniverse: [] }),
       dbAvailable ? getSeriesMedia(series.id) : Promise.resolve({ cast: [], videos: [], backdropUrls: [], posterUrls: [] })
     ]);
 
@@ -119,19 +112,28 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-8">
+      {/*
+        Fase 10/11/12 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — Hero reduzido: aspect-ratio
+        mais baixa (era 16/6 no desktop, agora 21/9) e offset de sobreposicao menor (-mt-32 ->
+        -mt-14), poster menor, no maximo 2 badges (Status + Nota) no topo — Quality/Discovery
+        Score viraram um dado do bloco de informacoes (Fase 25), nao um badge competindo por
+        atencao no Hero. Overlay de gradiente reforcado (via-canvas/80) garante contraste do
+        texto mesmo sobre um backdrop claro (Fase 12).
+      */}
       <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
-        <div className="relative aspect-[3/4] sm:aspect-[16/8] lg:aspect-[16/6]">
+        <div className="relative aspect-[4/3] sm:aspect-[21/9] lg:aspect-[21/7]">
           <BackdropImage src={series.backdropUrl || series.posterUrl} alt={series.title} priority sizes="100vw" />
-          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/70 sm:via-canvas/50 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-canvas/60 via-transparent to-transparent hidden sm:block" />
+          <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/80 sm:via-canvas/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-canvas/70 via-transparent to-transparent hidden sm:block" />
         </div>
-        <div className="relative -mt-24 flex flex-col gap-6 px-4 pb-6 sm:-mt-32 sm:flex-row sm:items-end sm:px-8 sm:pb-8">
-          <div className="hidden w-40 shrink-0 overflow-hidden rounded-3xl border-2 border-border-strong shadow-raised sm:block lg:w-48">
+        <div className="relative -mt-14 flex flex-col gap-4 px-4 pb-5 sm:-mt-16 sm:flex-row sm:items-end sm:px-8 sm:pb-6">
+          <div className="hidden w-28 shrink-0 overflow-hidden rounded-2xl border-2 border-border-strong shadow-raised sm:block lg:w-32">
             <div className="relative aspect-[2/3]">
-              <PosterImage src={series.posterUrl} alt={series.title} sizes="192px" priority />
+              <PosterImage src={series.posterUrl} alt={series.title} sizes="128px" priority />
             </div>
           </div>
-          <div className="min-w-0 flex-1 space-y-3">
+          <div className="min-w-0 flex-1 space-y-2.5">
+            {/* Informacoes principais: status + nota, titulo, ano/temporadas/episodios */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</Badge>
               {typeof series.voteAverage === "number" ? (
@@ -139,65 +141,47 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                   <StarIcon className="h-3 w-3 fill-current" /> {series.voteAverage.toFixed(1)}
                 </Badge>
               ) : null}
-              {typeof series.qualityScore === "number" ? (
-                <Badge variant="primary">
-                  <SparklesIcon className="h-3 w-3" /> Quality {Math.round(series.qualityScore)}
-                </Badge>
-              ) : null}
-              {typeof series.discoveryScore === "number" ? (
-                <Badge variant="secondary">
-                  <FlameIcon className="h-3 w-3" /> Discovery {Math.round(series.discoveryScore)}
-                </Badge>
-              ) : null}
             </div>
             <SeriesLogoOrTitle
               title={series.title}
               logoUrl={series.logoUrl}
               as="h1"
-              textClassName="max-w-3xl text-3xl font-black leading-tight text-ink sm:text-4xl lg:text-5xl"
-              logoClassName="h-16 max-w-[280px] sm:h-20"
+              textClassName="max-w-3xl text-2xl font-black leading-tight text-ink sm:text-3xl lg:text-4xl"
+              logoClassName="h-12 max-w-[240px] sm:h-16"
             />
-            {series.tagline ? <p className="max-w-2xl text-sm italic text-ink/80">&ldquo;{series.tagline}&rdquo;</p> : null}
-            {series.originalTitle && series.originalTitle !== series.title ? (
-              <p className="text-sm text-muted">{series.originalTitle}</p>
-            ) : null}
-            <p className="max-w-3xl text-sm leading-7 text-ink/90 line-clamp-3 sm:line-clamp-none">{series.overview}</p>
-            <div className="flex flex-wrap gap-2 text-xs text-muted">
-              {series.genres.map((genre) => (
-                <span key={genre} className="rounded-full bg-surface-strong/80 px-2.5 py-1">
-                  {genre}
-                </span>
-              ))}
-            </div>
-            {/* Fase 10 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — temporadas/episodios/criadores agora no Hero (antes so no card "Resumo", abaixo do fold). */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-              <span>{series.numberOfSeasons ?? series.seasons.length} temporada{(series.numberOfSeasons ?? series.seasons.length) === 1 ? "" : "s"}</span>
-              <span>{series.numberOfEpisodes ?? totalEpisodes} episodios</span>
-              {series.createdBy.length ? <span>Criado por {series.createdBy.slice(0, 2).join(", ")}</span> : null}
-            </div>
-            <CollectionTagList tags={series.collectionTags} />
-            <ProviderList providers={series.watchProviders} limit={5} />
+            <p className="text-xs text-muted">
+              {series.year || "Ano n/d"} · {series.numberOfSeasons ?? series.seasons.length} temporada
+              {(series.numberOfSeasons ?? series.seasons.length) === 1 ? "" : "s"} ·{" "}
+              {series.numberOfEpisodes ?? totalEpisodes} episodios
+            </p>
+
+            {/* Sinopse */}
+            <p className="max-w-3xl text-sm leading-6 text-ink/90 line-clamp-2">{series.overview}</p>
+
+            {/* Acoes: Acompanhar / Lista / Avaliar / Mais acoes */}
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              {watchNextItemForSeries ? (
-                <Link href="#continuar-assistindo" className={buttonVariants({ variant: "primary", size: "md" })}>
-                  <PlayIcon className="h-4 w-4" />
-                  Continuar assistindo
-                </Link>
-              ) : null}
+              <SeriesStatusActions seriesId={series.id} initialState={statusRow?.state ?? null} authenticated={Boolean(user)} />
               <AddToListButton seriesId={series.id} lists={userLists} authenticated={Boolean(user)} />
               <Link href="#reviews" className={buttonVariants({ variant: "secondary", size: "md" })}>
                 <StarIcon className="h-4 w-4" />
                 Avaliar
               </Link>
-              <ShareButton title={series.title} />
+              <SeriesMoreActions title={series.title} />
             </div>
-            <div className="pt-1">
-              <SeriesStatusActions seriesId={series.id} initialState={statusRow?.state ?? null} authenticated={Boolean(user)} />
-            </div>
+
+            {/* Informacoes secundarias: generos, criadores — menores, discretas */}
+            {series.genres.length || series.createdBy.length ? (
+              <p className="text-xs text-subtle">
+                {series.genres.slice(0, 3).join(", ")}
+                {series.genres.length && series.createdBy.length ? " · " : ""}
+                {series.createdBy.length ? `Criado por ${series.createdBy.slice(0, 2).join(", ")}` : ""}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
 
+      {/* Fase 14/18 — acompanhamento continua sendo a informacao mais importante, destacado logo abaixo do Hero. */}
       {watchNextItemForSeries ? (
         <SeriesContinueWatching
           item={watchNextItemForSeries}
@@ -209,35 +193,20 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
       <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <div className="space-y-6">
-          <Card className="space-y-4">
-            <h2 className="text-lg font-semibold text-ink">Resumo</h2>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <InfoRow label="Idioma" value={series.language || "Nao informado"} />
-              <InfoRow label="Plataforma" value={series.platform || "Nao informado"} />
-              <InfoRow label="Temporadas" value={String(series.numberOfSeasons ?? series.seasons.length)} />
-              <InfoRow label="Episodios" value={String(series.numberOfEpisodes ?? totalEpisodes)} />
-              <InfoRow label="Pais de origem" value={series.originCountry.length ? series.originCountry.join(", ") : "Nao informado"} />
-            </dl>
-            {user ? (
-              <div className="space-y-2 border-t border-border pt-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted">Seu progresso</span>
-                  <span className="font-semibold text-ink">{progress?.percentage ?? 0}%</span>
-                </div>
-                <Progress value={progress?.percentage ?? 0} label="Progresso da serie" />
-                <p className="text-xs text-subtle">
-                  {progress?.watchedEpisodes ?? 0} de {totalEpisodes} episodios assistidos
-                </p>
-              </div>
-            ) : null}
-          </Card>
+          <SeriesInfoBlock
+            series={series}
+            totalEpisodes={totalEpisodes}
+            progressPercent={progress?.percentage ?? 0}
+            watchedEpisodes={progress?.watchedEpisodes ?? 0}
+            authenticated={Boolean(user)}
+          />
 
-          <Card className="space-y-3">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-              <CalendarIcon className="h-5 w-5 text-subtle" />
-              Proximo lancamento
-            </h2>
-            {nextEpisode ? (
+          {nextEpisode ? (
+            <Card className="space-y-3">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+                <CalendarIcon className="h-5 w-5 text-subtle" />
+                Proximo lancamento
+              </h2>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-semibold text-ink">
@@ -252,14 +221,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
                   Ver calendario
                 </Link>
               </div>
-            ) : (
-              <p className="text-sm text-muted">Serie sem episodios futuros.</p>
-            )}
-          </Card>
-
-          <WhereToWatchCard providers={series.watchProviders} />
-
-          <ProductionSection series={series} />
+            </Card>
+          ) : null}
 
           {user ? <SeriesTimeline events={timelineEvents} /> : null}
         </div>

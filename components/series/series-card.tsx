@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
-import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
 import { PosterBadge } from "@/components/media/poster-badge";
-import { ProviderList } from "@/components/media/provider-badge";
-import { SparklesIcon, StarIcon } from "@/components/ui/icons";
+import { StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import type { Series } from "@/lib/types";
 
 /**
- * Fase 5 — poster-first catalog card: poster, nota, status, ano, plataforma, generos (no hover).
- * Sinopse foi removida do card (fica na pagina da serie).
- *
- * Fase 4/5 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — on hover, generos dao lugar a ate
- * duas Collection Tags (sinal editorial, mais util que repetir genero) e, quando sincronizados,
- * os provedores de streaming aparecem junto — nunca os dois grupos de chip disputando espaco
- * com o genero ao mesmo tempo.
+ * Fase 8 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — card reduzido ao minimo exigido: poster,
+ * titulo, ano, nota, status, sempre visiveis. No hover: so sinopse curta + "Abrir". Removidos
+ * (excesso visual, fora da lista da Fase 8): Quality Score, Collection Tags/generos e
+ * provedores de streaming no card — essas informacoes continuam disponiveis na pagina da
+ * serie, que e onde o usuario decide "assistir onde".
  */
 export function SeriesCard({ series }: { series: Series }) {
   return (
@@ -33,56 +29,19 @@ export function SeriesCard({ series }: { series: Series }) {
         <div className="absolute left-2 top-2">
           <PosterBadge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</PosterBadge>
         </div>
-        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
-          {typeof series.voteAverage === "number" ? (
+        {typeof series.voteAverage === "number" ? (
+          <div className="absolute right-2 top-2">
             <PosterBadge>
               <StarIcon className="h-3 w-3 fill-current text-warning-text" />
               {series.voteAverage.toFixed(1)}
             </PosterBadge>
-          ) : null}
-          {/* Fase 10 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — Quality Score alongside the vote average, so catalog/search results carry the same signal as the Hero/detail page. */}
-          {typeof series.qualityScore === "number" ? (
-            <PosterBadge>
-              <SparklesIcon className="h-3 w-3 text-primary-text" />
-              {Math.round(series.qualityScore)}
-            </PosterBadge>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <div className="absolute inset-x-0 bottom-0 space-y-1.5 p-3">
           <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
-          <p className="text-xs text-muted">
-            {series.year || "—"} · {series.platform}
-          </p>
-          {series.collectionTags.length ? (
-            <div className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100">
-              {series.collectionTags.slice(0, 2).map((tag) => (
-                <CollectionTagBadge key={tag} tag={tag} overlay />
-              ))}
-            </div>
-          ) : series.genres.length ? (
-            <div className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100">
-              {series.genres.slice(0, 2).map((genre) => (
-                <span key={genre} className="rounded-full bg-surface-strong/80 px-2 py-0.5 text-[10px] text-ink backdrop-blur">
-                  {genre}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {series.watchProviders.length ? (
-            <ProviderList
-              providers={series.watchProviders}
-              limit={3}
-              className="flex flex-wrap gap-1 opacity-0 transition duration-200 group-hover:opacity-100"
-            />
-          ) : null}
-          {/* Fase 7 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — sinopse curta + temporadas + acao "Abrir" so no hover (desktop); nunca competindo com titulo/nota/status, sempre visiveis. */}
+          <p className="text-xs text-muted">{series.year || "—"}</p>
           <div className="hidden opacity-0 transition duration-200 group-hover:opacity-100 sm:block">
             <p className="line-clamp-2 text-xs text-ink/85">{series.overview}</p>
-            {typeof series.numberOfSeasons === "number" && series.numberOfSeasons > 0 ? (
-              <p className="mt-1 text-[11px] text-muted">
-                {series.numberOfSeasons} temporada{series.numberOfSeasons === 1 ? "" : "s"}
-              </p>
-            ) : null}
             <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary-text">Abrir</span>
           </div>
         </div>
