@@ -48,26 +48,27 @@ function PosterTile({ series }: { series: ProfileSeriesTile }) {
  * existente: Continue Watching usa o mesmo card do Dashboard (`ContinueWatchingCard`,
  * `lib/continue-watching`) e e exclusivo do dono do perfil — nao ha nenhuma flag de
  * privacidade para "resumir de onde parei" de outra pessoa, e exibir isso a estranhos nao e
- * sancionado por nenhuma regra existente (decisao documentada no README). Favoritas/Concluidas
- * recentemente/Reviews recentes reaproveitam os mesmos arrays que a pagina ja busca
- * (`reviews`, `completedSeries`) — nenhuma query nova, so um recorte/filtro em memoria.
+ * sancionado por nenhuma regra existente (decisao documentada no README). Favoritas/Reviews
+ * recentes reaproveitam os mesmos arrays que a pagina ja busca (`reviews`) — nenhuma query
+ * nova, so um recorte/filtro em memoria.
  *
  * Fase 2 (INSERIES-PRODUCT-EXPERIENCE-REVOLUTION-01) — a secao "Watch Next" (dono only) foi
  * removida daqui: duplicava exatamente "Continuar assistindo" logo acima (mesma pergunta "o
  * que assisto agora"), e o /watch-next pra onde ela linkava foi fundido no Dashboard.
+ *
+ * INSERIES-SOCIAL-NETWORK-EXPERIENCE-01 (follow-up) — "Concluidas recentemente" foi removida
+ * daqui: virou parte da nova `ProfileSeriesLibrary` (biblioteca unica com badge de status,
+ * "Ver mais" abre modal com tudo), que tambem substituiu as secoes separadas
+ * "Assistindo"/"Concluidas" na pagina de perfil.
  */
 export function ProfileCollections({
   isOwner,
   continueWatching,
-  canSeeCompleted,
-  completedRecent,
   canSeeReviews,
   reviews
 }: {
   isOwner: boolean;
   continueWatching: ContinueWatchingResult | null;
-  canSeeCompleted: boolean;
-  completedRecent: ProfileSeriesTile[];
   canSeeReviews: boolean;
   reviews: ProfileReview[];
 }) {
@@ -92,17 +93,6 @@ export function ProfileCollections({
           <FixedGrid mobile={2} tablet={3} desktop={6}>
             {favorites.slice(0, 6).map((review) => (
               <PosterTile key={review.id} series={review.series} />
-            ))}
-          </FixedGrid>
-        </section>
-      ) : null}
-
-      {canSeeCompleted && completedRecent.length ? (
-        <section className="space-y-3">
-          <h2 className="section-title">Concluidas recentemente</h2>
-          <FixedGrid mobile={2} tablet={3} desktop={6}>
-            {completedRecent.slice(0, 6).map((series) => (
-              <PosterTile key={series.id} series={series} />
             ))}
           </FixedGrid>
         </section>

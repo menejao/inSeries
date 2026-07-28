@@ -13,6 +13,7 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileStatsSection } from "@/components/profile/profile-stats-section";
 import { ProfileHighlights } from "@/components/profile/profile-highlights";
 import { ProfileCollections } from "@/components/profile/profile-collections";
+import { ProfileSeriesLibrary } from "@/components/profile/profile-series-library";
 import { ProfileTimeline } from "@/components/profile/profile-timeline";
 import { ReviewsStatsSection } from "@/components/reviews/reviews-stats-section";
 import { getCurrentUser } from "@/lib/auth/server";
@@ -114,6 +115,18 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     : [];
   const highlights = computeProfileHighlights(highlightItems);
 
+  // Series/Assistindo unificadas numa unica biblioteca (mesmo card, badge de status) — cada
+  // metade so entra se a flag de privacidade correspondente autorizar, sem misturar as duas
+  // regras numa unica mensagem de "oculto".
+  const libraryItems = [
+    ...(canSeeWatching ? watchingSeries.map((series) => ({ ...series, state: "WATCHING" as const })) : []),
+    ...(canSeeCompleted ? completedSeries.map((series) => ({ ...series, state: "COMPLETED" as const })) : [])
+  ].sort((a, b) => {
+    const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+    const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
   return (
     <div className="space-y-8">
       <ProfileHeader
@@ -186,55 +199,11 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           <ProfileCollections
             isOwner={isOwner}
             continueWatching={continueWatching}
-            canSeeCompleted={canSeeCompleted}
-            completedRecent={completedSeries}
             canSeeReviews={canSeeReviews}
             reviews={reviews}
           />
 
-          <section className="space-y-3">
-            <h2 className="section-title">Assistindo</h2>
-            {canSeeWatching ? (
-              watchingSeries.length ? (
-                <FixedGrid mobile={1} tablet={2} desktop={3}>
-                  {watchingSeries.map((series) => (
-                    <Link key={series.id} href={`/series/${series.slug}`}>
-                      <Card interactive padding="sm">
-                        <p className="font-semibold text-ink">{series.title}</p>
-                        <p className="mt-1 text-sm text-muted">{series.firstAirYear ?? "n/d"}</p>
-                      </Card>
-                    </Link>
-                  ))}
-                </FixedGrid>
-              ) : (
-                <EmptyState title="Nada assistindo" copy="Quando este usuario comecar uma serie, ela aparece aqui." />
-              )
-            ) : (
-              <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir series assistindo." />
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="section-title">Concluidas</h2>
-            {canSeeCompleted ? (
-              completedSeries.length ? (
-                <FixedGrid mobile={1} tablet={2} desktop={3}>
-                  {completedSeries.map((series) => (
-                    <Link key={series.id} href={`/series/${series.slug}`}>
-                      <Card interactive padding="sm">
-                        <p className="font-semibold text-ink">{series.title}</p>
-                        <p className="mt-1 text-sm text-muted">{series.firstAirYear ?? "n/d"}</p>
-                      </Card>
-                    </Link>
-                  ))}
-                </FixedGrid>
-              ) : (
-                <EmptyState title="Nada concluido" copy="Series concluidas aparecem aqui quando publicas." />
-              )
-            ) : (
-              <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir series concluidas." />
-            )}
-          </section>
+          <ProfileSeriesLibrary items={libraryItems} />
 
           <section className="space-y-3">
             <h2 className="section-title">Listas</h2>
