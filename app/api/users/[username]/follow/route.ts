@@ -17,7 +17,7 @@ async function postHandler(request: Request, { params }: { params: Promise<{ use
     return NextResponse.json({ error: result.error }, { status });
   }
 
-  return NextResponse.json({ data: { following: true } });
+  return NextResponse.json({ data: { state: result.state } });
 }
 
 async function deleteHandler(request: Request, { params }: { params: Promise<{ username: string }> }) {
@@ -33,7 +33,7 @@ async function deleteHandler(request: Request, { params }: { params: Promise<{ u
     return NextResponse.json({ error: result.error }, { status: 404 });
   }
 
-  return NextResponse.json({ data: { following: false } });
+  return NextResponse.json({ data: { state: result.state } });
 }
 
 export const POST = withApiObservability("users.follow", postHandler);

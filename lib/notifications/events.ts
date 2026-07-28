@@ -81,6 +81,73 @@ export async function notifyFollowersOfPublicList(authorId: string, listId: stri
   incrementNotificationsCreated(followers.length);
 }
 
+/** Fires when a follow request is created against a private profile. */
+export async function notifyFollowRequested(requesterId: string, targetId: string) {
+  const requester = await prisma.user.findUnique({ where: { id: requesterId }, select: { username: true, name: true } });
+  if (!requester) return;
+
+  await createNotification({
+    userId: targetId,
+    type: "FOLLOW_REQUESTED",
+    title: "Solicitacao para seguir",
+    body: `${requester.name} (@${requester.username}) quer seguir voce.`,
+    href: `/profile/${requester.username}`,
+    actorUserId: requesterId
+  });
+}
+
+/** Fires once, when a pending follow request is accepted by the target user. */
+export async function notifyFollowRequestAccepted(targetId: string, requesterId: string) {
+  const target = await prisma.user.findUnique({ where: { id: targetId }, select: { username: true, name: true } });
+  if (!target) return;
+
+  await createNotification({
+    userId: requesterId,
+    type: "FOLLOW_REQUEST_ACCEPTED",
+    title: "Solicitacao aceita",
+    body: `${target.name} (@${target.username}) aceitou sua solicitacao para seguir.`,
+    href: `/profile/${target.username}`,
+    actorUserId: targetId
+  });
+}
+
+/** Never fires when the actor is the activity's own author (liking/commenting on yourself). */
+export async function notifyActivityLiked(actorId: string, activityAuthorId: string, activityId: string) {
+  if (actorId === activityAuthorId) return;
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true, name: true } });
+  if (!actor) return;
+
+  const alreadyExists = await prisma.notification.findFirst({
+    where: { userId: activityAuthorId, type: "ACTIVITY_LIKED", actorUserId: actorId, metadata: { path: ["activityId"], equals: activityId } },
+    select: { id: true }
+  });
+  if (alreadyExists) return;
+
+  await createNotification({
+    userId: activityAuthorId,
+    type: "ACTIVITY_LIKED",
+    title: "Nova curtida",
+    body: `${actor.name} (@${actor.username}) curtiu sua atividade.`,
+    actorUserId: actorId,
+    metadata: { activityId }
+  });
+}
+
+export async function notifyActivityCommented(actorId: string, activityAuthorId: string, activityId: string) {
+  if (actorId === activityAuthorId) return;
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true, name: true } });
+  if (!actor) return;
+
+  await createNotification({
+    userId: activityAuthorId,
+    type: "ACTIVITY_COMMENTED",
+    title: "Novo comentario",
+    body: `${actor.name} (@${actor.username}) comentou sua atividade.`,
+    actorUserId: actorId,
+    metadata: { activityId }
+  });
+}
+
 /** Notifies the user themself; no privacy gate needed since it concerns only their own account. */
 export async function notifySeriesCompleted(userId: string, seriesId: string) {
   const series = await prisma.series.findUnique({ where: { id: seriesId }, select: { title: true, slug: true } });

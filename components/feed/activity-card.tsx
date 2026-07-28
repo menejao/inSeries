@@ -3,6 +3,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PosterImage } from "@/components/media/poster-image";
+import { ActivityInteractionBar } from "@/components/feed/activity-interaction-bar";
 import { CheckCircleIcon, FilmIcon, HeartIcon, ListIcon, MessageCircleIcon, StarIcon, TvIcon } from "@/components/ui/icons";
 import { formatEpisodeCode, formatRelativeDate, getInitials } from "@/lib/utils";
 import type { ActivityFeedItem } from "@/lib/social/activity";
@@ -132,63 +133,73 @@ export function getActionContent(activity: ActivityFeedItem) {
  * server-renderizados: nenhum estado de "revelar spoiler" aqui (isso ja existe na Pagina da
  * Serie) — um card de feed so precisa avisar que ha spoiler, nunca revelar o corpo.
  */
-export function ActivityCard({ activity }: { activity: ActivityFeedItem }) {
+export function ActivityCard({ activity, authenticated = false }: { activity: ActivityFeedItem; authenticated?: boolean }) {
   const action = getActionContent(activity);
   const Icon = typeIcons[activity.type] ?? FilmIcon;
   const isReviewLinked = activity.type === "REVIEW_CREATED" || activity.type === "COMMENT_CREATED";
   const threadCount = activity.review?._count.comments ?? 0;
 
   return (
-    <Card className="flex gap-3 transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised">
-      <div className="relative shrink-0">
-        <Link href={`/profile/${activity.user.username}`}>
-          <Avatar label={getInitials(activity.user.name)} name={activity.user.name} src={activity.user.avatarUrl} size="sm" />
-        </Link>
-        <span
-          className={cn(
-            "absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface bg-surface-strong text-primary-text"
-          )}
-        >
-          <Icon className="h-3 w-3" />
-        </span>
-      </div>
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <p className="text-sm leading-6 text-ink/90">
-          <Link href={`/profile/${activity.user.username}`} className="font-semibold text-ink">
-            {activity.user.name}
-          </Link>{" "}
-          {action.text}
-        </p>
-        {activity.type === "REVIEW_CREATED" && activity.review ? (
-          activity.review.containsSpoiler ? (
-            <p className="text-sm italic text-subtle">Contem spoiler — abra a serie para ler.</p>
-          ) : (
-            <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
-          )
-        ) : null}
-        {activity.type === "COMMENT_CREATED" && activity.comment ? (
-          <p className="line-clamp-2 text-sm text-muted">{activity.comment.body}</p>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {activity.type === "REVIEW_CREATED" && activity.review?.containsSpoiler ? <Badge variant="danger">Spoiler</Badge> : null}
-          {isReviewLinked && threadCount > 0 ? (
-            <Badge variant="secondary">
-              <MessageCircleIcon className="h-3 w-3" /> {threadCount}
-            </Badge>
-          ) : null}
-          {isReviewLinked && activity.series ? (
-            <Link href={`/series/${activity.series.slug}#reviews`} className="text-xs font-semibold text-primary hover:underline">
-              Ver review
-            </Link>
-          ) : null}
+    <Card className="space-y-3 transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised">
+      <div className="flex gap-3">
+        <div className="relative shrink-0">
+          <Link href={`/profile/${activity.user.username}`}>
+            <Avatar label={getInitials(activity.user.name)} name={activity.user.name} src={activity.user.avatarUrl} size="sm" />
+          </Link>
+          <span
+            className={cn(
+              "absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface bg-surface-strong text-primary-text"
+            )}
+          >
+            <Icon className="h-3 w-3" />
+          </span>
         </div>
-        <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-sm leading-6 text-ink/90">
+            <Link href={`/profile/${activity.user.username}`} className="font-semibold text-ink">
+              {activity.user.name}
+            </Link>{" "}
+            {action.text}
+          </p>
+          {activity.type === "REVIEW_CREATED" && activity.review ? (
+            activity.review.containsSpoiler ? (
+              <p className="text-sm italic text-subtle">Contem spoiler — abra a serie para ler.</p>
+            ) : (
+              <p className="line-clamp-2 text-sm text-muted">{activity.review.body}</p>
+            )
+          ) : null}
+          {activity.type === "COMMENT_CREATED" && activity.comment ? (
+            <p className="line-clamp-2 text-sm text-muted">{activity.comment.body}</p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {activity.type === "REVIEW_CREATED" && activity.review?.containsSpoiler ? <Badge variant="danger">Spoiler</Badge> : null}
+            {isReviewLinked && threadCount > 0 ? (
+              <Badge variant="secondary">
+                <MessageCircleIcon className="h-3 w-3" /> {threadCount}
+              </Badge>
+            ) : null}
+            {isReviewLinked && activity.series ? (
+              <Link href={`/series/${activity.series.slug}#reviews`} className="text-xs font-semibold text-primary hover:underline">
+                Ver review
+              </Link>
+            ) : null}
+          </div>
+          <p className="text-xs text-subtle">{formatRelativeDate(activity.createdAt)}</p>
+        </div>
+        {activity.series ? (
+          <Link href={`/series/${activity.series.slug}`} aria-label={`Abrir ${activity.series.title}`} className="relative hidden h-16 w-11 shrink-0 overflow-hidden rounded-xl sm:block">
+            <PosterImage src={activity.series.posterUrl} alt={activity.series.title} sizes="44px" />
+          </Link>
+        ) : null}
       </div>
-      {activity.series ? (
-        <Link href={`/series/${activity.series.slug}`} aria-label={`Abrir ${activity.series.title}`} className="relative hidden h-16 w-11 shrink-0 overflow-hidden rounded-xl sm:block">
-          <PosterImage src={activity.series.posterUrl} alt={activity.series.title} sizes="44px" />
-        </Link>
-      ) : null}
+
+      <ActivityInteractionBar
+        activityId={activity.id}
+        initialLiked={activity.likedByViewer}
+        initialLikeCount={activity._count.likes}
+        initialCommentCount={activity._count.activityComments}
+        authenticated={authenticated}
+      />
     </Card>
   );
 }

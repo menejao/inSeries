@@ -5,8 +5,10 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { FollowButton } from "@/components/social/follow-button";
+import { ProfileActionsMenu } from "@/components/social/profile-actions-menu";
+import { FollowRequestsPanel } from "@/components/social/follow-requests-panel";
 import { buttonVariants } from "@/components/ui/button";
-import { EyeOffIcon } from "@/components/ui/icons";
+import { EyeOffIcon, LockIcon } from "@/components/ui/icons";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileStatsSection } from "@/components/profile/profile-stats-section";
 import { ProfileHighlights } from "@/components/profile/profile-highlights";
@@ -14,19 +16,16 @@ import { ProfileCollections } from "@/components/profile/profile-collections";
 import { ProfileTimeline } from "@/components/profile/profile-timeline";
 import { ReviewsStatsSection } from "@/components/reviews/reviews-stats-section";
 import { getCurrentUser } from "@/lib/auth/server";
-import {
-  getProfileByUsername,
-  getPublicListsForUser,
-  getPublicReviewsForUser,
-  getWatchStateSeries,
-  isFollowing
-} from "@/lib/social/profile";
+import { getProfileByUsername, getPublicListsForUser, getPublicReviewsForUser, getWatchStateSeries } from "@/lib/social/profile";
 import { getProfileActivity } from "@/lib/social/activity";
 import { getMostReviewedSeries, getUserReviewStats } from "@/lib/social/review-stats";
 import { getUserStats } from "@/lib/analytics";
 import { getMyListFullForUser } from "@/lib/my-list";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { computeProfileHighlights } from "@/lib/profile-page/highlights";
+import { getFollowState, getPendingFollowRequests } from "@/lib/social/follow";
+import { isMuted } from "@/lib/social/mute";
+import { isBlocked } from "@/lib/social/block";
 import { prisma } from "@/lib/db/prisma";
 
 /**
@@ -48,9 +47,16 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
   const viewer = await getCurrentUser();
   const isOwner = viewer?.id === profile.id;
-  const viewerFollows = viewer && !isOwner ? await isFollowing(viewer.id, profile.id) : false;
+  const followState = viewer ? await getFollowState(viewer.id, profile.id) : "none";
+  const [profileFollowsViewer, viewerMutedProfile, viewerBlockedProfile, pendingRequests] = await Promise.all([
+    viewer && !isOwner ? prisma.follow.findUnique({ where: { followerId_followingId: { followerId: profile.id, followingId: viewer.id } } }) : null,
+    viewer && !isOwner ? isMuted(viewer.id, profile.id) : false,
+    viewer && !isOwner ? isBlocked(viewer.id, profile.id) : false,
+    isOwner && profile.isProfilePrivate ? getPendingFollowRequests(profile.id) : Promise.resolve([])
+  ]);
 
-  const hidden = profile.isProfilePrivate && !isOwner;
+  // Fase 32 — perfil privado: conteudo so libera quando o follow foi ACEITO ("Solicitado" ainda oculta tudo).
+  const hidden = profile.isProfilePrivate && !isOwner && followState !== "following";
 
   const canSeeWatching = isOwner || (!profile.isProfilePrivate && profile.showWatchingSeries);
   const canSeeCompleted = isOwner || (!profile.isProfilePrivate && profile.showWatchedSeries);
@@ -118,20 +124,38 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
               Editar perfil
             </Link>
           ) : (
-            <FollowButton username={profile.username} initialFollowing={viewerFollows} authenticated={Boolean(viewer)} />
+            <div className="flex items-center gap-2">
+              <FollowButton username={profile.username} initialState={followState} authenticated={Boolean(viewer)} />
+              {viewer ? (
+                <ProfileActionsMenu
+                  username={profile.username}
+                  isMuted={viewerMutedProfile}
+                  isBlocked={viewerBlockedProfile}
+                  followsViewer={Boolean(profileFollowsViewer)}
+                />
+              ) : null}
+            </div>
           )
         }
       />
 
+      {isOwner && pendingRequests.length ? (
+        <FollowRequestsPanel requests={pendingRequests.map((request) => ({ id: request.id, requester: request.requester }))} />
+      ) : null}
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card>
-          <p className="text-sm text-muted">Seguidores</p>
-          <p className="mt-2 text-3xl font-black text-ink">{profile._count.followers}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-muted">Seguindo</p>
-          <p className="mt-2 text-3xl font-black text-ink">{profile._count.following}</p>
-        </Card>
+        <Link href={`/profile/${profile.username}/followers`}>
+          <Card interactive>
+            <p className="text-sm text-muted">Seguidores</p>
+            <p className="mt-2 text-3xl font-black text-ink">{profile._count.followers}</p>
+          </Card>
+        </Link>
+        <Link href={`/profile/${profile.username}/following`}>
+          <Card interactive>
+            <p className="text-sm text-muted">Seguindo</p>
+            <p className="mt-2 text-3xl font-black text-ink">{profile._count.following}</p>
+          </Card>
+        </Link>
         <Card>
           <p className="text-sm text-muted">Listas</p>
           <p className="mt-2 text-3xl font-black text-ink">{hidden ? "-" : lists.length}</p>
@@ -144,9 +168,13 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
 
       {hidden ? (
         <EmptyState
-          icon={<EyeOffIcon className="h-6 w-6" />}
-          title="Perfil privado"
-          copy="Este usuario mantem series, listas e reviews visiveis apenas para si mesmo."
+          icon={followState === "requested" ? <LockIcon className="h-6 w-6" /> : <EyeOffIcon className="h-6 w-6" />}
+          title="Este perfil e privado"
+          copy={
+            followState === "requested"
+              ? "Sua solicitacao para seguir foi enviada. Assim que for aceita, voce podera ver as atividades desta pessoa."
+              : "Siga este usuario para visualizar suas atividades."
+          }
         />
       ) : (
         <>
@@ -265,7 +293,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           {canSeeReviews && reviewStats ? <ReviewsStatsSection stats={reviewStats} mostReviewed={mostReviewedSeries} /> : null}
 
           {canSeeActivity ? (
-            <ProfileTimeline activities={activity} />
+            <ProfileTimeline activities={activity} authenticated={Boolean(viewer)} />
           ) : (
             <section className="space-y-3">
               <h2 className="section-title">Atividade</h2>

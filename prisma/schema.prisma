@@ -92,6 +92,19 @@ enum NotificationType {
   SERIES_COMPLETED
   ADMIN_NOTICE
   ACHIEVEMENT_UNLOCKED
+  // INSERIES-SOCIAL-NETWORK-EXPERIENCE-01 — solicitacoes de seguir (perfil privado) e
+  // interacoes em atividades (curtida/comentario).
+  FOLLOW_REQUESTED
+  FOLLOW_REQUEST_ACCEPTED
+  ACTIVITY_LIKED
+  ACTIVITY_COMMENTED
+}
+
+enum FollowRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
 }
 
 enum AchievementCategory {
@@ -111,39 +124,114 @@ enum AchievementRarity {
 }
 
 model User {
-  id                 String                @id @default(cuid())
-  name               String
-  username           String                @unique
-  email              String                @unique
-  passwordHash       String
-  avatarUrl          String?
-  bio                String?
-  role               UserRole              @default(USER)
-  lastLoginAt        DateTime?
-  isProfilePrivate   Boolean               @default(false)
-  showWatchedSeries  Boolean               @default(true)
-  showWatchingSeries Boolean               @default(true)
-  showLists          Boolean               @default(true)
-  showReviews        Boolean               @default(true)
-  showActivity       Boolean               @default(true)
-  statuses           UserSeriesStatus[]
-  episodeProgress    UserEpisodeProgress[]
-  followers          Follow[]              @relation("followers")
-  following          Follow[]              @relation("following")
-  reviews            Review[]
-  comments           Comment[]
-  ratings            Rating[]
-  lists              List[]
-  activities         Activity[]            @relation("ActivityUser")
-  targetedActivities Activity[]            @relation("ActivityTargetUser")
-  notifications      Notification[]        @relation("NotificationUser")
-  actorNotifications Notification[]        @relation("NotificationActor")
-  adminAuditLogs     AdminAuditLog[]
-  achievements       UserAchievement[]
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  id                     String                @id @default(cuid())
+  name                   String
+  username               String                @unique
+  email                  String                @unique
+  passwordHash           String
+  avatarUrl              String?
+  bio                    String?
+  role                   UserRole              @default(USER)
+  lastLoginAt            DateTime?
+  isProfilePrivate       Boolean               @default(false)
+  showWatchedSeries      Boolean               @default(true)
+  showWatchingSeries     Boolean               @default(true)
+  showLists              Boolean               @default(true)
+  showReviews            Boolean               @default(true)
+  showActivity           Boolean               @default(true)
+  statuses               UserSeriesStatus[]
+  episodeProgress        UserEpisodeProgress[]
+  followers              Follow[]              @relation("followers")
+  following              Follow[]              @relation("following")
+  reviews                Review[]
+  comments               Comment[]
+  ratings                Rating[]
+  lists                  List[]
+  activities             Activity[]            @relation("ActivityUser")
+  targetedActivities     Activity[]            @relation("ActivityTargetUser")
+  notifications          Notification[]        @relation("NotificationUser")
+  actorNotifications     Notification[]        @relation("NotificationActor")
+  adminAuditLogs         AdminAuditLog[]
+  achievements           UserAchievement[]
+  // INSERIES-SOCIAL-NETWORK-EXPERIENCE-01
+  followRequestsSent     FollowRequest[]       @relation("FollowRequestsSent")
+  followRequestsReceived FollowRequest[]       @relation("FollowRequestsReceived")
+  mutesGiven             Mute[]                @relation("MutesGiven")
+  mutesReceived          Mute[]                @relation("MutesReceived")
+  blocksGiven            Block[]               @relation("BlocksGiven")
+  blocksReceived         Block[]               @relation("BlocksReceived")
+  activityLikes          ActivityLike[]
+  activityComments       ActivityComment[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@index([role])
+}
+
+model FollowRequest {
+  id          String              @id @default(cuid())
+  requesterId String
+  targetId    String
+  status      FollowRequestStatus @default(PENDING)
+  requester   User                @relation("FollowRequestsSent", fields: [requesterId], references: [id], onDelete: Cascade)
+  target      User                @relation("FollowRequestsReceived", fields: [targetId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([requesterId, targetId])
+  @@index([targetId, status])
+}
+
+model Mute {
+  id        String   @id @default(cuid())
+  userId    String
+  mutedId   String
+  user      User     @relation("MutesGiven", fields: [userId], references: [id], onDelete: Cascade)
+  muted     User     @relation("MutesReceived", fields: [mutedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, mutedId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("BlocksGiven", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+}
+
+model ActivityLike {
+  id         String   @id @default(cuid())
+  activityId String
+  userId     String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([activityId, userId])
+  @@index([activityId])
+}
+
+model ActivityComment {
+  id              String            @id @default(cuid())
+  activityId      String
+  userId          String
+  parentId        String?
+  body            String
+  hiddenByAdminAt DateTime?
+  activity        Activity          @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent          ActivityComment?  @relation("ActivityCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies         ActivityComment[] @relation("ActivityCommentReplies")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([activityId])
+  @@index([parentId])
 }
 
 model Series {
@@ -424,26 +512,28 @@ model Notification {
 }
 
 model Activity {
-  id           String       @id @default(cuid())
-  userId       String
-  type         ActivityType
-  seriesId     String?
-  episodeId    String?
-  reviewId     String?
-  listId       String?
-  commentId    String?
-  targetUserId String?
-  metadata     Json?
-  visibility   Visibility   @default(PUBLIC)
-  user         User         @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
-  series       Series?      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
-  episode      Episode?     @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  review       Review?      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  list         List?        @relation(fields: [listId], references: [id], onDelete: Cascade)
-  comment      Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  targetUser   User?        @relation("ActivityTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id               String            @id @default(cuid())
+  userId           String
+  type             ActivityType
+  seriesId         String?
+  episodeId        String?
+  reviewId         String?
+  listId           String?
+  commentId        String?
+  targetUserId     String?
+  metadata         Json?
+  visibility       Visibility        @default(PUBLIC)
+  user             User              @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+  series           Series?           @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episode          Episode?          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  review           Review?           @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  list             List?             @relation(fields: [listId], references: [id], onDelete: Cascade)
+  comment          Comment?          @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  targetUser       User?             @relation("ActivityTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  likes            ActivityLike[]
+  activityComments ActivityComment[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([userId, createdAt])
   @@index([visibility, createdAt])

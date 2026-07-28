@@ -48,7 +48,7 @@ function matchesFilter(activity: ActivityFeedItem, filter: TimelineFilter): bool
  * REVIEW_CREATED) — e derivado como uma review com nota >= 4, o mesmo criterio ja
  * estabelecido para "Favoritas" na Minha Lista Premium.
  */
-export function ProfileTimeline({ activities }: { activities: ActivityFeedItem[] }) {
+export function ProfileTimeline({ activities, authenticated = false }: { activities: ActivityFeedItem[]; authenticated?: boolean }) {
   const [filter, setFilter] = useState<TimelineFilter>("ALL");
 
   const filtered = useMemo(() => activities.filter((activity) => matchesFilter(activity, filter)), [activities, filter]);
@@ -75,7 +75,7 @@ export function ProfileTimeline({ activities }: { activities: ActivityFeedItem[]
       {filtered.length ? (
         <div className="space-y-3">
           {filtered.map((activity) => (
-            <ActivityCard key={activity.id} activity={activity} />
+            <ActivityCard key={activity.id} activity={activity} authenticated={authenticated} />
           ))}
         </div>
       ) : (

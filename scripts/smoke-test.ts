@@ -1049,7 +1049,7 @@ async function main() {
   const userB = await registerUser(jarB, "userb");
 
   const follow = await request(jarA, `/api/users/${userB.username}/follow`, { method: "POST" });
-  check("usuario A segue usuario B", follow.status === 200 && follow.body?.data?.following === true, follow.body);
+  check("usuario A segue usuario B", follow.status === 200 && follow.body?.data?.state === "following", follow.body);
 
   const selfFollow = await request(jarA, `/api/users/${userA.username}/follow`, { method: "POST" });
   check("usuario nao pode seguir a si mesmo", selfFollow.status === 400, selfFollow.body);
@@ -1065,7 +1065,7 @@ async function main() {
   );
 
   const unfollow = await request(jarA, `/api/users/${userB.username}/follow`, { method: "DELETE" });
-  check("usuario A deixa de seguir usuario B", unfollow.status === 200 && unfollow.body?.data?.following === false, unfollow.body);
+  check("usuario A deixa de seguir usuario B", unfollow.status === 200 && unfollow.body?.data?.state === "none", unfollow.body);
 
   const profileBAfterUnfollow = await request(jarA, `/profile/${userB.username}`);
   check(
@@ -1224,14 +1224,14 @@ async function main() {
   const profileAAsB = await request(jarB, `/profile/${userA.username}`);
   check(
     "perfil privado de A oculta dados para B",
-    profileAAsB.status === 200 && String(profileAAsB.body).includes("Perfil privado"),
+    profileAAsB.status === 200 && String(profileAAsB.body).includes("Este perfil e privado"),
     profileAAsB.status
   );
 
   const profileAAsOwner = await request(jarA, `/profile/${userA.username}`);
   check(
     "dono ve proprio perfil completo mesmo privado",
-    profileAAsOwner.status === 200 && !String(profileAAsOwner.body).includes("Perfil privado"),
+    profileAAsOwner.status === 200 && !String(profileAAsOwner.body).includes("Este perfil e privado"),
     profileAAsOwner.status
   );
 

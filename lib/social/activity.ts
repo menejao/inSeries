@@ -1,6 +1,8 @@
 import type { ActivityType, Prisma, Visibility } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { incrementActivitiesCreated } from "@/lib/metrics/service";
+import { getMutedIds } from "@/lib/social/mute";
+import { getBlockedEitherWayIds } from "@/lib/social/block";
 
 type CreateActivityInput = {
   userId: string;
@@ -64,10 +66,13 @@ const activityInclude = {
   },
   list: { select: { id: true, title: true } },
   comment: { select: { id: true, body: true, reviewId: true, parentId: true } },
-  targetUser: { select: { id: true, username: true, name: true } }
+  targetUser: { select: { id: true, username: true, name: true } },
+  // Fase 25/27/28 (INSERIES-SOCIAL-NETWORK-EXPERIENCE-01) — curtidas/comentarios ficam
+  // disponiveis em todo card de atividade, sem query extra por card.
+  _count: { select: { likes: true, activityComments: true } }
 } satisfies Prisma.ActivityInclude;
 
-export type ActivityFeedItem = Prisma.ActivityGetPayload<{ include: typeof activityInclude }>;
+export type ActivityFeedItem = Prisma.ActivityGetPayload<{ include: typeof activityInclude }> & { likedByViewer: boolean };
 
 function typeVisibilityBranches(selfUserId?: string) {
   const branches: Prisma.ActivityWhereInput[] = [
@@ -83,23 +88,54 @@ function typeVisibilityBranches(selfUserId?: string) {
   return selfUserId ? [...branches, { userId: selfUserId }] : branches;
 }
 
+/** Anexa `likedByViewer` (1 query em lote, nunca por card) e mantem a mesma forma de sempre. */
+async function withLikedByViewer(
+  activities: Prisma.ActivityGetPayload<{ include: typeof activityInclude }>[],
+  viewerId?: string | null
+): Promise<ActivityFeedItem[]> {
+  if (!viewerId || !activities.length) {
+    return activities.map((activity) => ({ ...activity, likedByViewer: false }));
+  }
+
+  const liked = await prisma.activityLike.findMany({
+    where: { userId: viewerId, activityId: { in: activities.map((activity) => activity.id) } },
+    select: { activityId: true }
+  });
+  const likedIds = new Set(liked.map((row) => row.activityId));
+
+  return activities.map((activity) => ({ ...activity, likedByViewer: likedIds.has(activity.id) }));
+}
+
+async function excludedAuthorIds(viewerId?: string | null) {
+  if (!viewerId) return [];
+  const [muted, blocked] = await Promise.all([getMutedIds(viewerId), getBlockedEitherWayIds(viewerId)]);
+  return [...muted, ...blocked];
+}
+
 export async function getGlobalFeed(viewerId?: string | null, limit = 30): Promise<ActivityFeedItem[]> {
-  return prisma.activity.findMany({
+  const excluded = await excludedAuthorIds(viewerId);
+  const activities = await prisma.activity.findMany({
     where: {
       visibility: "PUBLIC",
-      OR: typeVisibilityBranches(viewerId ?? undefined)
+      OR: typeVisibilityBranches(viewerId ?? undefined),
+      ...(excluded.length ? { userId: { notIn: excluded } } : {})
     },
     include: activityInclude,
     orderBy: { createdAt: "desc" },
     take: limit
   });
+  return withLikedByViewer(activities, viewerId);
 }
 
+/** Fase 20 — "Para voce": atividades proprias + de quem o usuario segue (rankeado cronologicamente por ora). */
 export async function getPersonalFeed(userId: string, limit = 30): Promise<ActivityFeedItem[]> {
-  const following = await prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } });
-  const relevantIds = [userId, ...following.map((item) => item.followingId)];
+  const [following, excluded] = await Promise.all([
+    prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
+    excludedAuthorIds(userId)
+  ]);
+  const relevantIds = [userId, ...following.map((item) => item.followingId)].filter((id) => !excluded.includes(id));
 
-  return prisma.activity.findMany({
+  const activities = await prisma.activity.findMany({
     where: {
       userId: { in: relevantIds },
       visibility: "PUBLIC",
@@ -109,15 +145,43 @@ export async function getPersonalFeed(userId: string, limit = 30): Promise<Activ
     orderBy: { createdAt: "desc" },
     take: limit
   });
+  return withLikedByViewer(activities, userId);
+}
+
+/**
+ * Fase 21 — "Seguindo": exclusivamente atividades de quem o usuario segue (nunca as proprias),
+ * cronologico, sem silenciados/bloqueados.
+ */
+export async function getFollowingFeed(userId: string, limit = 30): Promise<ActivityFeedItem[]> {
+  const [following, excluded] = await Promise.all([
+    prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
+    excludedAuthorIds(userId)
+  ]);
+  const followingIds = following.map((item) => item.followingId).filter((id) => !excluded.includes(id));
+
+  if (!followingIds.length) return [];
+
+  const activities = await prisma.activity.findMany({
+    where: {
+      userId: { in: followingIds },
+      visibility: "PUBLIC",
+      OR: typeVisibilityBranches()
+    },
+    include: activityInclude,
+    orderBy: { createdAt: "desc" },
+    take: limit
+  });
+  return withLikedByViewer(activities, userId);
 }
 
 export async function getRecentActivityForUser(userId: string, limit = 5): Promise<ActivityFeedItem[]> {
-  return prisma.activity.findMany({
+  const activities = await prisma.activity.findMany({
     where: { userId },
     include: activityInclude,
     orderBy: { createdAt: "desc" },
     take: limit
   });
+  return withLikedByViewer(activities, userId);
 }
 
 export async function getProfileActivity(
@@ -129,7 +193,7 @@ export async function getProfileActivity(
     return getRecentActivityForUser(profileUserId, limit);
   }
 
-  return prisma.activity.findMany({
+  const activities = await prisma.activity.findMany({
     where: {
       userId: profileUserId,
       visibility: "PUBLIC",
@@ -139,4 +203,5 @@ export async function getProfileActivity(
     orderBy: { createdAt: "desc" },
     take: limit
   });
+  return withLikedByViewer(activities, viewerId);
 }

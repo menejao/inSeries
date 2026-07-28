@@ -4,9 +4,11 @@ import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FeedActivityList } from "@/components/feed/feed-activity-list";
 import { FeedDiscoveryPanel } from "@/components/feed/feed-discovery-panel";
+import { SocialCounters } from "@/components/social/social-counters";
 import { getCurrentUser } from "@/lib/auth/server";
-import { getGlobalFeed, getPersonalFeed } from "@/lib/social/activity";
+import { getGlobalFeed, getPersonalFeed, getFollowingFeed } from "@/lib/social/activity";
 import { getActiveUsers, getFeaturedReviews, getRecentDiscussions, getTrendingSeries } from "@/lib/social/feed-discovery";
+import { prisma } from "@/lib/db/prisma";
 
 type FeedSearchParams = { view?: string };
 
@@ -30,8 +32,23 @@ async function PersonalFeed({ userId }: { userId: string }) {
         activities={activities}
         emptyTitle="Seu feed esta vazio"
         emptyCopy="Siga outros usuarios ou registre atividades para ver novidades aqui."
+        authenticated
       />
     </div>
+  );
+}
+
+/** Fase 21 — "Seguindo": exclusivamente atividades de quem o usuario segue, nunca as proprias. */
+async function FollowingFeed({ userId }: { userId: string }) {
+  const activities = await getFollowingFeed(userId, FEED_BATCH_SIZE);
+
+  return (
+    <FeedActivityList
+      activities={activities}
+      emptyTitle="Seu feed de pessoas seguidas esta vazio"
+      emptyCopy="Siga outros usuarios para acompanhar avaliacoes, series concluidas, favoritos e listas."
+      authenticated
+    />
   );
 }
 
@@ -50,6 +67,7 @@ async function GlobalFeed({ viewerId }: { viewerId: string | null }) {
         activities={activities}
         emptyTitle="Nada por aqui ainda"
         emptyCopy="Atividades publicas recentes da comunidade aparecem aqui."
+        authenticated={Boolean(viewerId)}
       />
     </div>
   );
@@ -65,39 +83,51 @@ async function GlobalFeed({ viewerId }: { viewerId: string | null }) {
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedSearchParams> }) {
   const params = await searchParams;
   const user = await getCurrentUser();
-  const view = params.view === "global" ? "global" : "personal";
+  const view = params.view === "global" ? "global" : params.view === "following" ? "following" : "personal";
+
+  const counts = user
+    ? await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { _count: { select: { followers: true, following: true } } }
+      })
+    : null;
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-1.5">
         <p className="eyebrow">Rede social</p>
         <h1 className="section-title">Feed</h1>
         <p className="section-copy">Descubra o que as pessoas que voce segue estao assistindo, avaliando e listando.</p>
+        {/* Fase 9 — resumo social do Feed: os dois contadores, compactos e clicaveis, nunca cards grandes de estatistica. */}
+        {user && counts ? <SocialCounters username={user.username} following={counts._count.following} followers={counts._count.followers} /> : null}
       </div>
 
       <Tabs
         label="Visualizacao do feed"
         items={[
           { href: "/feed?view=personal", label: "Para voce" },
+          { href: "/feed?view=following", label: "Seguindo" },
           { href: "/feed?view=global", label: "Global" }
         ]}
         active={`/feed?view=${view}`}
       />
 
-      {view === "personal" ? (
-        user ? (
-          <PersonalFeed userId={user.id} />
+      {view === "global" ? (
+        <GlobalFeed viewerId={user?.id ?? null} />
+      ) : user ? (
+        view === "following" ? (
+          <FollowingFeed userId={user.id} />
         ) : (
-          <Card className="space-y-3 text-center">
-            <p className="text-lg font-semibold text-ink">Entre para ver seu feed</p>
-            <p className="text-sm text-muted">Faca login para acompanhar a atividade de quem voce segue.</p>
-            <Link href="/login" className="inline-flex justify-center">
-              <Button>Entrar</Button>
-            </Link>
-          </Card>
+          <PersonalFeed userId={user.id} />
         )
       ) : (
-        <GlobalFeed viewerId={user?.id ?? null} />
+        <Card className="space-y-3 text-center">
+          <p className="text-lg font-semibold text-ink">Entre para ver seu feed</p>
+          <p className="text-sm text-muted">Faca login para acompanhar a atividade de quem voce segue.</p>
+          <Link href="/login" className="inline-flex justify-center">
+            <Button>Entrar</Button>
+          </Link>
+        </Card>
       )}
     </div>
   );

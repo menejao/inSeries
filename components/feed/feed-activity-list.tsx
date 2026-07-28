@@ -25,7 +25,17 @@ const PAGE_SIZE = 15;
  * array ja em memoria (nao scroll infinito com IntersectionObserver e nenhuma nova pagina de
  * API) — ver README para a limitacao documentada.
  */
-export function FeedActivityList({ activities, emptyTitle, emptyCopy }: { activities: ActivityFeedItem[]; emptyTitle: string; emptyCopy: string }) {
+export function FeedActivityList({
+  activities,
+  emptyTitle,
+  emptyCopy,
+  authenticated = false
+}: {
+  activities: ActivityFeedItem[];
+  emptyTitle: string;
+  emptyCopy: string;
+  authenticated?: boolean;
+}) {
   const [filter, setFilter] = useState<FeedFilterOption>("ALL");
   const [sort, setSort] = useState<FeedSortOption>("recent");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -67,7 +77,7 @@ export function FeedActivityList({ activities, emptyTitle, emptyCopy }: { activi
         <>
           <div className="space-y-3">
             {visible.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
+              <ActivityCard key={activity.id} activity={activity} authenticated={authenticated} />
             ))}
           </div>
           {visibleCount < filteredAndSorted.length ? (
