@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 import { withApiObservability } from "@/lib/http/api-handler";
 
-const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality", "discovery", "seasons", "episodes"];
+const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "quality", "discovery", "seasons", "episodes", "onair"];
 
 /** Fase 8 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — pagina seguinte de resultados, consumida pelo "Carregar mais" client-side (components/catalog/catalog-grid.tsx). Mesma query do server-rendered /series, so em JSON. */
 async function browseHandler(request: Request) {

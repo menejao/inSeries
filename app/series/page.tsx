@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Filters } from "@/components/series/filters";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { CompassIcon } from "@/components/ui/icons";
 import { CatalogSearchBar } from "@/components/catalog/catalog-search-bar";
 import { CatalogSortSelect } from "@/components/catalog/catalog-sort-select";
@@ -7,7 +9,7 @@ import { CatalogGrid } from "@/components/catalog/catalog-grid";
 import { HybridSearchResults } from "@/components/catalog/hybrid-search-results";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 
-const SORT_OPTIONS: SeriesSortOption[] = ["popular", "latest", "title", "rating", "seasons", "episodes"];
+const SORT_OPTIONS: SeriesSortOption[] = ["discovery", "popular", "latest", "title", "rating", "onair"];
 
 type SeriesPageSearchParams = {
   q?: string;
@@ -33,8 +35,13 @@ type SeriesPageSearchParams = {
  */
 export default async function SeriesPage({ searchParams }: { searchParams: Promise<SeriesPageSearchParams> }) {
   const params = await searchParams;
-  const sort: SeriesSortOption = SORT_OPTIONS.includes(params.sort as SeriesSortOption) ? (params.sort as SeriesSortOption) : "popular";
+  // Fase 20 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — "Relevancia" (ranking interno
+  // combinado, discoveryScore) e o default, nao popularidade bruta.
+  const sort: SeriesSortOption = SORT_OPTIONS.includes(params.sort as SeriesSortOption) ? (params.sort as SeriesSortOption) : "discovery";
   const year = params.year ? Number(params.year) : undefined;
+  const hasActiveFilters = Boolean(
+    params.genre || params.status || params.year || params.tag || params.provider || params.country || params.language
+  );
   const page = params.page ? Number(params.page) : 1;
 
   const [result, metadata] = await Promise.all([
@@ -57,9 +64,8 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Descoberta</p>
         <h1 className="section-title">Catalogo</h1>
-        <p className="section-copy">O que vale a pena descobrir hoje?</p>
+        <p className="section-copy">Explore series populares, recentes e bem avaliadas.</p>
       </div>
 
       <div className="space-y-3">
@@ -94,9 +100,23 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
         {result.items.length ? (
           <CatalogGrid initialItems={result.items} initialPage={result.page} totalPages={result.totalPages} />
         ) : params.q ? (
+          // Fase 27 (V3) — busca local vazia so mostra Empty State depois de tentar o TMDb (HybridSearchResults faz essa segunda consulta).
           <HybridSearchResults query={params.q} />
+        ) : hasActiveFilters ? (
+          <EmptyState
+            icon={<CompassIcon className="h-6 w-6" />}
+            title="Nenhuma serie encontrada com esses filtros."
+            copy=""
+            action={
+              <Link href="/series">
+                <Button variant="secondary" size="sm">
+                  Limpar filtros
+                </Button>
+              </Link>
+            }
+          />
         ) : (
-          <EmptyState icon={<CompassIcon className="h-6 w-6" />} title="Nenhuma serie encontrada" copy="Ajuste os filtros ou tente outro termo de busca." />
+          <EmptyState icon={<CompassIcon className="h-6 w-6" />} title="Nenhuma serie encontrada" copy="Tente outro termo de busca." />
         )}
       </div>
     </div>

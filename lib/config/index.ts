@@ -25,6 +25,10 @@ const envSchema = z.object({
   TMDB_LANGUAGE: optionalNonEmpty(),
   TMDB_POPULAR_PAGES: optionalNonEmpty(),
   TMDB_DISCOVER_PAGES: optionalNonEmpty(),
+  TMDB_TOP_RATED_PAGES: optionalNonEmpty(),
+  TMDB_ON_THE_AIR_PAGES: optionalNonEmpty(),
+  TMDB_AIRING_TODAY_PAGES: optionalNonEmpty(),
+  TMDB_TRENDING_PAGES: optionalNonEmpty(),
   TMDB_MAX_CONCURRENT_REQUESTS: optionalNonEmpty(),
   TMDB_REQUEST_DELAY_MS: optionalNonEmpty(),
   TMDB_MIN_VOTE_COUNT: optionalNonEmpty(),
@@ -187,8 +191,17 @@ export const config = {
    */
   catalogSync: {
     // ~20 series/page on TMDb's list endpoints, so pages=25 ~= 500 series (the ticket's own example).
-    popularPages: parseNumberFlag(rawEnv.TMDB_POPULAR_PAGES, 1),
-    discoverPages: parseNumberFlag(rawEnv.TMDB_DISCOVER_PAGES, 1),
+    // Fase 2/3 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — defaults raised from 1 page
+    // per source (the root cause of the catalog topping out around 44-85 series: 6 sources ×
+    // 1 page ≈ 120 raw candidates, heavy overlap between them, then curation/min-vote filters
+    // cut further) to enough pages across ALL six sources — not just popular/discover — for a
+    // single `npm run sync:coverage` to comfortably clear the 100-series floor after dedup.
+    popularPages: parseNumberFlag(rawEnv.TMDB_POPULAR_PAGES, 5),
+    discoverPages: parseNumberFlag(rawEnv.TMDB_DISCOVER_PAGES, 5),
+    topRatedPages: parseNumberFlag(rawEnv.TMDB_TOP_RATED_PAGES, 3),
+    onTheAirPages: parseNumberFlag(rawEnv.TMDB_ON_THE_AIR_PAGES, 2),
+    airingTodayPages: parseNumberFlag(rawEnv.TMDB_AIRING_TODAY_PAGES, 2),
+    trendingPages: parseNumberFlag(rawEnv.TMDB_TRENDING_PAGES, 2),
     maxConcurrentRequests: Math.max(1, parseNumberFlag(rawEnv.TMDB_MAX_CONCURRENT_REQUESTS, 4)),
     requestDelayMs: parseNumberFlag(rawEnv.TMDB_REQUEST_DELAY_MS, 250),
     minVoteCount: parseNumberFlag(rawEnv.TMDB_MIN_VOTE_COUNT, 0),

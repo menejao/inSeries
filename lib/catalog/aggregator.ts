@@ -59,6 +59,49 @@ function computePriorityScore(item: TmdbListSeriesItem, sources: DiscoverySource
   return score;
 }
 
+// Fase 9 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — diversity is a SELECTION-order
+// concern only: it never touches priorityScore (already computed above), so it can't be
+// mistaken for "artificially changing the rating/popularity" the ticket explicitly forbids.
+// It only reshuffles WHICH already-qualified candidates land near the front of the queue that
+// `syncCoverage` processes (and therefore near the front of a fresh catalog), so the first
+// screenful a new catalog shows isn't dominated by a single genre.
+const DIVERSITY_WINDOW = 80;
+const MAX_CONSECUTIVE_SAME_GENRE = 3;
+
+/**
+ * Fase 9 — greedy re-interleave of the top `DIVERSITY_WINDOW` candidates (already sorted by
+ * priorityScore desc): walks the sorted list, and whenever the next candidate would extend a
+ * run of `MAX_CONSECUTIVE_SAME_GENRE` consecutive same-primary-genre picks, it looks ahead for
+ * the next candidate with a different genre and pulls it forward instead — never reordering
+ * beyond swapping within the window, never touching score. Mutates in place.
+ */
+function applyGenreDiversity(candidates: AggregatedCandidate[]): void {
+  const windowEnd = Math.min(candidates.length, DIVERSITY_WINDOW);
+  let sameGenreRun = 0;
+  let lastGenre: number | undefined;
+
+  for (let i = 0; i < windowEnd; i += 1) {
+    const genre = candidates[i].item.genre_ids?.[0];
+    const extendsRun = genre !== undefined && genre === lastGenre;
+
+    if (extendsRun && sameGenreRun >= MAX_CONSECUTIVE_SAME_GENRE) {
+      const swapIndex = candidates.findIndex((candidate, index) => index > i && candidate.item.genre_ids?.[0] !== lastGenre);
+      if (swapIndex !== -1) {
+        const [picked] = candidates.splice(swapIndex, 1);
+        candidates.splice(i, 0, picked);
+      }
+    }
+
+    const finalGenre = candidates[i].item.genre_ids?.[0];
+    if (finalGenre !== undefined && finalGenre === lastGenre) {
+      sameGenreRun += 1;
+    } else {
+      sameGenreRun = 1;
+      lastGenre = finalGenre;
+    }
+  }
+}
+
 /**
  * Fase 2/3 — fetches every configured page of every source, merges every item into one
  * map keyed by TMDb id (the "chave primaria da fila" the ticket asks for), tracking which
@@ -107,6 +150,7 @@ export async function collectCandidates(sources: SourceDefinition[], cache: Sync
     candidate.priorityScore = computePriorityScore(candidate.item, candidate.sources);
   }
   candidates.sort((a, b) => b.priorityScore - a.priorityScore);
+  applyGenreDiversity(candidates);
 
   return {
     perSourceCounts,

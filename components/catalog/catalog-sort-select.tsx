@@ -4,19 +4,26 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Select } from "@/components/ui/select";
 import type { SeriesSortOption } from "@/lib/discovery/search";
 
-const SORT_LABELS: Record<Exclude<SeriesSortOption, "quality" | "discovery">, string> = {
+const SORT_LABELS: Record<Exclude<SeriesSortOption, "quality" | "seasons" | "episodes">, string> = {
+  discovery: "Relevancia",
   popular: "Mais populares",
   rating: "Melhor avaliadas",
   latest: "Mais recentes",
-  title: "A-Z",
-  seasons: "Mais temporadas",
-  episodes: "Mais episodios"
+  onair: "Em exibicao",
+  title: "A-Z"
 };
 
-// Fase 6 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — exatamente as 6 opcoes do ticket, "Maior
-// nota TMDB"/"Em alta" removidas (nao fazem parte da lista da Fase 6; "Em alta" tambem deixou
-// de existir como conceito de UI depois que as secoes editoriais foram removidas na Fase 2).
-const SORT_OPTIONS: Array<Exclude<SeriesSortOption, "quality" | "discovery">> = ["popular", "latest", "rating", "title", "seasons", "episodes"];
+// Fase 20 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — as 6 opcoes exatas do ticket:
+// Relevancia (ranking interno combinado, default), Mais populares, Mais bem avaliadas, Mais
+// recentes, Em exibicao, A-Z.
+const SORT_OPTIONS: Array<Exclude<SeriesSortOption, "quality" | "seasons" | "episodes">> = [
+  "discovery",
+  "popular",
+  "rating",
+  "latest",
+  "onair",
+  "title"
+];
 
 /** Fase 5/6 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — ordenacao como elemento dedicado, separado da busca e dos filtros. */
 export function CatalogSortSelect({ sort }: { sort: SeriesSortOption }) {

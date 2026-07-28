@@ -4,7 +4,11 @@ import { prisma } from "@/lib/db/prisma";
 import { mockSeries } from "@/lib/catalog/mock-data";
 import type { Series } from "@/lib/types";
 
-export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality" | "discovery" | "seasons" | "episodes";
+// Fase 20 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — "discovery" e a ordenacao por
+// Relevancia (o ranking interno combinado, ver lib/discovery/discovery-score.ts); "onair" e
+// "Em exibicao" (filtra pra status RETURNING/IN_PRODUCTION, ordenado por relevancia dentro
+// desse subconjunto).
+export type SeriesSortOption = "popular" | "latest" | "title" | "rating" | "quality" | "discovery" | "seasons" | "episodes" | "onair";
 
 /**
  * Fase 8 (INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01) — tag/provider/country/language
@@ -46,7 +50,9 @@ export type CatalogFilterMetadata = {
   total: number;
 };
 
-const DEFAULT_PAGE_SIZE = 12;
+// Fase 26 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — "24 a 36 series no primeiro
+// carregamento" para o catalogo parecer rico sem renderizar centenas de cards de uma vez.
+const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 50;
 const VALID_STATUSES: SeriesLifecycleStatus[] = ["RETURNING", "ENDED", "CANCELED", "IN_PRODUCTION", "PILOT"];
 
@@ -150,7 +156,9 @@ function buildOrderBy(sort?: SeriesSortOption): Prisma.SeriesOrderByWithRelation
     case "episodes":
       return [{ numberOfEpisodes: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     // Fase 9/10 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — "Ver tudo" from Bombando Agora/Hero.
+    // Fase 20 (V3) — same ordering doubles as "Relevancia", the catalog's default sort.
     case "discovery":
+    case "onair":
       return [{ discoveryScore: { sort: "desc", nulls: "last" } }, { popularityScore: "desc" }];
     case "popular":
     default:
@@ -242,6 +250,7 @@ export async function searchSeries(params: SeriesDiscoveryParams): Promise<Serie
       : {}),
     ...(params.genre ? { genres: { has: params.genre } } : {}),
     ...(status ? { status } : {}),
+    ...(params.sort === "onair" && !status ? { status: { in: ["RETURNING", "IN_PRODUCTION"] } } : {}),
     ...(params.year ? { firstAirYear: params.year } : {}),
     ...(params.tag ? { collectionTags: { has: params.tag } } : {}),
     ...(params.provider ? { watchProviders: { has: params.provider } } : {}),

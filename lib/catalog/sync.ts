@@ -476,22 +476,22 @@ export async function syncDiscoverSeries(options: DiscoverSyncOptions = {}): Pro
 }
 
 export async function syncTopRatedSeries(options: { pages?: number } = {}): Promise<CatalogSyncSummary> {
-  const pages = resolvePages(options.pages, 1);
+  const pages = resolvePages(options.pages, config.catalogSync.topRatedPages);
   return runDiscoverySync("TOP_RATED", pages, fetchTopRatedTmdbSeries);
 }
 
 export async function syncOnTheAirSeries(options: { pages?: number } = {}): Promise<CatalogSyncSummary> {
-  const pages = resolvePages(options.pages, 1);
+  const pages = resolvePages(options.pages, config.catalogSync.onTheAirPages);
   return runDiscoverySync("ON_THE_AIR", pages, fetchOnTheAirTmdbSeries);
 }
 
 export async function syncAiringTodaySeries(options: { pages?: number } = {}): Promise<CatalogSyncSummary> {
-  const pages = resolvePages(options.pages, 1);
+  const pages = resolvePages(options.pages, config.catalogSync.airingTodayPages);
   return runDiscoverySync("AIRING_TODAY", pages, fetchAiringTodayTmdbSeries);
 }
 
 export async function syncTrendingSeries(options: { pages?: number; window?: "day" | "week" } = {}): Promise<CatalogSyncSummary> {
-  const pages = resolvePages(options.pages, 1);
+  const pages = resolvePages(options.pages, config.catalogSync.trendingPages);
   const window = options.window ?? "week";
   return runDiscoverySync("TRENDING", pages, (page) => fetchTrendingTmdbSeries(page, window));
 }
@@ -749,10 +749,14 @@ function buildSourceDefinitions(options: CoverageOptions): SourceDefinition[] {
           firstAirDateLte: maxYear !== undefined ? `${maxYear}-12-31` : undefined
         })
     },
-    { key: "TOP_RATED", pages: resolvePages(options.topRatedPages, 1), fetchPage: fetchTopRatedTmdbSeries },
-    { key: "ON_THE_AIR", pages: resolvePages(options.onTheAirPages, 1), fetchPage: fetchOnTheAirTmdbSeries },
-    { key: "AIRING_TODAY", pages: resolvePages(options.airingTodayPages, 1), fetchPage: fetchAiringTodayTmdbSeries },
-    { key: "TRENDING", pages: resolvePages(options.trendingPages, 1), fetchPage: (page) => fetchTrendingTmdbSeries(page, window) }
+    { key: "TOP_RATED", pages: resolvePages(options.topRatedPages, config.catalogSync.topRatedPages), fetchPage: fetchTopRatedTmdbSeries },
+    { key: "ON_THE_AIR", pages: resolvePages(options.onTheAirPages, config.catalogSync.onTheAirPages), fetchPage: fetchOnTheAirTmdbSeries },
+    {
+      key: "AIRING_TODAY",
+      pages: resolvePages(options.airingTodayPages, config.catalogSync.airingTodayPages),
+      fetchPage: fetchAiringTodayTmdbSeries
+    },
+    { key: "TRENDING", pages: resolvePages(options.trendingPages, config.catalogSync.trendingPages), fetchPage: (page) => fetchTrendingTmdbSeries(page, window) }
   ];
 }
 
