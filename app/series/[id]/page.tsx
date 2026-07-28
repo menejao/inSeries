@@ -37,6 +37,7 @@ import { getSeriesRecommendations } from "@/lib/series-page/recommendations";
 import { computeSeriesTimeline } from "@/lib/series-page/timeline";
 import { formatShortDate } from "@/lib/calendar/dates";
 import { formatEpisodeCode, formatDate } from "@/lib/utils";
+import { SeriesJourneySection } from "@/components/series/series-journey-section";
 
 /**
  * INSERIES-SERIES-PAGE-PREMIUM-01 — the series detail page as the app's richest, most
@@ -93,6 +94,33 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
     const watchedIds = new Set(watchedRows.map((row) => row.episodeId));
     initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) }));
   }
+
+  const JOURNEY_LIMIT = 10;
+  const journeyItems = user && dbAvailable
+    ? await prisma.activity.findMany({
+        where: {
+          userId: user.id,
+          seriesId: series.id,
+          type: { in: ["EPISODE_WATCHED", "SERIES_STATUS_CHANGED", "SERIES_COMPLETED", "REVIEW_CREATED"] }
+        },
+        select: {
+          id: true,
+          type: true,
+          createdAt: true,
+          metadata: true,
+          episode: { select: { number: true, title: true, season: { select: { number: true } } } },
+          review: { select: { rating: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: JOURNEY_LIMIT + 1
+      })
+    : [];
+  const journeyHasMore = journeyItems.length > JOURNEY_LIMIT;
+  const journeyPage = journeyHasMore ? journeyItems.slice(0, JOURNEY_LIMIT) : journeyItems;
+  const initialJourney = {
+    items: journeyPage.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+    nextCursor: journeyHasMore ? journeyPage[journeyPage.length - 1].createdAt.toISOString() : null
+  };
 
   const totalEpisodes = series.numberOfEpisodes ?? series.seasons.reduce((sum, item) => sum + item.episodeCount, 0);
   const progress = progressSummary
@@ -201,6 +229,13 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
               watchedEpisodes={progress?.watchedEpisodes ?? 0}
               authenticated={Boolean(user)}
             />
+
+          {user && initialJourney.items.length > 0 ? (
+            <Card className="space-y-3">
+              <h2 className="text-lg font-semibold text-ink">Sua jornada com esta serie</h2>
+              <SeriesJourneySection seriesId={series.id} initialData={initialJourney} />
+            </Card>
+          ) : null}
 
             {nextEpisode ? (
               <Card className="space-y-3">

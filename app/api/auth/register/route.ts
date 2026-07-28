@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
+import { usernameSchema } from "@/lib/social/validation";
 import { canUseDatabase } from "@/lib/db/health";
 import { hashPassword } from "@/lib/auth/password";
 import { createSessionToken, getSessionCookieOptions, SESSION_COOKIE } from "@/lib/auth/session";
@@ -12,7 +13,7 @@ import { getOrCreateRequestId } from "@/lib/observability/request-id";
 
 const registerSchema = z.object({
   name: z.string().min(2),
-  username: z.string().min(3),
+  username: usernameSchema,
   email: z.string().email(),
   password: z.string().min(8)
 });
@@ -35,14 +36,14 @@ async function registerHandler(request: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const existing = await prisma.user.findFirst({
-    where: {
-      OR: [{ email: payload.data.email }, { username: payload.data.username }]
-    }
-  });
+  const emailConflict = await prisma.user.findUnique({ where: { email: payload.data.email }, select: { id: true } });
+  if (emailConflict) {
+    return NextResponse.json({ error: "email_taken" }, { status: 409 });
+  }
 
-  if (existing) {
-    return NextResponse.json({ error: "user_already_exists" }, { status: 409 });
+  const usernameConflict = await prisma.user.findUnique({ where: { username: payload.data.username }, select: { id: true } });
+  if (usernameConflict) {
+    return NextResponse.json({ error: "username_taken" }, { status: 409 });
   }
 
   const passwordHash = await hashPassword(payload.data.password);
