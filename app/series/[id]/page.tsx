@@ -95,40 +95,39 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
     initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) }));
   }
 
-  const totalEpisodes = series.numberOfEpisodes ?? series.seasons.reduce((sum, item) => sum + item.episodeCount, 0);
-  const progress = progressSummary
-    ? { percentage: progressSummary.percentage, watchedEpisodes: progressSummary.watchedEpisodes }
-    : null;
-
   // "Sua jornada com esta serie" — ultimas atividades do usuario ligadas a esta serie
   // especifica (episodios assistidos, mudancas de status, conclusao, reviews).
   const JOURNEY_LIMIT = 10;
-  const journeyItems =
-    user && dbAvailable
-      ? await prisma.activity.findMany({
-          where: {
-            userId: user.id,
-            seriesId: series.id,
-            type: { in: ["EPISODE_WATCHED", "SERIES_STATUS_CHANGED", "SERIES_COMPLETED", "REVIEW_CREATED"] }
-          },
-          select: {
-            id: true,
-            type: true,
-            createdAt: true,
-            metadata: true,
-            episode: { select: { number: true, title: true, season: { select: { number: true } } } },
-            review: { select: { rating: true } }
-          },
-          orderBy: { createdAt: "desc" },
-          take: JOURNEY_LIMIT + 1
-        })
-      : [];
+  const journeyItems = user && dbAvailable
+    ? await prisma.activity.findMany({
+        where: {
+          userId: user.id,
+          seriesId: series.id,
+          type: { in: ["EPISODE_WATCHED", "SERIES_STATUS_CHANGED", "SERIES_COMPLETED", "REVIEW_CREATED"] }
+        },
+        select: {
+          id: true,
+          type: true,
+          createdAt: true,
+          metadata: true,
+          episode: { select: { number: true, title: true, season: { select: { number: true } } } },
+          review: { select: { rating: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: JOURNEY_LIMIT + 1
+      })
+    : [];
   const journeyHasMore = journeyItems.length > JOURNEY_LIMIT;
   const journeyPage = journeyHasMore ? journeyItems.slice(0, JOURNEY_LIMIT) : journeyItems;
   const initialJourney = {
     items: journeyPage.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
     nextCursor: journeyHasMore ? journeyPage[journeyPage.length - 1].createdAt.toISOString() : null
   };
+
+  const totalEpisodes = series.numberOfEpisodes ?? series.seasons.reduce((sum, item) => sum + item.episodeCount, 0);
+  const progress = progressSummary
+    ? { percentage: progressSummary.percentage, watchedEpisodes: progressSummary.watchedEpisodes }
+    : null;
 
   const timelineEvents = user
     ? computeSeriesTimeline({
