@@ -165,8 +165,22 @@ export async function searchUsers(viewerId: string | null, q: string, limit = 20
   });
 }
 
-/** Fase 15 — "Usuarios ativos": mais atividades publicas recentes, excluindo bloqueios. */
-export async function getPopularUsers(viewerId: string | null, limit = 10) {
+const POPULAR_USERS_PAGE_SIZE = 12;
+const POPULAR_USERS_CAP = 120;
+
+export type PopularUsersResult = {
+  items: Array<{ id: string; name: string; username: string; avatarUrl: string | null }>;
+  page: number;
+  totalPages: number;
+};
+
+/**
+ * Fase 15 — "Usuarios ativos": mais atividades publicas recentes, excluindo bloqueios.
+ * Paginado (cards compactos em grade em vez de linhas largas) — a busca de grupos e limitada
+ * a `POPULAR_USERS_CAP` autores (mais que suficiente pra qualquer pagina real de "ativos") e
+ * paginada em memoria, evitando uma segunda query so pra contar grupos distintos.
+ */
+export async function getPopularUsers(viewerId: string | null, page = 1): Promise<PopularUsersResult> {
   const blockedIds = viewerId ? await getBlockedEitherWayIds(viewerId) : [];
 
   const grouped = await prisma.activity.groupBy({
@@ -178,14 +192,19 @@ export async function getPopularUsers(viewerId: string | null, limit = 10) {
     },
     _count: { userId: true },
     orderBy: { _count: { userId: "desc" } },
-    take: limit
+    take: POPULAR_USERS_CAP
   });
 
+  const totalPages = Math.max(1, Math.ceil(grouped.length / POPULAR_USERS_PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pageRows = grouped.slice((safePage - 1) * POPULAR_USERS_PAGE_SIZE, safePage * POPULAR_USERS_PAGE_SIZE);
+
   const users = await prisma.user.findMany({
-    where: { id: { in: grouped.map((row) => row.userId) } },
+    where: { id: { in: pageRows.map((row) => row.userId) } },
     select: { id: true, name: true, username: true, avatarUrl: true }
   });
   const userMap = new Map(users.map((user) => [user.id, user]));
 
-  return grouped.map((row) => userMap.get(row.userId)).filter((user): user is NonNullable<typeof user> => Boolean(user));
+  const items = pageRows.map((row) => userMap.get(row.userId)).filter((user): user is NonNullable<typeof user> => Boolean(user));
+  return { items, page: safePage, totalPages };
 }
