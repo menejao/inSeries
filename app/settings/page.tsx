@@ -51,6 +51,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           { href: "/settings", label: "Perfil" },
           { href: "/settings?tab=privacidade", label: "Privacidade" },
           { href: "/settings?tab=aparencia", label: "Aparencia" },
+          { href: "/settings/data", label: "Dados" },
           { href: "/settings?tab=conta", label: "Conta" }
         ]}
         active={tab === "perfil" ? "/settings" : `/settings?tab=${tab}`}

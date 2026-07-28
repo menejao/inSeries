@@ -162,10 +162,43 @@ model User {
   blocksReceived         Block[]               @relation("BlocksReceived")
   activityLikes          ActivityLike[]
   activityComments       ActivityComment[]
+  importJobs             ImportJob[]
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
   @@index([role])
+}
+
+enum ImportJobStatus {
+  ANALYZED
+  IMPORTING
+  COMPLETED
+  COMPLETED_WITH_WARNINGS
+  FAILED
+  CANCELLED
+  UNDONE
+}
+
+// INSERIES-HISTORY-IMPORT-AND-DATA-PORTABILITY-01 — um job por arquivo analisado. O manifesto
+// normalizado (itens + correspondencias) fica em `manifest` (Json); a execucao processa em
+// lotes (client-driven, `processedCount` e o checkpoint) e o resultado agregado + ids criados
+// (pra desfazer) ficam em `report`.
+model ImportJob {
+  id             String          @id @default(cuid())
+  userId         String
+  source         String
+  fileName       String
+  status         ImportJobStatus @default(ANALYZED)
+  conflictPolicy String          @default("keep_existing")
+  manifest       Json
+  totals         Json
+  processedCount Int             @default(0)
+  report         Json?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model FollowRequest {

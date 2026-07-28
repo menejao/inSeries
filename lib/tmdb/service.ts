@@ -185,6 +185,18 @@ export async function searchTmdbSeries(query: string, page = 1) {
   return payload.results;
 }
 
+/**
+ * INSERIES-HISTORY-IMPORT-AND-DATA-PORTABILITY-01 — resolucao de IMDb ID (tt...) pra serie
+ * TMDb via o endpoint `/find`, usado pela correspondencia da importacao (Fase 14).
+ */
+export async function findTmdbSeriesByImdbId(imdbId: string) {
+  const payload = await withLanguageFallback<{ tv_results: TmdbListSeriesItem[] }>(
+    `find/${imdbId}`,
+    new URLSearchParams({ external_source: "imdb_id" })
+  );
+  return payload.tv_results?.[0] ?? null;
+}
+
 export async function fetchTmdbSeriesDetails(seriesId: string | number) {
   // append_to_response piggybacks keywords+images (logos)+watch/providers onto the same
   // request — Fase 5/6 (logos/keywords, INSERIES-TMDB-CATALOG-SCALE-01) and Fase 4/11
