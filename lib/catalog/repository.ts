@@ -3,6 +3,7 @@ import { ExternalEntityType, ExternalSource } from "@prisma/client";
 import { mockSeries } from "@/lib/catalog/mock-data";
 import {
   mapStatusToPrisma,
+  normalizeTmdbEpisode,
   normalizeTmdbSeries,
   normalizeTmdbSeriesList,
   type NormalizedCatalogSeries
@@ -183,6 +184,63 @@ export async function getCatalogSeriesSummaryBySlug(slug: string) {
   }
 }
 
+/**
+ * Series criadas silenciosamente pela busca hibrida (`ensureSeriesExists`) so persistem o
+ * RESUMO de cada temporada (numero/titulo/episodeCount), nunca os episodios — fica pra depois,
+ * sob demanda (Fase 13/14 do ticket de busca transparente). Esta funcao e o "depois": se a
+ * temporada existe mas nao tem nenhum Episode, busca a temporada completa no TMDb (1 chamada)
+ * e persiste. Idempotente — se os episodios ja existem, e um no-op (nao chama o TMDb de novo).
+ * Reaproveitada tanto na leitura normal da pagina da serie quanto na aplicacao de importacoes
+ * (`lib/import/apply.ts`).
+ */
+export async function ensureSeasonEpisodesSynced(seriesId: string, seasonNumber: number) {
+  const season = await prisma.season.findUnique({
+    where: { seriesId_number: { seriesId, number: seasonNumber } },
+    select: { id: true, episodeCount: true, _count: { select: { episodes: true } } }
+  });
+  if (!season || season._count.episodes > 0) return;
+
+  const mapping = await prisma.externalSourceMapping.findFirst({
+    where: { seriesId, source: ExternalSource.TMDB, entityType: ExternalEntityType.SERIES },
+    select: { externalId: true }
+  });
+  if (!mapping) return;
+
+  const details = await fetchTmdbSeasonDetails(mapping.externalId, seasonNumber).catch(() => null);
+  if (!details?.episodes?.length) return;
+
+  await prisma.season.update({
+    where: { id: season.id },
+    data: {
+      title: details.name || undefined,
+      overview: details.overview || undefined,
+      airYear: details.air_date ? Number(details.air_date.slice(0, 4)) : undefined,
+      episodeCount: details.episodes.length,
+      externalSource: ExternalSource.TMDB,
+      externalId: String(details.id)
+    }
+  });
+
+  for (const raw of details.episodes) {
+    const episode = normalizeTmdbEpisode(raw);
+    await prisma.episode.upsert({
+      where: { seasonId_number: { seasonId: season.id, number: episode.number } },
+      update: {},
+      create: {
+        seasonId: season.id,
+        number: episode.number,
+        title: episode.title,
+        overview: episode.overview,
+        stillUrl: episode.stillUrl || null,
+        runtimeMinutes: episode.runtimeMinutes || null,
+        airedAt: episode.airedOn ? new Date(episode.airedOn) : null,
+        externalSource: ExternalSource.TMDB,
+        externalId: episode.external?.externalId ?? null
+      }
+    });
+  }
+}
+
 /** Fase 25 — episodes for exactly one season, fetched on demand (season switch in the UI), never all seasons at once. */
 export async function getSeasonEpisodes(seriesId: string, seasonNumber: number) {
   if (!(await canUseDatabase())) {
@@ -191,6 +249,8 @@ export async function getSeasonEpisodes(seriesId: string, seasonNumber: number) 
   }
 
   try {
+    await ensureSeasonEpisodesSynced(seriesId, seasonNumber);
+
     const season = await prisma.season.findFirst({
       where: { seriesId, number: seasonNumber },
       include: { episodes: { orderBy: { number: "asc" } } }

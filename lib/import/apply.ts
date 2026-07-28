@@ -1,9 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
-import { ensureSeriesExists } from "@/lib/catalog/repository";
-import { fetchTmdbSeasonDetails } from "@/lib/tmdb/service";
-import { normalizeTmdbEpisode } from "@/lib/catalog/normalize";
+import { ensureSeriesExists, ensureSeasonEpisodesSynced } from "@/lib/catalog/repository";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
-import { ExternalSource } from "@prisma/client";
 import type { ConflictPolicy, ImportReport, MatchedSeries } from "@/lib/import/types";
 
 /**
@@ -16,59 +13,6 @@ import type { ConflictPolicy, ImportReport, MatchedSeries } from "@/lib/import/t
  * episodio ja assistido preserva o watchedAt existente; datas do arquivo sao preservadas
  * quando presentes (Fase 21).
  */
-
-async function ensureSeasonEpisodes(seriesId: string, tmdbId: string, seasonNumber: number) {
-  const season = await prisma.season.findUnique({
-    where: { seriesId_number: { seriesId, number: seasonNumber } },
-    include: { _count: { select: { episodes: true } } }
-  });
-
-  if (season && season._count.episodes > 0) return;
-
-  const details = await fetchTmdbSeasonDetails(tmdbId, seasonNumber).catch(() => null);
-  if (!details) return;
-
-  const baseSeason =
-    season ??
-    (await prisma.season.create({
-      data: {
-        seriesId,
-        number: seasonNumber,
-        title: details.name || `Temporada ${seasonNumber}`,
-        overview: details.overview || null,
-        airYear: details.air_date ? Number(details.air_date.slice(0, 4)) : null,
-        episodeCount: details.episodes?.length ?? 0,
-        externalSource: ExternalSource.TMDB,
-        externalId: String(details.id)
-      }
-    }));
-
-  for (const raw of details.episodes ?? []) {
-    const episode = normalizeTmdbEpisode(raw);
-    const existing = await prisma.episode.findUnique({
-      where: { seasonId_number: { seasonId: baseSeason.id, number: episode.number } },
-      select: { id: true }
-    });
-    if (existing) continue;
-    await prisma.episode.create({
-      data: {
-        seasonId: baseSeason.id,
-        number: episode.number,
-        title: episode.title,
-        overview: episode.overview,
-        stillUrl: episode.stillUrl || null,
-        runtimeMinutes: episode.runtimeMinutes || null,
-        airedAt: episode.airedOn ? new Date(episode.airedOn) : null,
-        externalSource: ExternalSource.TMDB,
-        externalId: episode.external?.externalId ?? null
-      }
-    });
-  }
-
-  if (season && season.episodeCount === 0 && details.episodes?.length) {
-    await prisma.season.update({ where: { id: baseSeason.id }, data: { episodeCount: details.episodes.length } });
-  }
-}
 
 export async function applySeries(
   userId: string,
@@ -94,7 +38,7 @@ export async function applySeries(
   // Episodios: garante que as temporadas referenciadas existem com episodios antes de marcar.
   const neededSeasons = Array.from(new Set(group.episodes.map((episode) => episode.seasonNumber)));
   for (const seasonNumber of neededSeasons) {
-    await ensureSeasonEpisodes(seriesId, group.tmdbId, seasonNumber);
+    await ensureSeasonEpisodesSynced(seriesId, seasonNumber);
   }
 
   if (group.episodes.length) {
