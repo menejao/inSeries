@@ -7,7 +7,7 @@ import {
   normalizeTmdbSeriesList,
   type NormalizedCatalogSeries
 } from "@/lib/catalog/normalize";
-import { canUseDatabase, isMissingTableError } from "@/lib/db/health";
+import { canUseDatabase, isMissingTableError, isUniqueConstraintError } from "@/lib/db/health";
 import { prisma } from "@/lib/db/prisma";
 import type { Series } from "@/lib/types";
 import { fetchPopularTmdbSeries, fetchTmdbSeasonDetails, fetchTmdbSeriesDetails, searchTmdbSeries } from "@/lib/tmdb/service";
@@ -542,29 +542,6 @@ export async function importPopularSeriesToCatalog(page = 1) {
   }
 }
 
-export async function importSeriesFromTmdb(tmdbId: string) {
-  const details = await fetchTmdbSeriesDetails(tmdbId);
-  const seasonCount = details.number_of_seasons ?? 0;
-  const fullSeasons = [];
-
-  for (const seasonNumber of Array.from({ length: seasonCount }, (_, index) => index + 1)) {
-    try {
-      fullSeasons.push(await fetchTmdbSeasonDetails(tmdbId, seasonNumber));
-    } catch {
-      fullSeasons.push({
-        id: seasonNumber,
-        season_number: seasonNumber,
-        name: `Temporada ${seasonNumber}`,
-        episodes: []
-      });
-    }
-  }
-
-  const normalized = normalizeTmdbSeries({ ...details, seasons: fullSeasons });
-  await upsertNormalizedSeries(normalized);
-  return getCatalogSeriesBySlug(normalized.slug);
-}
-
 export async function searchCatalogSeries(query?: string) {
   if (query && !(await canUseDatabase())) {
     return filterMockSeries(query);
@@ -576,6 +553,62 @@ export async function searchCatalogSeries(query?: string) {
 export async function searchExternalSeries(query: string) {
   const results = await searchTmdbSeries(query);
   return normalizeTmdbSeriesList(results);
+}
+
+/**
+ * INSERIES-CATALOG-TRANSPARENT-SEARCH-AND-SILENT-IMPORT-01 — Fase 9. Substitui
+ * `importSeriesFromTmdb` no fluxo normal do usuario: uma unica chamada de detalhes ao TMDb
+ * (`fetchTmdbSeriesDetails`, ja traz seasons/cast/videos/images via append_to_response, sem
+ * loop por temporada buscando episodios) e rapida o bastante pra rodar de forma sincrona antes
+ * de navegar (Fase 11 Estrategia A) sem o usuario perceber uma "importacao". Episodios de cada
+ * temporada continuam carregando sob demanda (SeasonSelector, ja existente) — Fase 14.
+ *
+ * Idempotente (Fase 9/10): confia primeiro na constraint unica de `ExternalSourceMapping`
+ * (source+entityType+externalId) pra achar um registro ja existente; se duas requisicoes
+ * concorrentes criam a mesma serie ao mesmo tempo, a que perder a corrida do INSERT recupera o
+ * registro vencedor pelo P2002 em vez de duplicar.
+ */
+export async function ensureSeriesExists(tmdbId: string) {
+  const existingMapping = await prisma.externalSourceMapping.findUnique({
+    where: {
+      source_entityType_externalId: {
+        source: ExternalSource.TMDB,
+        entityType: ExternalEntityType.SERIES,
+        externalId: tmdbId
+      }
+    },
+    select: { seriesId: true }
+  });
+
+  if (existingMapping) {
+    const series = await prisma.series.findUnique({ where: { id: existingMapping.seriesId } });
+    if (series) return series;
+  }
+
+  const details = await fetchTmdbSeriesDetails(tmdbId);
+  const normalized = normalizeTmdbSeries(details);
+
+  try {
+    return await upsertNormalizedSeries(normalized);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const mapping = await prisma.externalSourceMapping.findUnique({
+        where: {
+          source_entityType_externalId: {
+            source: ExternalSource.TMDB,
+            entityType: ExternalEntityType.SERIES,
+            externalId: tmdbId
+          }
+        },
+        select: { seriesId: true }
+      });
+      if (mapping) {
+        const series = await prisma.series.findUnique({ where: { id: mapping.seriesId } });
+        if (series) return series;
+      }
+    }
+    throw error;
+  }
 }
 
 /**

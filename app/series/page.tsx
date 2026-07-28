@@ -7,8 +7,8 @@ import { CatalogSearchBar } from "@/components/catalog/catalog-search-bar";
 import { CatalogSortSelect } from "@/components/catalog/catalog-sort-select";
 import { CatalogGrid } from "@/components/catalog/catalog-grid";
 import { CatalogPagination } from "@/components/catalog/catalog-pagination";
-import { HybridSearchResults } from "@/components/catalog/hybrid-search-results";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
+import { getUnifiedSearchResults } from "@/lib/catalog/unified-search";
 
 const SORT_OPTIONS: SeriesSortOption[] = ["discovery", "popular", "latest", "title", "rating", "onair"];
 
@@ -41,23 +41,45 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
     params.genre || params.status || params.year || params.tag || params.provider || params.country || params.language
   );
   const page = params.page ? Number(params.page) : 1;
+  const q = params.q?.trim();
 
-  const [result, metadata] = await Promise.all([
-    searchSeries({
-      q: params.q,
-      genre: params.genre,
-      status: params.status,
-      year,
-      tag: params.tag,
-      provider: params.provider,
-      country: params.country,
-      language: params.language,
-      keyword: params.keyword,
-      sort,
-      page
-    }),
+  // Fase 4 (INSERIES-CATALOG-TRANSPARENT-SEARCH-AND-SILENT-IMPORT-01) — com termo de busca,
+  // local + TMDb sao combinados numa lista unica sem paginacao tradicional (ver
+  // getUnifiedSearchResults); sem termo, o catalogo continua sendo so o banco local, paginado
+  // normalmente (comportamento anterior, intocado).
+  const [searchResult, browseResult, metadata] = await Promise.all([
+    q
+      ? getUnifiedSearchResults({
+          q,
+          genre: params.genre,
+          status: params.status,
+          year,
+          tag: params.tag,
+          provider: params.provider,
+          country: params.country,
+          language: params.language,
+          keyword: params.keyword,
+          sort
+        })
+      : Promise.resolve(null),
+    q
+      ? Promise.resolve(null)
+      : searchSeries({
+          genre: params.genre,
+          status: params.status,
+          year,
+          tag: params.tag,
+          provider: params.provider,
+          country: params.country,
+          language: params.language,
+          keyword: params.keyword,
+          sort,
+          page
+        }),
     getCatalogFilterMetadata()
   ]);
+
+  const items = q ? (searchResult?.items ?? []) : (browseResult?.items ?? []);
 
   return (
     <div className="space-y-6">
@@ -84,20 +106,39 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
       </div>
 
       <div className="space-y-6">
-        {params.q ? (
+        {q ? (
           <p className="text-sm text-muted">
-            Resultados para <span className="font-semibold text-ink">&ldquo;{params.q}&rdquo;</span>
+            Resultados para <span className="font-semibold text-ink">&ldquo;{q}&rdquo;</span>
           </p>
         ) : null}
 
-        {result.items.length ? (
+        {items.length ? (
           <>
-            <CatalogGrid items={result.items} />
-            <CatalogPagination page={result.page} totalPages={result.totalPages} />
+            <CatalogGrid items={items} />
+            {/* Fase: busca hibrida (local + TMDb combinados) nao usa paginacao tradicional — so o catalogo sem termo de busca pagina. */}
+            {!q && browseResult ? <CatalogPagination page={browseResult.page} totalPages={browseResult.totalPages} /> : null}
           </>
-        ) : params.q ? (
-          // Fase 27 (V3) — busca local vazia so mostra Empty State depois de tentar o TMDb (HybridSearchResults faz essa segunda consulta).
-          <HybridSearchResults query={params.q} />
+        ) : q && searchResult?.bothFailed ? (
+          // Fase 21 — so aparece quando NENHUMA fonte (local nem TMDb) respondeu.
+          <EmptyState
+            icon={<CompassIcon className="h-6 w-6" />}
+            title="Nao foi possivel realizar a busca agora."
+            copy=""
+            action={
+              <Link href={`/series?q=${encodeURIComponent(q)}`}>
+                <Button variant="secondary" size="sm">
+                  Tentar novamente
+                </Button>
+              </Link>
+            }
+          />
+        ) : q ? (
+          // Fase 20 — so aparece depois que local e TMDb ja terminaram e nenhum encontrou nada; nunca menciona catalogo local ou TMDb.
+          <EmptyState
+            icon={<CompassIcon className="h-6 w-6" />}
+            title={`Nenhuma serie encontrada para "${q}".`}
+            copy="Tente outro titulo."
+          />
         ) : hasActiveFilters ? (
           <EmptyState
             icon={<CompassIcon className="h-6 w-6" />}
