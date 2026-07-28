@@ -11,7 +11,7 @@ import { logger } from "@/lib/logger";
 import { getOrCreateRequestId } from "@/lib/observability/request-id";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  login: z.string().min(1),
   password: z.string().min(8)
 });
 
@@ -33,8 +33,9 @@ async function loginHandler(request: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
+  const isEmail = payload.data.login.includes("@");
   const user = await prisma.user.findUnique({
-    where: { email: payload.data.email }
+    where: isEmail ? { email: payload.data.login } : { username: payload.data.login }
   });
 
   if (!user) {
