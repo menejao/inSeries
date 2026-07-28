@@ -120,8 +120,8 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-8">
-      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
-        <div className="relative aspect-[3/4] sm:aspect-[16/8] lg:aspect-[16/6]">
+      <section className="relative -mx-4 sm:mx-0 sm:rounded-4xl sm:border sm:border-border">
+        <div className="relative aspect-[3/4] overflow-hidden sm:aspect-[16/8] sm:rounded-t-4xl lg:aspect-[16/6]">
           <BackdropImage src={series.backdropUrl || series.posterUrl} alt={series.title} priority sizes="100vw" />
           <div className="absolute inset-0 bg-gradient-to-t from-canvas via-canvas/70 sm:via-canvas/50 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-canvas/60 via-transparent to-transparent hidden sm:block" />
