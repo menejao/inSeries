@@ -29,7 +29,7 @@ export function RecapCard({ recap }: { recap: RecapData }) {
 
       <section className="space-y-3">
         <h2 className="text-xl font-semibold text-ink">Numeros principais</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile label="Episodios assistidos" value={recap.episodesWatched} />
           <StatTile label="Series assistidas" value={recap.seriesWatchedCount} />
           <StatTile label="Series concluidas" value={recap.seriesCompletedCount} />
@@ -42,7 +42,7 @@ export function RecapCard({ recap }: { recap: RecapData }) {
           <FilmIcon className="h-5 w-5 text-subtle" />
           Tempo assistido
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3">
           <StatTile label="Horas assistidas" value={recap.hoursWatched} />
           <StatTile label="Minutos assistidos" value={recap.minutesWatched} />
         </div>
