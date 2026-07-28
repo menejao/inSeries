@@ -93,8 +93,8 @@ export function ContinueWatchingCard({
           : undefined
       }
       className={cn(
-        "group relative isolate flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised sm:flex-row",
-        isHero ? "w-full" : "shrink-0 snap-start h-[700px] w-[300px] sm:h-60 sm:w-[440px]"
+        "group relative isolate flex h-full overflow-hidden rounded-3xl border border-border bg-surface-strong/40 transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-raised",
+        isHero ? "w-full flex-row" : "shrink-0 snap-start h-[700px] w-[300px] flex-col sm:h-60 sm:w-[440px] sm:flex-row"
       )}
     >
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100">
@@ -105,7 +105,10 @@ export function ContinueWatchingCard({
       <Link
         href={`/series/${item.series.slug}`}
         aria-label={`Abrir ${item.series.title}`}
-        className={cn("relative aspect-[2/3] w-full shrink-0 sm:aspect-auto", isHero ? "sm:w-32 md:w-36" : "sm:w-36 md:w-40")}
+        className={cn(
+          "relative shrink-0",
+          isHero ? "aspect-[2/3] w-24 sm:w-32 md:w-36" : "aspect-[2/3] w-full sm:aspect-auto sm:w-36 md:w-40"
+        )}
       >
         <PosterImage
           src={item.series.posterUrl}
