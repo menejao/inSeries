@@ -23,11 +23,11 @@ export function EpisodeCalendarCard({
   authenticated: boolean;
 }) {
   return (
-    <Card className="flex flex-col gap-4 overflow-hidden p-0 sm:flex-row sm:items-stretch">
-      <div className="relative h-28 w-20 shrink-0 sm:h-auto sm:w-32">
+    <Card padding="none" className="flex overflow-hidden">
+      <div className="relative w-20 shrink-0 sm:w-32">
         <PosterImage src={episode.series.posterUrl || episode.series.backdropUrl} alt={episode.series.title} sizes="128px" />
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-5 sm:p-4">
+      <div className="flex flex-1 flex-col gap-2 p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/series/${episode.series.slug}`} className="font-semibold text-ink">
             {episode.series.title}

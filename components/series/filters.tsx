@@ -118,7 +118,7 @@ export function Filters({
           </option>
         ))}
       </Select>
-      <Button type="submit" className="xl:col-span-6">
+      <Button type="submit" className="col-span-full">
         Aplicar filtros
       </Button>
     </Card>
