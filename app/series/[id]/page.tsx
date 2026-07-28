@@ -8,6 +8,7 @@ import { SeriesLogoOrTitle } from "@/components/media/series-logo";
 import { SeriesStatusActions } from "@/components/series/series-status-actions";
 import { SeriesMoreActions } from "@/components/series/series-more-actions";
 import { SeriesInfoBlock } from "@/components/series/series-info-block";
+import { SeriesColumnsLayout } from "@/components/series/series-columns-layout";
 import { SeriesContinueWatching } from "@/components/series/series-continue-watching";
 import { SeasonSelector } from "@/components/series/season-selector";
 import { ReviewsSection } from "@/components/series/reviews-section";
@@ -185,63 +186,65 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
       {watchNextItemForSeries ? (
         <SeriesContinueWatching
           item={watchNextItemForSeries}
-          seriesSlug={series.slug}
           seriesProgressPercent={progress?.percentage ?? 0}
           lastWatchedLabel={progressSummary?.lastWatchedEpisode ? formatShortDate(progressSummary.lastWatchedEpisode.watchedAt) : null}
         />
       ) : null}
 
-      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <div className="space-y-6">
-          <SeriesInfoBlock
-            series={series}
-            totalEpisodes={totalEpisodes}
-            progressPercent={progress?.percentage ?? 0}
-            watchedEpisodes={progress?.watchedEpisodes ?? 0}
-            authenticated={Boolean(user)}
-          />
-
-          {nextEpisode ? (
-            <Card className="space-y-3">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-                <CalendarIcon className="h-5 w-5 text-subtle" />
-                Proximo lancamento
-              </h2>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold text-ink">
-                    {formatEpisodeCode(nextEpisode.seasonNumber, nextEpisode.number)} · {nextEpisode.title}
-                  </p>
-                  <p className="mt-1 text-sm text-muted">{formatShortDate(nextEpisode.airedAt)}</p>
-                  <p className="mt-1 text-xs text-subtle">
-                    {nextEpisode.daysRemaining <= 0 ? "Lanca hoje" : `Faltam ${nextEpisode.daysRemaining} dia(s)`}
-                  </p>
-                </div>
-                <Link href="/calendar" className={buttonVariants({ variant: "secondary", size: "sm" })}>
-                  Ver calendario
-                </Link>
-              </div>
-            </Card>
-          ) : null}
-
-          {user ? <SeriesTimeline events={timelineEvents} /> : null}
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-ink">Temporadas</h2>
-          {series.seasons.length && firstSeason ? (
-            <SeasonSelector
-              seriesId={series.id}
-              seasons={series.seasons}
-              initialSeasonNumber={firstSeason.number}
-              initialEpisodes={initialSeasonEpisodes}
+      <SeriesColumnsLayout
+        left={
+          <>
+            <SeriesInfoBlock
+              series={series}
+              totalEpisodes={totalEpisodes}
+              progressPercent={progress?.percentage ?? 0}
+              watchedEpisodes={progress?.watchedEpisodes ?? 0}
               authenticated={Boolean(user)}
             />
-          ) : (
-            <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
-          )}
-        </div>
-      </section>
+
+            {nextEpisode ? (
+              <Card className="space-y-3">
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+                  <CalendarIcon className="h-5 w-5 text-subtle" />
+                  Proximo lancamento
+                </h2>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-ink">
+                      {formatEpisodeCode(nextEpisode.seasonNumber, nextEpisode.number)} · {nextEpisode.title}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">{formatShortDate(nextEpisode.airedAt)}</p>
+                    <p className="mt-1 text-xs text-subtle">
+                      {nextEpisode.daysRemaining <= 0 ? "Lanca hoje" : `Faltam ${nextEpisode.daysRemaining} dia(s)`}
+                    </p>
+                  </div>
+                  <Link href="/calendar" className={buttonVariants({ variant: "secondary", size: "sm" })}>
+                    Ver calendario
+                  </Link>
+                </div>
+              </Card>
+            ) : null}
+
+            {user ? <SeriesTimeline events={timelineEvents} /> : null}
+          </>
+        }
+        right={
+          <>
+            <h2 className="shrink-0 text-lg font-semibold text-ink">Temporadas</h2>
+            {series.seasons.length && firstSeason ? (
+              <SeasonSelector
+                seriesId={series.id}
+                seasons={series.seasons}
+                initialSeasonNumber={firstSeason.number}
+                initialEpisodes={initialSeasonEpisodes}
+                authenticated={Boolean(user)}
+              />
+            ) : (
+              <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />
+            )}
+          </>
+        }
+      />
 
       <CastCarousel cast={media.cast} />
       <SeriesGallery backdropUrls={media.backdropUrls} posterUrls={media.posterUrls} />

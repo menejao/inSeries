@@ -2916,37 +2916,42 @@ async function main() {
     null
   );
   check(
-    "Pagina da serie (Fase 9): secao Series parecidas usa Collection Tags (Maratona) e Discovery Score, nunca lista generica",
-    String(seriesUmDetail.body).includes("Series parecidas") && String(seriesUmDetail.body).includes("Serie Teste Quatro"),
+    // Fase 20/21 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — as secoes rotuladas antigas (Series
+    // parecidas/Mesmo genero/Mesmo universo/etc) viraram 1 unica secao "Voce tambem pode
+    // gostar" (max 5, criterios internos nunca expostos como rotulo).
+    "Pagina da serie (Fase 21, V2): secao unica \"Voce tambem pode gostar\" substitui as secoes rotuladas antigas",
+    String(seriesUmDetail.body).includes("Voce tambem pode gostar"),
     null
   );
   check(
-    "Pagina da serie (Fase 9): secao Maratonas reaproveita a smart list MARATONAS existente",
-    String(seriesUmDetail.body).includes("Maratonas"),
+    "Pagina da serie (Fase 22, V2): nenhum criterio de recomendacao aparece como rotulo visivel (Maratonas/Series parecidas/Mesmo genero)",
+    !String(seriesUmDetail.body).includes("Maratonas") &&
+      !String(seriesUmDetail.body).includes("Series parecidas") &&
+      !String(seriesUmDetail.body).includes("Mesmo genero"),
     null
   );
   check(
-    "Pagina da serie (Fase 11/13): recomendacoes obedecem a regra global de grid fixo (mobile=2/tablet=4/desktop=4)",
+    "Pagina da serie (Fase 21, V2): recomendacoes obedecem a regra global de grid fixo (mobile=2/tablet=4/desktop=5)",
     String(seriesUmDetail.body).includes("grid-cols-2") &&
       String(seriesUmDetail.body).includes("sm:grid-cols-4") &&
-      String(seriesUmDetail.body).includes("lg:grid-cols-4"),
+      String(seriesUmDetail.body).includes("lg:grid-cols-5"),
     null
   );
 
   // jarA ja assistiu T01E01 de serie-teste-um (linha ~261) e continua autenticado: a mesma
-  // serie deve mostrar Continuar Assistindo (Watch Next reaproveitado), temporada expansivel
-  // com marcacao em lote, e o episodio ja assistido com seu badge.
+  // serie deve mostrar o proximo episodio pendente (Watch Next reaproveitado, sem "Continuar" -
+  // o app nao tem player), seletor de temporada, e o episodio ja assistido com seu badge.
   const seriesPageAuthenticated = await request(jarA, `/series/${seriesId}`);
   check(
-    "Pagina da serie (Fase 3): secao Continuar Assistindo aparece para usuario com progresso pendente (reaproveita Watch Next)",
+    "Pagina da serie (V2): secao Proximo episodio aparece para usuario com progresso pendente (reaproveita Watch Next), sem mencao a Continuar (sem player)",
     seriesPageAuthenticated.status === 200 &&
-      String(seriesPageAuthenticated.body).includes("Continuar assistindo") &&
-      String(seriesPageAuthenticated.body).includes('id="continuar-assistindo"'),
+      String(seriesPageAuthenticated.body).includes("Proximo episodio") &&
+      !String(seriesPageAuthenticated.body).includes(">Continuar<"),
     null
   );
   check(
-    "Pagina da serie (Fase 4): primeira temporada vem expandida (aria-expanded true) e permite marcar toda a temporada assistida",
-    String(seriesPageAuthenticated.body).includes('aria-expanded="true"') &&
+    "Pagina da serie (V2): seletor de temporada (select) permite marcar toda a temporada assistida",
+    String(seriesPageAuthenticated.body).includes('aria-label="Selecionar temporada"') &&
       String(seriesPageAuthenticated.body).includes("Marcar temporada como assistida"),
     null
   );

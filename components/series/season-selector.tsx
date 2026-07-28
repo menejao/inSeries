@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { EpisodeRow } from "@/components/series/episode-row";
@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { InfoRow } from "@/components/series/info-row";
 import { ChevronDownIcon, LoaderIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
+import { useMatchedColumnHeight } from "@/components/series/series-columns-layout";
 import type { Episode } from "@/lib/types";
 
 // Fase 15/17 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — "nunca expandir indefinidamente":
@@ -30,11 +30,10 @@ export type SeasonSummary = {
 };
 
 /**
- * Fase 12/13/14/25 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — pills de temporada + "Resumo da
- * temporada" + lista de episodios, sempre so da temporada selecionada. Diferente da versao
- * anterior desta mesma fase: agora os episodios de cada temporada sao buscados sob demanda
- * (`GET /api/series/[id]/season/[number]`) na troca de aba, nunca todos de uma vez no server —
- * a query nao escala mais com o numero total de episodios da serie inteira.
+ * Select de temporada (nao mais pills — quebravam o layout em series com muitas temporadas,
+ * ex. 22) + "Resumo da temporada" + lista de episodios, sempre so da temporada selecionada. Os
+ * episodios de cada temporada sao buscados sob demanda (`GET /api/series/[id]/season/[number]`)
+ * na troca de temporada, nunca todos de uma vez no server.
  */
 export function SeasonSelector({
   seriesId,
@@ -51,6 +50,7 @@ export function SeasonSelector({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const matchedHeight = useMatchedColumnHeight();
   const [selectedNumber, setSelectedNumber] = useState(initialSeasonNumber);
   const [episodesByNumber, setEpisodesByNumber] = useState<Record<number, Episode[]>>({ [initialSeasonNumber]: initialEpisodes });
   const [loadingNumber, setLoadingNumber] = useState<number | null>(null);
@@ -119,36 +119,28 @@ export function SeasonSelector({
   const nextEpisode = episodes?.find((episode) => !episode.watched);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Temporadas">
-        {seasons.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={item.number === season.number}
-            onClick={() => selectSeason(item.number)}
-            className={cn(
-              "min-h-9 rounded-full border px-4 text-sm font-medium transition",
-              item.number === season.number
-                ? "border-primary bg-primary/10 text-primary-text"
-                : "border-border bg-surface text-muted hover:border-border-strong hover:text-ink"
-            )}
-          >
-            Temporada {item.number}
-          </button>
-        ))}
-      </div>
-
-      <Card className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-0 flex-col space-y-4" style={matchedHeight ? { maxHeight: matchedHeight } : undefined}>
+      <Card className="shrink-0 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-lg font-semibold text-ink">{season.title}</p>
             <p className="text-sm text-muted">
               {season.year || "Ano n/d"} · {season.episodeCount} episodio{season.episodeCount === 1 ? "" : "s"}
             </p>
           </div>
-          <Badge variant="outline">Temporada {season.number}</Badge>
+          {/* Select em vez de pills — escala pra series com dezenas de temporadas sem quebrar o layout. */}
+          <Select
+            aria-label="Selecionar temporada"
+            value={String(season.number)}
+            onChange={(event) => selectSeason(Number(event.target.value))}
+            className="w-40"
+          >
+            {seasons.map((item) => (
+              <option key={item.id} value={item.number}>
+                Temporada {item.number}
+              </option>
+            ))}
+          </Select>
         </div>
 
         {authenticated && season.episodeCount > 0 && episodes ? (
@@ -172,8 +164,14 @@ export function SeasonSelector({
         ) : null}
       </Card>
 
-      {/* Fase 15/17 — altura controlada: nunca mais que BATCH_SIZE episodios no DOM de uma vez, mesmo em temporadas com centenas. */}
-      <div className="space-y-3">
+      {/*
+        Fase 15/17 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — altura controlada de 2 formas
+        complementares: nunca mais que BATCH_SIZE episodios no DOM de uma vez ("Mostrar mais"),
+        e a area em si ganha scroll interno com altura maxima igual a coluna esquerda
+        (Resumo/Producao/Proximo lancamento/Sua jornada) quando ha espaco lado a lado (`lg`),
+        pra nao empurrar o rodape da pagina pra baixo so por causa da lista de episodios.
+      */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
         {isLoadingEpisodes ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
             <LoaderIcon className="h-4 w-4 animate-spin" />
