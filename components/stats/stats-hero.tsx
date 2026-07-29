@@ -1,21 +1,15 @@
-import { Avatar } from "@/components/ui/avatar";
 import { StatCounter } from "@/components/stats/stat-counter";
 import { ShareButton } from "@/components/stats/share-button";
-import { getInitials } from "@/lib/utils";
 import type { ViewerPersona } from "@/lib/stats/types";
 
-/** INSERIES-STATISTICS-ENGINE-01 — "Hero da pagina": avatar, nivel, titulo dinamico, estatistica principal, botao de compartilhar. */
+/** INSERIES-STATISTICS-ENGINE-01 — "Hero da pagina": nivel, titulo dinamico, estatistica principal, botao de compartilhar. */
 export function StatsHero({
-  name,
-  avatarUrl,
   persona,
   level,
   points,
   hoursWatched,
   episodesWatched
 }: {
-  name: string;
-  avatarUrl: string | null;
   persona: ViewerPersona;
   level: number;
   points: number;
@@ -30,15 +24,12 @@ export function StatsHero({
         aria-hidden="true"
       />
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4">
-          <Avatar label={getInitials(name)} name={name} src={avatarUrl} size="lg" />
-          <div>
-            <p className="eyebrow">Nivel {level} · {points} pts</p>
-            <h1 className="font-display text-2xl font-black tracking-tight text-ink sm:text-4xl">
-              {persona.emoji} Voce e {persona.title.startsWith("Voce") ? persona.title.replace(/^Voce\s*/, "") : `um(a) ${persona.title}`}.
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted sm:text-base">{persona.description}</p>
-          </div>
+        <div>
+          <p className="eyebrow">Nivel {level} · {points} pts</p>
+          <h1 className="font-display text-2xl font-black tracking-tight text-ink sm:text-4xl">
+            {persona.emoji} Voce e {persona.title.startsWith("Voce") ? persona.title.replace(/^Voce\s*/, "") : `um(a) ${persona.title}`}.
+          </h1>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-muted sm:text-base">{persona.description}</p>
         </div>
 
         <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
@@ -48,7 +39,7 @@ export function StatsHero({
             </p>
             <p className="text-xs text-subtle">{episodesWatched.toLocaleString("pt-BR")} episodios assistidos</p>
           </div>
-          <ShareButton personaTitle={persona.title} hoursWatched={hoursWatched} episodesWatched={episodesWatched} />
+          <ShareButton />
         </div>
       </div>
     </section>

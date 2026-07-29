@@ -78,8 +78,6 @@ export default async function StatsPage() {
       ) : (
         <>
           <StatsHero
-            name={user.name}
-            avatarUrl={user.avatarUrl}
             persona={stats.persona}
             level={level}
             points={points}
