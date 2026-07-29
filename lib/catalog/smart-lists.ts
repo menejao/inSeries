@@ -103,33 +103,38 @@ const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
   TOP_250: { where: { discoveryScore: { not: null } }, orderBy: { discoveryScore: "desc" } }
 };
 
-async function fetchSmartList(key: SmartListKey, limit: number): Promise<Series[]> {
+async function fetchSmartList(key: SmartListKey, limit: number, skip = 0): Promise<Series[]> {
   const { orderBy } = SMART_LISTS[key];
   const where = resolveWhere(SMART_LISTS[key]);
-  const rows = await prisma.series.findMany({ where, orderBy, take: limit });
+  const rows = await prisma.series.findMany({ where, orderBy, take: limit, skip });
   return rows.map(toSeriesSummary);
 }
 
-export const listMaisPopulares = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_POPULARES", limit);
-export const listMaisBemAvaliadas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_BEM_AVALIADAS", limit);
-export const listNovidades = (limit = DEFAULT_LIMIT) => fetchSmartList("NOVIDADES", limit);
-export const listMinisseries = (limit = DEFAULT_LIMIT) => fetchSmartList("MINISSERIES", limit);
-export const listMaratonas = (limit = DEFAULT_LIMIT) => fetchSmartList("MARATONAS", limit);
-export const listEmExibicao = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_EXIBICAO", limit);
-export const listFinalizadas = (limit = DEFAULT_LIMIT) => fetchSmartList("FINALIZADAS", limit);
-export const listLongaDuracao = (limit = DEFAULT_LIMIT) => fetchSmartList("LONGA_DURACAO", limit);
-export const listCurtas = (limit = DEFAULT_LIMIT) => fetchSmartList("CURTAS", limit);
-export const listEmAlta = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_ALTA", limit);
-export const listMaisComentadas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_COMENTADAS", limit);
-export const listBaseadasEmLivros = (limit = DEFAULT_LIMIT) => fetchSmartList("BASEADAS_EM_LIVROS", limit);
-export const listPremiadas = (limit = DEFAULT_LIMIT) => fetchSmartList("PREMIADAS", limit);
-export const listBombandoAgora = (limit = DEFAULT_LIMIT) => fetchSmartList("BOMBANDO_AGORA", limit);
-export const listMaisAssistidas = (limit = DEFAULT_LIMIT) => fetchSmartList("MAIS_ASSISTIDAS", limit);
-export const listEmAltaNosStreamings = (limit = DEFAULT_LIMIT) => fetchSmartList("EM_ALTA_NOS_STREAMINGS", limit);
-export const listLancamentos = (limit = DEFAULT_LIMIT) => fetchSmartList("LANCAMENTOS", limit);
-export const listImperdiveis = (limit = DEFAULT_LIMIT) => fetchSmartList("IMPERDIVEIS", limit);
-export const listTop100 = (limit = 100) => fetchSmartList("TOP_100", limit);
-export const listTop250 = (limit = 250) => fetchSmartList("TOP_250", limit);
+export const listMaisPopulares = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MAIS_POPULARES", limit, skip);
+export const listMaisBemAvaliadas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MAIS_BEM_AVALIADAS", limit, skip);
+export const listNovidades = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("NOVIDADES", limit, skip);
+export const listMinisseries = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MINISSERIES", limit, skip);
+export const listMaratonas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MARATONAS", limit, skip);
+export const listEmExibicao = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("EM_EXIBICAO", limit, skip);
+export const listFinalizadas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("FINALIZADAS", limit, skip);
+export const listLongaDuracao = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("LONGA_DURACAO", limit, skip);
+export const listCurtas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("CURTAS", limit, skip);
+export const listEmAlta = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("EM_ALTA", limit, skip);
+export const listMaisComentadas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MAIS_COMENTADAS", limit, skip);
+export const listBaseadasEmLivros = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("BASEADAS_EM_LIVROS", limit, skip);
+export const listPremiadas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("PREMIADAS", limit, skip);
+export const listBombandoAgora = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("BOMBANDO_AGORA", limit, skip);
+export const listMaisAssistidas = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MAIS_ASSISTIDAS", limit, skip);
+export const listEmAltaNosStreamings = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("EM_ALTA_NOS_STREAMINGS", limit, skip);
+export const listLancamentos = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("LANCAMENTOS", limit, skip);
+export const listImperdiveis = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("IMPERDIVEIS", limit, skip);
+export const listTop100 = (limit = 100, skip = 0) => fetchSmartList("TOP_100", limit, skip);
+export const listTop250 = (limit = 250, skip = 0) => fetchSmartList("TOP_250", limit, skip);
+
+/** Same filter as the smart list, without a take/skip — for "Ver mais" pages to compute totalPages. */
+export async function countSmartList(key: SmartListKey): Promise<number> {
+  return prisma.series.count({ where: resolveWhere(SMART_LISTS[key]) });
+}
 
 /**
  * Fase 9/12 — how many series currently qualify for each smart list, for the sync report
