@@ -5,6 +5,10 @@ export type ExclusionSets = {
   dropped: Set<string>;
   watchlisted: Set<string>;
   watching: Set<string>;
+  /** INSERIES-RECOMMENDATION-ENGINE-02 — "series presentes em qualquer lista do usuario", not just the tracked watch-state ones above. */
+  listed: Set<string>;
+  /** NOT_INTERESTED / ALREADY_WATCHED / HIDDEN feedback — "series ocultadas" / "ignoradas manualmente", always excluded (never configurable). */
+  feedbackExcluded: Set<string>;
 };
 
 /**
@@ -30,6 +34,8 @@ export function excludeIneligibleSeries(
   return candidates.filter((candidate) => {
     if (exclusions.completed.has(candidate.id)) return false;
     if (exclusions.dropped.has(candidate.id)) return false;
+    if (exclusions.listed.has(candidate.id)) return false;
+    if (exclusions.feedbackExcluded.has(candidate.id)) return false;
     if (excludeWatchlisted && exclusions.watchlisted.has(candidate.id)) return false;
     if (excludeWatching && exclusions.watching.has(candidate.id)) return false;
     return true;

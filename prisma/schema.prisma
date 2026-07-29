@@ -163,6 +163,7 @@ model User {
   activityLikes          ActivityLike[]
   activityComments       ActivityComment[]
   importJobs             ImportJob[]
+  recommendationFeedback RecommendationFeedback[]
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
@@ -329,6 +330,7 @@ model Series {
   listItems           ListItem[]
   activities          Activity[]
   notifications       Notification[]
+  recommendationFeedback RecommendationFeedback[]
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
@@ -663,4 +665,30 @@ model UserAchievement {
 
   @@unique([userId, achievementId])
   @@index([userId])
+}
+
+/// INSERIES-RECOMMENDATION-ENGINE-02 — explicit feedback on a recommended series ("Gostei" /
+/// "Nao me interessa" / "Ja assisti" / "Ocultar"), one row per user+series (a later action
+/// overwrites the earlier one via upsert). The engine reads this back to permanently exclude
+/// NOT_INTERESTED/ALREADY_WATCHED/HIDDEN and to suppress genres from NOT_INTERESTED, same as
+/// the abandoned-series penalty.
+enum RecommendationFeedbackAction {
+  LIKE
+  NOT_INTERESTED
+  ALREADY_WATCHED
+  HIDDEN
+}
+
+model RecommendationFeedback {
+  id        String                       @id @default(cuid())
+  userId    String
+  seriesId  String
+  action    RecommendationFeedbackAction
+  user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series    Series                       @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  createdAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
+
+  @@unique([userId, seriesId])
+  @@index([userId, action])
 }

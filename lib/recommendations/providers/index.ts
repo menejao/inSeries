@@ -4,6 +4,12 @@ import { popularProvider } from "@/lib/recommendations/providers/popular-provide
 import { ratingProvider } from "@/lib/recommendations/providers/rating-provider";
 import { trendingProvider } from "@/lib/recommendations/providers/trending-provider";
 import { editorialProvider } from "@/lib/recommendations/providers/editorial-provider";
+import { creatorProvider } from "@/lib/recommendations/providers/creator-provider";
+import { castProvider } from "@/lib/recommendations/providers/cast-provider";
+import { networkProvider } from "@/lib/recommendations/providers/network-provider";
+import { platformProvider } from "@/lib/recommendations/providers/platform-provider";
+import { languageProvider } from "@/lib/recommendations/providers/language-provider";
+import { countryProvider } from "@/lib/recommendations/providers/country-provider";
 import type { RecommendationProvider } from "@/lib/recommendations/types";
 
 /**
@@ -17,7 +23,26 @@ export const RECOMMENDATION_PROVIDERS: RecommendationProvider[] = [
   popularProvider,
   ratingProvider,
   trendingProvider,
-  editorialProvider
+  editorialProvider,
+  creatorProvider,
+  castProvider,
+  networkProvider,
+  platformProvider,
+  languageProvider,
+  countryProvider
 ];
 
-export { genreProvider, similarSeriesProvider, popularProvider, ratingProvider, trendingProvider, editorialProvider };
+export {
+  genreProvider,
+  similarSeriesProvider,
+  popularProvider,
+  ratingProvider,
+  trendingProvider,
+  editorialProvider,
+  creatorProvider,
+  castProvider,
+  networkProvider,
+  platformProvider,
+  languageProvider,
+  countryProvider
+};

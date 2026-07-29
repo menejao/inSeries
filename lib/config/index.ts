@@ -114,6 +114,12 @@ const envSchema = z.object({
   RECOMMENDATION_WEIGHT_RATING: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_TRENDING: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_EDITORIAL: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_CREATOR: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_CAST: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_NETWORK: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_PLATFORM: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_LANGUAGE: optionalNonEmpty(),
+  RECOMMENDATION_WEIGHT_COUNTRY: optionalNonEmpty(),
   RECOMMENDATION_CANDIDATE_POOL_SIZE: optionalNonEmpty(),
   RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty()
 });
@@ -370,8 +376,23 @@ export const config = {
       trending: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_TRENDING, 0.4),
       // Fase 4 (INSERIES-DASHBOARD-PREMIUM-01) — weighted highest: only ever fires on a
       // real personalized tag/keyword overlap (see editorial-provider.ts), never generic.
-      editorial: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_EDITORIAL, 0.9)
+      editorial: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_EDITORIAL, 0.9),
+      // INSERIES-RECOMMENDATION-ENGINE-02 — secondary personalization factors (creator/cast/
+      // network/platform/language/country). Deliberately below genre/similar/editorial: each
+      // only ever fires on a real match with the user's own history (never generic), but
+      // genre affinity is still "um dos fatores mais importantes" per the ticket.
+      creator: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_CREATOR, 0.5),
+      cast: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_CAST, 0.45),
+      network: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_NETWORK, 0.35),
+      platform: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_PLATFORM, 0.3),
+      language: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_LANGUAGE, 0.25),
+      country: parseNumberFlag(rawEnv.RECOMMENDATION_WEIGHT_COUNTRY, 0.2)
     },
+    // INSERIES-RECOMMENDATION-ENGINE-02 — "reservar uma pequena parte das recomendacoes para
+    // tendencias... no maximo 20%": a hard cap on how many of the final ranked items may have
+    // "trending" as their primary (highest-weighted) provider, enforced post-scoring in
+    // engine.ts — a weight alone can't guarantee a percentage cap.
+    trendingMaxShare: 0.2,
     candidatePoolSize: parseNumberFlag(rawEnv.RECOMMENDATION_CANDIDATE_POOL_SIZE, 200),
     cacheTtlSeconds: parseNumberFlag(rawEnv.RECOMMENDATION_CACHE_TTL_SECONDS, 300)
   },

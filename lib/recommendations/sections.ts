@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { toSeriesSummary } from "@/lib/discovery/search";
-import { getRecommendationsForUser } from "@/lib/recommendations/service";
+import { getRecommendationsForUser, getDiscoveryRecommendations } from "@/lib/recommendations/service";
 import {
   countSmartList,
   listEmAlta,
@@ -35,10 +35,11 @@ const ITEMS_PER_SECTION = 12;
 const OVERFETCH = 36;
 
 export type RecommendationSection = {
-  category: RecommendationCategory;
+  category: RecommendationCategory | "discovery";
   title: string;
   description: string;
-  href: string;
+  /** Undefined for "Talvez voce goste" — a deliberately separate section with no dedicated "Ver mais" page (INSERIES-RECOMMENDATION-ENGINE-02). */
+  href?: string;
   items: Series[];
 };
 
@@ -52,7 +53,7 @@ function candidateToSeries(candidate: CandidateSeries): Series {
     status: candidate.status.replaceAll("_", " "),
     overview: "",
     genres: candidate.genres,
-    language: "",
+    language: candidate.language ?? "",
     platform: "",
     popularity: candidate.popularityScore ? candidate.popularityScore.toFixed(0) : "0",
     posterUrl: candidate.posterUrl ?? "",
@@ -64,10 +65,10 @@ function candidateToSeries(candidate: CandidateSeries): Series {
     watchProviders: candidate.watchProviders,
     keywords: candidate.keywords,
     logoUrl: candidate.logoUrl,
-    originCountry: [],
+    originCountry: candidate.originCountry,
     spokenLanguages: [],
-    createdBy: [],
-    networks: [],
+    createdBy: candidate.createdBy,
+    networks: candidate.networks,
     productionCompanies: [],
     productionCountries: [],
     numberOfSeasons: null,
@@ -170,6 +171,17 @@ export async function getRecommendationHomeSections(userId: string): Promise<Rec
     });
   }
 
+  async function addDiscovery() {
+    // INSERIES-RECOMMENDATION-ENGINE-02 — "Talvez voce goste": deliberately NOT mixed into
+    // "Recomendadas para voce" (that section's own diversity mix already reserves a small
+    // tail for variety) — this is the stronger, dedicated "fora da zona de conforto" shelf.
+    const result = await getDiscoveryRecommendations(userId, OVERFETCH);
+    if (!result.enabled) return;
+    const items = pickUnique(result.items.map((entry) => candidateToSeries(entry.series)), used, ITEMS_PER_SECTION);
+    if (!items.length) return;
+    sections.push({ category: "discovery", title: "Talvez voce goste", description: "Um pouco fora do que voce costuma assistir.", items });
+  }
+
   if (withHistory) {
     await addForYou();
     await addBecauseYouWatched();
@@ -178,6 +190,7 @@ export async function getRecommendationHomeSections(userId: string): Promise<Rec
     await addSmartList("upcoming", listEmExibicao);
     await addSmartList("popular", listMaisPopulares);
     await addSmartList("awards", listPremiadas);
+    await addDiscovery();
   } else {
     await addSmartList("trending", listEmAlta);
     await addSmartList("popular", listMaisPopulares);

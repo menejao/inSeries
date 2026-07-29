@@ -194,6 +194,14 @@ export const EyeOffIcon = createIcon(
   </>
 );
 
+export const ThumbsUpIcon = createIcon(
+  <path d="M7 10v10H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3Zm0 0 4.5-7a2 2 0 0 1 3.7 1.2L14.3 9H19a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 17.6 21H10a3 3 0 0 1-3-3" />
+);
+
+export const ThumbsDownIcon = createIcon(
+  <path d="M17 14V4h3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-3Zm0 0-4.5 7a2 2 0 0 1-3.7-1.2L9.7 15H5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 6.4 3H14a3 3 0 0 1 3 3" />
+);
+
 export const PencilIcon = createIcon(
   <path d="M4 20h4L19.5 8.5a2 2 0 0 0 0-2.8L18.3 4.5a2 2 0 0 0-2.8 0L4 16v4Z" />
 );

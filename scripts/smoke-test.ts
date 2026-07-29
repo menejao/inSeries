@@ -143,7 +143,12 @@ function countOccurrences(haystack: string, needle: string) {
 async function registerUser(jar: CookieJar, label: string) {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const email = `${label}-${suffix}@inseries.test`;
-  const username = `${label}${suffix}`;
+  // usernameSchema caps at 24 chars (lib/social/validation.ts) — a longer label + the full
+  // timestamp+random suffix silently overflows that and fails as "invalid_payload", which
+  // used to be mistaken for a real bug in whatever the label was testing. Truncate the LABEL
+  // (never the suffix) so the uniqueness guarantee stays intact.
+  const truncatedLabel = label.slice(0, Math.max(1, 24 - suffix.length));
+  const username = `${truncatedLabel}${suffix}`;
   const password = "senha1234";
 
   const register = await request(jar, "/api/auth/register", {
@@ -486,10 +491,27 @@ async function main() {
   // ---- Score + Collection Tags/Keywords, nunca generico ----
   const editorialContextBase = {
     userId: "smoke-editorial",
-    seedSeries: [{ id: "seed-1", title: "Seed", genres: [], collectionTags: ["Maratona"], keywords: ["dystopia"] }],
+    seedSeries: [
+      {
+        id: "seed-1",
+        title: "Seed",
+        genres: [],
+        collectionTags: ["Maratona"],
+        keywords: ["dystopia"],
+        createdBy: [],
+        networks: [],
+        castNames: [],
+        language: null,
+        originCountry: [],
+        watchProviders: [],
+        weight: 1
+      }
+    ],
     genreAffinity: { ranking: [], topGenre: null },
     genreCompletedCounts: new Map<string, number>(),
-    positivelyReviewedGenres: new Map<string, number>()
+    positivelyReviewedGenres: new Map<string, number>(),
+    suppressedGenres: new Map<string, number>(),
+    topGenres: []
   };
   const editorialCandidateMatch = {
     id: "match",
@@ -508,7 +530,12 @@ async function main() {
     watchProviders: [],
     logoUrl: null,
     discoveryScore: 90,
-    keywords: []
+    keywords: [],
+    createdBy: [],
+    networks: [],
+    castNames: [],
+    language: null,
+    originCountry: []
   };
   const editorialCandidateNoOverlap = { ...editorialCandidateMatch, id: "no-overlap", collectionTags: [], keywords: [], qualityScore: 100, discoveryScore: 100 };
   const editorialSignalsMatch = editorialProvider.run({ ...editorialContextBase, candidates: [editorialCandidateMatch, editorialCandidateNoOverlap] });

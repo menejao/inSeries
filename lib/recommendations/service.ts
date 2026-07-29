@@ -1,6 +1,6 @@
 import { config } from "@/lib/config";
 import { isFeatureEnabled } from "@/lib/config/flags";
-import { computeRecommendations } from "@/lib/recommendations/engine";
+import { computeRecommendations, computeDiscoveryRecommendations } from "@/lib/recommendations/engine";
 import { createRecommendationCache } from "@/lib/recommendations/cache";
 import {
   incrementRecommendationCacheHit,
@@ -41,6 +41,15 @@ export async function getRecommendationsForUser(userId: string, options: Recomme
 
   cache.set(userId, result);
   return result;
+}
+
+/** "Talvez voce goste" (INSERIES-RECOMMENDATION-ENGINE-02) — deliberately not cached with the main result (small, separate query, not worth its own cache key churn on every mutation). */
+export async function getDiscoveryRecommendations(userId: string, limit = 10): Promise<RecommendationResult> {
+  if (!isFeatureEnabled("recommendations")) {
+    return { generatedAt: new Date().toISOString(), fromCache: false, enabled: false, items: [] };
+  }
+  const items = await computeDiscoveryRecommendations(userId, limit);
+  return { generatedAt: new Date().toISOString(), fromCache: false, enabled: true, items };
 }
 
 /** Exposed for admin/observability — never used to serve a request's data. */

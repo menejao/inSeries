@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { Carousel, CarouselItem } from "@/components/media/carousel";
-import { SeriesPosterCard } from "@/components/media/series-poster-card";
+import { RecommendationCarouselItems } from "@/components/recommendations/recommendation-carousel-items";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import type { RecommendationSection } from "@/lib/recommendations/sections";
 
@@ -13,19 +12,15 @@ export function RecommendationRow({ section, priority = false }: { section: Reco
           <h2 className="section-title">{section.title}</h2>
           {section.description ? <p className="section-copy">{section.description}</p> : null}
         </div>
-        <Link href={section.href} className="link-accent flex shrink-0 items-center gap-1 text-sm">
-          Ver mais
-          <ChevronRightIcon className="h-4 w-4" />
-        </Link>
+        {section.href ? (
+          <Link href={section.href} className="link-accent flex shrink-0 items-center gap-1 text-sm">
+            Ver mais
+            <ChevronRightIcon className="h-4 w-4" />
+          </Link>
+        ) : null}
       </div>
 
-      <Carousel>
-        {section.items.map((series, index) => (
-          <CarouselItem key={series.id}>
-            <SeriesPosterCard series={series} priority={priority && index < 4} />
-          </CarouselItem>
-        ))}
-      </Carousel>
+      <RecommendationCarouselItems items={section.items} priority={priority} />
     </section>
   );
 }

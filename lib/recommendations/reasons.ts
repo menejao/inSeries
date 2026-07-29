@@ -37,3 +37,33 @@ export function editorialReason(matchedTag: string | undefined, matchedKeyword: 
   if (matchedKeyword) return `Porque voce assiste series sobre "${matchedKeyword}".`;
   return "Selecionado com base no seu historico.";
 }
+
+// INSERIES-RECOMMENDATION-ENGINE-02 — new affinity factors, each with its own specific reason
+// (never a generic "selected for you" — the ticket explicitly forbids that).
+export function creatorReason(creator: string): string {
+  return `De ${creator}, criador(a) de series que voce acompanha.`;
+}
+
+export function castReason(actor: string): string {
+  return `Com ${actor}, do elenco de series que voce assistiu.`;
+}
+
+export function networkReason(network: string): string {
+  return `Porque voce gosta de series da ${network}.`;
+}
+
+export function platformReason(provider: string): string {
+  return `Disponivel na ${provider}, onde voce mais assiste.`;
+}
+
+export function languageReason(language: string): string {
+  return `No idioma que voce mais assiste (${language}).`;
+}
+
+export function countryReason(country: string): string {
+  return `De um pais que voce costuma assistir (${country}).`;
+}
+
+export function discoveryReason(genre: string): string {
+  return `Uma descoberta fora do seu genero habitual — ${genre}.`;
+}

@@ -21,7 +21,13 @@ export const genreProvider: RecommendationProvider = {
       const matches = candidate.genres.filter((genre) => affinityByGenre.has(genre));
       if (matches.length === 0) continue;
 
-      const score = Math.min(100, matches.reduce((sum, genre) => sum + (affinityByGenre.get(genre) ?? 0), 0));
+      const rawScore = Math.min(100, matches.reduce((sum, genre) => sum + (affinityByGenre.get(genre) ?? 0), 0));
+
+      // INSERIES-RECOMMENDATION-ENGINE-02 — "abandonou anime -> reduzir recomendacoes de
+      // anime": average suppression across every matched genre (1 = no penalty).
+      const suppression = matches.reduce((sum, genre) => sum + (context.suppressedGenres.get(genre) ?? 1), 0) / matches.length;
+      const score = Math.round(rawScore * suppression);
+      if (score <= 0) continue;
 
       const bestGenre = [...matches].sort((a, b) => (affinityByGenre.get(b) ?? 0) - (affinityByGenre.get(a) ?? 0))[0];
       const completedCount = context.genreCompletedCounts.get(bestGenre) ?? 0;

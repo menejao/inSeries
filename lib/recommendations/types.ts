@@ -1,6 +1,18 @@
 import type { GenreStats } from "@/lib/analytics";
 
-export type RecommendationProviderId = "genre" | "similar" | "popular" | "rating" | "trending" | "editorial";
+export type RecommendationProviderId =
+  | "genre"
+  | "similar"
+  | "popular"
+  | "rating"
+  | "trending"
+  | "editorial"
+  | "creator"
+  | "cast"
+  | "network"
+  | "platform"
+  | "language"
+  | "country";
 
 /** The catalog fields every provider needs — fetched once by the engine, never re-queried per provider. */
 export type CandidateSeries = {
@@ -24,9 +36,25 @@ export type CandidateSeries = {
   // INSERIES-DASHBOARD-PREMIUM-01 (Fase 4) — read by editorialProvider (providers/editorial-provider.ts).
   discoveryScore: number | null;
   keywords: string[];
+  // INSERIES-RECOMMENDATION-ENGINE-02 — the remaining affinity factors from the ticket
+  // (criadores/elenco/emissoras/plataformas/idioma/pais), all already synced onto Series.
+  createdBy: string[];
+  networks: string[];
+  castNames: string[];
+  language: string | null;
+  originCountry: string[];
 };
 
-/** One "seed" series the user has engaged with (completed or currently watching) — used by SimilarSeriesProvider and editorialProvider. */
+/**
+ * One "seed" series the user has engaged with (completed or currently watching), used by
+ * SimilarSeriesProvider, editorialProvider and every new affinity provider below.
+ *
+ * `weight` (INSERIES-RECOMMENDATION-ENGINE-02) — "dar peso maior para series avaliadas com
+ * notas altas": 0 for a 1-star review (never used as a positive signal), scaling up to 2x for
+ * a 5-star review; unreviewed COMPLETED/WATCHING series get the neutral default (1). This is
+ * the single place that encodes "rating > just watched" — every provider that reads seedSeries
+ * inherits it for free instead of re-deriving its own rating logic.
+ */
 export type SeedSeries = {
   id: string;
   title: string;
@@ -34,6 +62,13 @@ export type SeedSeries = {
   // INSERIES-DASHBOARD-PREMIUM-01 (Fase 4) — the user's own collectionTags/keywords "fingerprint", read by editorialProvider.
   collectionTags: string[];
   keywords: string[];
+  createdBy: string[];
+  networks: string[];
+  castNames: string[];
+  language: string | null;
+  originCountry: string[];
+  watchProviders: string[];
+  weight: number;
 };
 
 /**
@@ -50,6 +85,14 @@ export type RecommendationContext = {
   genreCompletedCounts: Map<string, number>;
   /** genre -> number of the user's own reviews rating >= 4/5 for a series with that genre ("positive reviews"). */
   positivelyReviewedGenres: Map<string, number>;
+  /**
+   * genre -> 0..1 suppression multiplier from abandoned series (INSERIES-RECOMMENDATION-ENGINE-02
+   * — "abandonou anime -> reduzir recomendacoes de anime"), applied by genreProvider. 1 = no
+   * suppression, 0 = fully suppressed. Also folds in DISLIKE feedback on the same genre.
+   */
+  suppressedGenres: Map<string, number>;
+  /** The user's top 3 genres by affinity — used by the Discovery section to pick candidates deliberately outside this set. */
+  topGenres: string[];
 };
 
 export type ProviderSignal = {
