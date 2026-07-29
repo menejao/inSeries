@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { ProfileDetailsForm } from "@/components/social/profile-details-form";
 import { ProfilePrivacyForm } from "@/components/social/profile-privacy-form";
 import { requireUser } from "@/lib/auth/server";
@@ -78,13 +79,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       ) : null}
 
       {tab === "aparencia" ? (
-        <Card className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Aparencia</h2>
-            <p className="mt-1 text-sm text-muted">Alterne entre tema claro e escuro.</p>
-          </div>
-          <ThemeToggle />
-        </Card>
+        <div className="space-y-4">
+          <Card className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">Aparencia</h2>
+              <p className="mt-1 text-sm text-muted">Alterne entre tema claro e escuro.</p>
+            </div>
+            <ThemeToggle />
+          </Card>
+
+          <Card className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">Atalho na tela inicial</h2>
+              <p className="mt-1 text-sm text-muted">Instale o inSeries como app no seu celular, com icone proprio.</p>
+            </div>
+            <InstallAppButton />
+          </Card>
+        </div>
       ) : null}
 
       {tab === "conta" ? (
