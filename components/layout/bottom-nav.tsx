@@ -52,7 +52,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label="Navegacao principal"
-        className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 rounded-[2rem] border border-border bg-surface-strong/95 p-1.5 shadow-raised backdrop-blur-md lg:hidden"
+        className="fixed inset-x-3 bottom-[calc(0.75rem_+_env(safe-area-inset-bottom))] z-40 rounded-[2rem] border border-border bg-surface-strong/95 p-1.5 shadow-raised backdrop-blur-md lg:hidden"
       >
         <div className="grid grid-cols-5 gap-0.5 text-center">
           {PRIMARY_NAV.map((item) => {

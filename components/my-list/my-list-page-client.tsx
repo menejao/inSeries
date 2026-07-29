@@ -68,7 +68,7 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
   }
 
   return (
-    <div className="space-y-8 pb-24">
+    <div className="space-y-8">
       <MyListToolbar
         filters={filters}
         onFiltersChange={setFilters}

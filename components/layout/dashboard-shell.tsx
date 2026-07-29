@@ -17,7 +17,7 @@ export async function DashboardShell({ children }: PropsWithChildren) {
       {/* min-w-0: sem isso, qualquer scroller horizontal interno (tabs rolaveis etc.) infla a coluna flex e cria scroll horizontal na pagina inteira. */}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <DashboardHeader />
-        <main id="main-content" className="flex-1 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8 lg:pb-10">
+        <main id="main-content" className="flex-1 px-4 pb-[calc(6rem_+_env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8 lg:pb-10">
           <div className="mx-auto w-full max-w-6xl animate-fade-in">{children}</div>
         </main>
       </div>
