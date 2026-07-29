@@ -6,6 +6,7 @@ import { AgendaSummary } from "@/components/dashboard/agenda-summary";
 import { MarkAllWatchedButton } from "@/components/dashboard/mark-all-watched-button";
 import { DashboardActivityRow } from "@/components/dashboard/dashboard-activity-row";
 import { ContinueWatchingSection } from "@/components/continue-watching/continue-watching-section";
+import { RecapWrappedBanner } from "@/components/dashboard/recap-wrapped-banner";
 import { AlertCircleIcon, CalendarIcon, FilmIcon } from "@/components/ui/icons";
 import { getDashboardCalendarData } from "@/lib/calendar/queries";
 import { getContinueWatchingForUser } from "@/lib/continue-watching";
@@ -14,6 +15,7 @@ import { dedupeDashboardEpisodes } from "@/lib/dashboard/dedupe";
 import { splitContinueWatchingByProgress } from "@/lib/dashboard/continue-watching-priority";
 import { groupOverdueBySeries } from "@/lib/dashboard/group-by-series";
 import { groupUpcomingForAgenda, type AgendaGroupKey } from "@/lib/dashboard/agenda";
+import { canAccessRecapWrapped } from "@/lib/recap/window";
 import { cn } from "@/lib/utils";
 import type { User } from "@prisma/client";
 
@@ -76,7 +78,7 @@ function getContextualMessage({
  *   isso como opcional ("o Dashboard PODE possuir apenas um pequeno resumo semanal").
  * - Fase 10: "Atividade recente" reintroduzida, versao minima (sem agrupamento, max 3 itens).
  */
-export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" | "lastLoginAt"> }) {
+export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" | "lastLoginAt" | "role"> }) {
   const lastVisitAt = user.lastLoginAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
   const firstName = user.name.split(" ")[0];
 
@@ -112,12 +114,16 @@ export async function DashboardHome({ user }: { user: Pick<User, "id" | "name" |
     nextAgendaGroupKey: agendaGroups[0]?.key ?? null
   });
 
+  const recapWrappedAvailable = canAccessRecapWrapped(user.role === "ADMIN");
+
   return (
     <div className="space-y-8">
       <div>
         <p className="eyebrow">Ola, {firstName}</p>
         <p className="section-copy mt-1 text-base text-ink sm:text-lg">{contextualMessage}</p>
       </div>
+
+      {recapWrappedAvailable ? <RecapWrappedBanner /> : null}
 
       <ContinueWatchingSection continueWatching={continueWatching} />
 

@@ -107,6 +107,7 @@ const envSchema = z.object({
   FEATURE_FEED: optionalNonEmpty(),
   FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty(),
   FEATURE_RECAP: optionalNonEmpty(),
+  FEATURE_RECAP_WRAPPED: optionalNonEmpty(),
   FEATURE_GAMIFICATION: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_GENRE: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_SIMILAR: optionalNonEmpty(),
@@ -122,7 +123,10 @@ const envSchema = z.object({
   RECOMMENDATION_WEIGHT_COUNTRY: optionalNonEmpty(),
   RECOMMENDATION_CANDIDATE_POOL_SIZE: optionalNonEmpty(),
   RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty(),
-  STATS_CACHE_TTL_SECONDS: optionalNonEmpty()
+  STATS_CACHE_TTL_SECONDS: optionalNonEmpty(),
+  RECAP_WINDOW_START: optionalNonEmpty(),
+  RECAP_WINDOW_END: optionalNonEmpty(),
+  RECAP_WRAPPED_CACHE_TTL_SECONDS: optionalNonEmpty()
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -403,6 +407,15 @@ export const config = {
   stats: {
     cacheTtlSeconds: parseNumberFlag(rawEnv.STATS_CACHE_TTL_SECONDS, 86400)
   },
+  // INSERIES-RECAP-ENGINE-01 — "acontece apenas uma vez por ano... periodo definido pelo
+  // sistema". `windowStart`/`windowEnd` are "MM-DD" (no year — the window repeats every year).
+  // The window is allowed to wrap the year boundary (e.g. Dec 1 -> Jan 31), which is also how
+  // `isRecapWindowOpen` in lib/recap/window.ts decides which year is being recapped.
+  recapWrapped: {
+    windowStart: rawEnv.RECAP_WINDOW_START ?? "12-01",
+    windowEnd: rawEnv.RECAP_WINDOW_END ?? "01-31",
+    cacheTtlSeconds: parseNumberFlag(rawEnv.RECAP_WRAPPED_CACHE_TTL_SECONDS, 86400)
+  },
   featureFlags: {
     // Was a placeholder (default off) before this sprint implemented the
     // engine — now a shipped, tested feature, so it defaults on like the
@@ -419,6 +432,9 @@ export const config = {
     // Recap reuses the (already shipped, tested) Analytics Layer as its only
     // data source — same "ship it enabled" reasoning as recommendations above.
     recap: parseBooleanFlag(rawEnv.FEATURE_RECAP, true),
+    // INSERIES-RECAP-ENGINE-01 — the cinematic annual Wrapped, distinct from the always-on
+    // monthly/yearly recap archive above (config.featureFlags.recap).
+    recapWrapped: parseBooleanFlag(rawEnv.FEATURE_RECAP_WRAPPED, true),
     // Same reasoning again: shipped and tested this sprint, defaults on.
     gamification: parseBooleanFlag(rawEnv.FEATURE_GAMIFICATION, true)
   }

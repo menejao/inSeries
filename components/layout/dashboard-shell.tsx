@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from "react";
 import { getCurrentUser } from "@/lib/auth/server";
 import { canAccessAdminWorkspace } from "@/lib/admin/rbac";
+import { canAccessRecapWrapped } from "@/lib/recap/window";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -10,10 +11,14 @@ import { CommandPalette } from "@/components/search/command-palette";
 export async function DashboardShell({ children }: PropsWithChildren) {
   const user = await getCurrentUser();
   const isAdmin = user ? canAccessAdminWorkspace(user.role) : false;
+  // INSERIES-RECAP-ENGINE-01 — "fora desse periodo, o menu Recap nao deve existir": computed
+  // once here so both Sidebar and BottomNav (which don't otherwise know about the user's role
+  // or the current date) can hide the entry identically.
+  const recapWrappedAvailable = user ? canAccessRecapWrapped(user.role === "ADMIN") : false;
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isAdmin={isAdmin} />
+      <Sidebar isAdmin={isAdmin} recapWrappedAvailable={recapWrappedAvailable} />
       {/* min-w-0: sem isso, qualquer scroller horizontal interno (tabs rolaveis etc.) infla a coluna flex e cria scroll horizontal na pagina inteira. */}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <DashboardHeader />
@@ -21,7 +26,7 @@ export async function DashboardShell({ children }: PropsWithChildren) {
           <div className="mx-auto w-full max-w-6xl animate-fade-in">{children}</div>
         </main>
       </div>
-      {user ? <BottomNav /> : null}
+      {user ? <BottomNav recapWrappedAvailable={recapWrappedAvailable} /> : null}
       {user ? <CommandPalette /> : null}
     </div>
   );

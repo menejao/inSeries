@@ -20,6 +20,7 @@ import { CalendarIcon, CompassIcon, FilmIcon, SparklesIcon, StarIcon, TrophyIcon
 import { requireUser } from "@/lib/auth/server";
 import { getStatsPageData } from "@/lib/stats";
 import { getUserAchievementsOverview } from "@/lib/gamification";
+import { canAccessRecapWrapped } from "@/lib/recap/window";
 import { formatDate } from "@/lib/utils";
 
 function monthLabel(key: string) {
@@ -34,6 +35,7 @@ export default async function StatsPage() {
 
   const level = achievementsOutcome.enabled ? achievementsOutcome.overview.level.level : 1;
   const points = achievementsOutcome.enabled ? achievementsOutcome.overview.points : 0;
+  const recapWrappedAvailable = canAccessRecapWrapped(user.role === "ADMIN");
 
   const dayCounts = Object.fromEntries(timeline.perDay.map((bucket) => [bucket.key, bucket.count]));
   const recentMonths = timeline.perMonth.slice(-9).map((bucket) => ({ label: monthLabel(bucket.key), value: bucket.count }));
@@ -234,10 +236,14 @@ export default async function StatsPage() {
           <Card className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-semibold text-ink">Quer ver o resumo completo do ano?</h3>
-              <p className="text-xs text-subtle">Seu Wrapped anual reune tudo o que voce assistiu em telas sequenciais, prontas pra compartilhar.</p>
+              <p className="text-xs text-subtle">
+                {recapWrappedAvailable
+                  ? "Seu Recap anual reune tudo o que voce assistiu numa experiencia cinematografica, pronta pra compartilhar."
+                  : "O arquivo mensal e anual com tudo o que voce assistiu."}
+              </p>
             </div>
-            <Link href="/me/recap">
-              <Button variant="secondary">Ver meu Wrapped</Button>
+            <Link href={recapWrappedAvailable ? "/recap" : "/me/recap"}>
+              <Button variant="secondary">{recapWrappedAvailable ? "Ver meu Recap" : "Ver arquivo de recaps"}</Button>
             </Link>
           </Card>
         </>

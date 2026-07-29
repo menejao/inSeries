@@ -38,17 +38,22 @@ const ITEMS: SidebarItem[] = [
   { href: "/explore", label: "Explorar", icon: UserIcon },
   { href: "/recommendations", label: "Recomendacoes", icon: CompassIcon },
   { href: "/me/stats", label: "Estatisticas", icon: ChartIcon },
-  { href: "/me/recap", label: "Recap", icon: SparklesIcon },
   { href: "/me/achievements", label: "Conquistas", icon: TrophyIcon },
   { href: "/lists", label: "Listas", icon: ListIcon }
 ];
+
+// INSERIES-RECAP-ENGINE-01 — "fora desse periodo o menu Recap nao deve existir": kept out of
+// the static ITEMS array entirely (not just visually hidden) and only spliced in when
+// `recapWrappedAvailable` is true, right after "Dashboard" — same prominent slot the ticket's
+// "destaque no menu" asks for.
+const RECAP_ITEM: SidebarItem = { href: "/recap", label: "Recap", icon: SparklesIcon };
 
 const ADMIN_ITEM: SidebarItem = { href: "/admin", label: "Admin", icon: ShieldIcon };
 
 const COLLAPSE_STORAGE_KEY = "inseries-sidebar-collapsed";
 
 /** Fase 5/13 — fixed left on desktop (lg+), collapsible to icon-only, persisted. Never rendered for visitors (Fase 5). */
-export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
+export function Sidebar({ isAdmin, recapWrappedAvailable }: { isAdmin: boolean; recapWrappedAvailable: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -72,7 +77,8 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
     });
   }
 
-  const items = isAdmin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
+  const baseItems = recapWrappedAvailable ? [ITEMS[0], RECAP_ITEM, ...ITEMS.slice(1)] : ITEMS;
+  const items = isAdmin ? [...baseItems, ADMIN_ITEM] : baseItems;
 
   return (
     <aside
@@ -105,6 +111,11 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
             >
               <item.icon className="h-5 w-5 shrink-0" />
               {!collapsed ? <span className="truncate">{item.label}</span> : null}
+              {!collapsed && item.href === "/recap" ? (
+                <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
+                  Novo
+                </span>
+              ) : null}
             </Link>
           );
         })}

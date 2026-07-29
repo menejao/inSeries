@@ -39,14 +39,18 @@ const MORE_NAV: NavItem[] = [
   { href: "/lists", label: "Listas", icon: ListIcon },
   { href: "/recommendations", label: "Recomendacoes", icon: CompassIcon },
   { href: "/me/stats", label: "Estatisticas", icon: ChartIcon },
-  { href: "/me/recap", label: "Recap", icon: SparklesIcon },
   { href: "/me/achievements", label: "Conquistas", icon: TrophyIcon }
 ];
 
-export function BottomNav() {
+// INSERIES-RECAP-ENGINE-01 — same "doesn't exist outside the window" rule as the Sidebar, kept
+// out of MORE_NAV entirely and spliced in first only when available.
+const RECAP_ITEM: NavItem = { href: "/recap", label: "Recap", icon: SparklesIcon };
+
+export function BottomNav({ recapWrappedAvailable }: { recapWrappedAvailable: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const isMoreActive = MORE_NAV.some((item) => isNavItemActive(pathname, item.href));
+  const moreItems = recapWrappedAvailable ? [RECAP_ITEM, ...MORE_NAV] : MORE_NAV;
+  const isMoreActive = moreItems.some((item) => isNavItemActive(pathname, item.href));
 
   return (
     <>
@@ -90,7 +94,7 @@ export function BottomNav() {
 
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Mais opcoes">
         <div className="grid grid-cols-2 gap-3">
-          {MORE_NAV.map((item) => {
+          {moreItems.map((item) => {
             const isActive = isNavItemActive(pathname, item.href);
             return (
               <Link
@@ -103,7 +107,14 @@ export function BottomNav() {
                   isActive ? "border-primary/40 bg-primary/10 text-primary-text" : "text-ink hover:border-border-strong hover:bg-surface"
                 )}
               >
-                <item.icon className="h-5 w-5" />
+                <div className="flex w-full items-center justify-between">
+                  <item.icon className="h-5 w-5" />
+                  {item.href === "/recap" ? (
+                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
+                      Novo
+                    </span>
+                  ) : null}
+                </div>
                 <span className="text-sm font-semibold">{item.label}</span>
               </Link>
             );

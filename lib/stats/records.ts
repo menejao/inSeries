@@ -1,7 +1,7 @@
 import type { AnalyticsDataset, WatchedEpisodeRecord } from "@/lib/analytics/types";
 import type { FunRecords } from "@/lib/stats/types";
 
-const WEEKDAY_LABELS = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
+export const WEEKDAY_LABELS = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
 // A new "session" starts whenever the gap since the previous episode exceeds this — no
 // session concept exists anywhere else in the app, so this is a deliberate, documented
 // heuristic (not derived from any persisted field).
