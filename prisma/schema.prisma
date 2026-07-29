@@ -139,14 +139,11 @@ model User {
   showLists              Boolean               @default(true)
   showReviews            Boolean               @default(true)
   showActivity           Boolean               @default(true)
-  // INSERIES-SUPPORTER-SYSTEM-01 — cosmetic-only supporter status. `isSupporter` is the
-  // single flag every benefit (badge/name highlight/beta access/polls) reads; nothing
-  // essential to the app is ever gated behind it (ticket: "nunca bloquear funcionalidades
-  // essenciais"). No payment gateway is integrated yet — contributions are self-reported
-  // (see SupporterContribution) since PIX confirmation has no webhook to verify against in
-  // this first version; admins can revoke `isSupporter` manually if ever abused.
-  isSupporter            Boolean               @default(false)
-  supporterSince         DateTime?
+  // INSERIES-SUPPORTER-ACTIVATION-01 — replaced the old boolean `isSupporter` with a proper
+  // UserSupporter record (status/startedAt/expiresAt): "Nao utilizar apenas um campo
+  // booleano". Every benefit reads UserSupporter.status === ACTIVE, never a field on User
+  // directly. `showSupporterBadge`/banner/frame remain here since they're cosmetic
+  // *preferences*, not eligibility — a user can be an inactive ex-supporter and keep them set.
   showSupporterBadge     Boolean               @default(true)
   supporterBannerStyle   String?
   supporterFrameStyle    String?
@@ -175,7 +172,8 @@ model User {
   activityComments       ActivityComment[]
   importJobs             ImportJob[]
   recommendationFeedback RecommendationFeedback[]
-  supporterContributions SupporterContribution[]
+  supportRequests        SupportRequest[]
+  supporterStatus        UserSupporter?
   supporterPollVotes     SupporterPollVote[]
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
@@ -706,29 +704,62 @@ model RecommendationFeedback {
   @@index([userId, action])
 }
 
-/// INSERIES-SUPPORTER-SYSTEM-01 — one row per PIX contribution attempt. `status` starts at
-/// PENDING when the payload/QR is generated, moves to CONFIRMED when the user self-reports
-/// having paid (no PSP webhook exists in this first version to verify automatically — see
-/// User.isSupporter doc comment). `provider` is a literal "PIX" today on purpose, not an enum,
-/// so adding card/boleto/PayPal later is a new value, never a schema migration on this column.
-enum SupporterContributionStatus {
-  PENDING
-  CONFIRMED
+/// INSERIES-SUPPORTER-ACTIVATION-01 — one row per support attempt, from PIX generation through
+/// manual admin review. Supersedes SupporterContribution's self-reported CONFIRMED status:
+/// receipt upload only ever moves this to AWAITING_REVIEW, never grants anything by itself —
+/// only `approveSupportRequest` (admin action) creates/extends the UserSupporter record.
+enum SupportRequestStatus {
+  PENDING_PAYMENT
+  AWAITING_REVIEW
+  APPROVED
+  REJECTED
   CANCELLED
 }
 
-model SupporterContribution {
-  id          String                       @id @default(cuid())
+model SupportRequest {
+  id          String               @id @default(cuid())
   userId      String
   amountCents Int
-  provider    String                       @default("PIX")
-  status      SupporterContributionStatus  @default(PENDING)
-  pixTxId     String                       @unique
-  user        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime                     @default(now())
-  confirmedAt DateTime?
+  provider    String               @default("PIX")
+  status      SupportRequestStatus @default(PENDING_PAYMENT)
+  pixTxId     String               @unique
+  // Data-URL of the uploaded receipt image — no object storage is provisioned in this
+  // environment yet, so the (small, size-capped) image is stored inline rather than pulling in
+  // a new external dependency for a first version. Revisit with real blob storage before
+  // public launch if receipt volume grows.
+  receiptUrl  String?
+  notes       String?
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+enum UserSupporterStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+/// INSERIES-SUPPORTER-ACTIVATION-01 — the single source of truth every benefit reads
+/// (`status === ACTIVE`), one row per user (renewals extend `expiresAt` in place, never insert
+/// a second row — see lib/supporters/status.ts for the "never lose remaining days" renewal math
+/// and the lazy expire-on-read that flips ACTIVE -> EXPIRED once `expiresAt` has passed).
+model UserSupporter {
+  id               String              @id @default(cuid())
+  userId           String              @unique
+  status           UserSupporterStatus @default(ACTIVE)
+  startedAt        DateTime
+  expiresAt        DateTime
+  source           String              @default("PIX")
+  supportRequestId String?
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 }
 
 /// Supporters-only polls ("Participacao" — ticket). `options` is a JSON string array (no

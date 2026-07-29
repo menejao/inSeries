@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getApiUser } from "@/lib/auth/server";
 import { withApiObservability } from "@/lib/http/api-handler";
 import { canAccessSupporterProgram } from "@/lib/supporters/access";
+import { getSupporterStatus } from "@/lib/supporters/status";
 import { voteOnPoll } from "@/lib/supporters/polls";
 
 const voteSchema = z.object({ optionIndex: z.number().int().min(0) });
@@ -11,6 +12,9 @@ async function voteHandler(request: Request, { params }: { params: Promise<{ id:
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!canAccessSupporterProgram(user.role)) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const status = await getSupporterStatus(user.id);
+  if (!status.active) return NextResponse.json({ error: "not_a_supporter" }, { status: 403 });
 
   const { id } = await params;
   const body = await request.json();

@@ -31,7 +31,7 @@ type SeriesReview = {
   userId: string;
   createdAt: Date;
   updatedAt: Date;
-  user: { username: string; name: string; avatarUrl: string | null; isSupporter?: boolean; showSupporterBadge?: boolean };
+  user: { username: string; name: string; avatarUrl: string | null; isActiveSupporter?: boolean; showSupporterBadge?: boolean };
   comments: CommentItem[];
 };
 
@@ -145,7 +145,7 @@ export function ReviewsSection({
                 const isOwn = viewerId === review.userId;
                 const spoilerHidden = review.containsSpoiler && !revealedSpoilers.has(review.id);
                 const threadCount = countThread(review.comments);
-                const authorSupporter = Boolean(review.user.isSupporter && review.user.showSupporterBadge);
+                const authorSupporter = Boolean(review.user.isActiveSupporter && review.user.showSupporterBadge);
 
                 return (
                   <Card

@@ -15,7 +15,7 @@ type ProfileHeaderProfile = {
   avatarUrl: string | null;
   createdAt: Date;
   isProfilePrivate: boolean;
-  isSupporter?: boolean;
+  isActiveSupporter?: boolean;
   showSupporterBadge?: boolean;
 };
 
@@ -37,7 +37,7 @@ export function ProfileHeader({ profile, stats, action }: { profile: ProfileHead
       ]
     : [];
 
-  const showBadge = Boolean(profile.isSupporter && profile.showSupporterBadge);
+  const showBadge = Boolean(profile.isActiveSupporter && profile.showSupporterBadge);
 
   return (
     <Card className="space-y-5">

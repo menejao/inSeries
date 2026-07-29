@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getApiUser } from "@/lib/auth/server";
 import { withApiObservability } from "@/lib/http/api-handler";
 import { canAccessSupporterProgram } from "@/lib/supporters/access";
-import { startContribution } from "@/lib/supporters/service";
+import { startSupportRequest } from "@/lib/supporters/service";
 
 const contributeSchema = z.object({ amountCents: z.number().int().min(100).max(100000) });
 
@@ -16,10 +16,10 @@ async function contributeHandler(request: Request) {
   const payload = contributeSchema.safeParse(body);
   if (!payload.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
 
-  const result = await startContribution(user.id, payload.data.amountCents);
+  const result = await startSupportRequest(user.id, payload.data.amountCents);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
-  return NextResponse.json({ data: { contributionId: result.contributionId, pixPayload: result.pixPayload } });
+  return NextResponse.json({ data: { supportRequestId: result.supportRequestId, pixPayload: result.pixPayload } });
 }
 
 export const POST = withApiObservability("support.contribute", contributeHandler);

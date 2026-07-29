@@ -13,7 +13,6 @@ const publicSelect = {
   showLists: true,
   showReviews: true,
   showActivity: true,
-  isSupporter: true,
   showSupporterBadge: true,
   _count: { select: { followers: true, following: true } }
 } as const;

@@ -7,27 +7,58 @@ import { SupporterBadge } from "@/components/supporters/supporter-badge";
 import { SupporterPreferences } from "@/components/supporters/supporter-preferences";
 import { requireUser } from "@/lib/auth/server";
 import { canAccessSupporterProgram } from "@/lib/supporters/access";
+import { getSupporterStatus } from "@/lib/supporters/status";
+import { getLatestSupportRequest } from "@/lib/supporters/service";
+import { buildPixPayload } from "@/lib/supporters/pix";
 import { listActivePolls } from "@/lib/supporters/polls";
 import { prisma } from "@/lib/db/prisma";
 import { config } from "@/lib/config";
 
+const RESUMABLE_STATUSES = new Set(["PENDING_PAYMENT", "AWAITING_REVIEW"]);
+
 /**
- * INSERIES-SUPPORTER-SYSTEM-01 — "Apoie o inSeries": comunicacao simples/acolhedora, nunca
+ * INSERIES-SUPPORTER-ACTIVATION-01 — "Apoie o inSeries": comunicacao simples/acolhedora, nunca
  * menciona custos/servidores/metas financeiras (foco na comunidade). Admin-only por enquanto
  * (canAccessSupporterProgram) — usuarios comuns recebem 404 real, mesma postura de
  * /recap (INSERIES-RECAP-ENGINE-01): quando `config.featureFlags.supporterPublicLaunch` virar
  * true, essa mesma pagina abre pra todo mundo sem nenhuma outra mudanca.
+ *
+ * Ativacao dos beneficios NUNCA acontece aqui — so via aprovacao manual de um administrador
+ * (ver lib/supporters/admin.ts). Esta pagina so cria a solicitacao e recebe o comprovante.
  */
 export default async function SupportPage() {
   const user = await requireUser();
   if (!canAccessSupporterProgram(user.role)) notFound();
 
-  const fullUser = await prisma.user.findUniqueOrThrow({
-    where: { id: user.id },
-    select: { isSupporter: true, showSupporterBadge: true, supporterBannerStyle: true, supporterFrameStyle: true }
-  });
+  const [fullUser, supporterStatus, latestRequest] = await Promise.all([
+    prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { showSupporterBadge: true, supporterBannerStyle: true, supporterFrameStyle: true }
+    }),
+    getSupporterStatus(user.id),
+    getLatestSupportRequest(user.id)
+  ]);
 
-  const polls = fullUser.isSupporter ? await listActivePolls(user.id) : [];
+  const polls = supporterStatus.active ? await listActivePolls(user.id) : [];
+
+  // A resumable request re-derives its PIX payload deterministically (amountCents + pixTxId are
+  // persisted; the payload itself never is) so a page reload never loses the in-progress QR code.
+  const resumableRequest =
+    latestRequest && RESUMABLE_STATUSES.has(latestRequest.status)
+      ? {
+          id: latestRequest.id,
+          status: latestRequest.status as "PENDING_PAYMENT" | "AWAITING_REVIEW",
+          amountCents: latestRequest.amountCents,
+          receiptUrl: latestRequest.receiptUrl,
+          pixPayload: buildPixPayload({
+            pixKey: config.supporters.pixKey,
+            receiverName: config.supporters.receiverName,
+            receiverCity: config.supporters.receiverCity,
+            amount: latestRequest.amountCents / 100,
+            txId: latestRequest.pixTxId
+          })
+        }
+      : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -42,14 +73,14 @@ export default async function SupportPage() {
           O inSeries e um projeto independente que evolui constantemente. Se voce gosta da plataforma e deseja apoiar seu
           crescimento, torne-se um Apoiador e faca parte dessa jornada.
         </p>
-        {fullUser.isSupporter ? (
+        {supporterStatus.active ? (
           <div className="flex justify-center">
             <SupporterBadge />
           </div>
         ) : null}
       </div>
 
-      <PixCheckout />
+      <PixCheckout resumableRequest={resumableRequest} />
 
       <Card className="space-y-4">
         <h2 className="text-lg font-semibold text-ink">Beneficios</h2>
@@ -63,7 +94,7 @@ export default async function SupportPage() {
         <p className="text-xs text-subtle">Todos os valores recebem exatamente os mesmos beneficios — nunca bloqueamos funcionalidades essenciais da plataforma.</p>
       </Card>
 
-      {fullUser.isSupporter ? (
+      {supporterStatus.active ? (
         <>
           <SupporterPreferences
             showSupporterBadge={fullUser.showSupporterBadge}

@@ -17,7 +17,7 @@ type CommentUser = {
   name: string;
   username: string;
   avatarUrl: string | null;
-  isSupporter?: boolean;
+  isActiveSupporter?: boolean;
   showSupporterBadge?: boolean;
 };
 export type ReplyItem = { id: string; body: string; createdAt: Date; userId: string; user: CommentUser };
@@ -79,7 +79,7 @@ function CommentRow({
           <Link href={`/profile/${comment.user.username}`} className="text-sm font-semibold text-ink">
             @{comment.user.username}
           </Link>
-          {comment.user.isSupporter && comment.user.showSupporterBadge ? <SupporterBadge /> : null}
+          {comment.user.isActiveSupporter && comment.user.showSupporterBadge ? <SupporterBadge /> : null}
           <span className="text-xs text-subtle">{formatRelativeDate(comment.createdAt)}</span>
         </div>
 

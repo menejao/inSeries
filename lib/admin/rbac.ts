@@ -12,12 +12,22 @@ export type Permission =
   | "admin.users"
   | "admin.reviews"
   | "admin.lists"
-  | "admin.system";
+  | "admin.system"
+  | "admin.supporters";
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   USER: [],
   MODERATOR: ["admin.read", "admin.reviews", "admin.lists"],
-  ADMIN: ["admin.read", "admin.catalog", "admin.sync", "admin.users", "admin.reviews", "admin.lists", "admin.system"]
+  ADMIN: [
+    "admin.read",
+    "admin.catalog",
+    "admin.sync",
+    "admin.users",
+    "admin.reviews",
+    "admin.lists",
+    "admin.system",
+    "admin.supporters"
+  ]
 };
 
 export function getPermissionsForRole(role: UserRole): Permission[] {

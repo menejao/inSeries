@@ -5,17 +5,22 @@ import { buildPixPayload, generatePixTxId } from "@/lib/supporters/pix";
 export const SUGGESTED_AMOUNTS_CENTS = [500, 1000, 2000];
 const MIN_AMOUNT_CENTS = 100;
 const MAX_AMOUNT_CENTS = 100000;
+// Data-URL cap (~1.5MB of actual image data once decoded) — keeps a receipt comfortably inside
+// a single Postgres row without needing object storage for this first version.
+const MAX_RECEIPT_DATA_URL_LENGTH = 2_000_000;
 
-export type StartContributionResult = { ok: true; contributionId: string; pixPayload: string } | { ok: false; error: "invalid_amount" };
+export type StartSupportRequestResult =
+  | { ok: true; supportRequestId: string; pixPayload: string }
+  | { ok: false; error: "invalid_amount" };
 
-/** INSERIES-SUPPORTER-SYSTEM-01 — creates the PENDING log row and the matching PIX BR Code for the chosen amount. */
-export async function startContribution(userId: string, amountCents: number): Promise<StartContributionResult> {
+/** INSERIES-SUPPORTER-ACTIVATION-01 — creates the PENDING_PAYMENT row and the matching PIX BR Code for the chosen amount. */
+export async function startSupportRequest(userId: string, amountCents: number): Promise<StartSupportRequestResult> {
   if (!Number.isInteger(amountCents) || amountCents < MIN_AMOUNT_CENTS || amountCents > MAX_AMOUNT_CENTS) {
     return { ok: false, error: "invalid_amount" };
   }
 
   const pixTxId = generatePixTxId();
-  const contribution = await prisma.supporterContribution.create({
+  const supportRequest = await prisma.supportRequest.create({
     data: { userId, amountCents, pixTxId }
   });
 
@@ -27,35 +32,42 @@ export async function startContribution(userId: string, amountCents: number): Pr
     txId: pixTxId
   });
 
-  return { ok: true, contributionId: contribution.id, pixPayload };
+  return { ok: true, supportRequestId: supportRequest.id, pixPayload };
 }
 
+export type UploadReceiptResult =
+  | { ok: true }
+  | { ok: false; error: "not_found" | "forbidden" | "already_reviewed" | "receipt_too_large" };
+
 /**
- * Self-reported confirmation ("Ja fiz o PIX") — there is no PSP webhook in this first version
- * to verify the payment automatically (see User.isSupporter doc comment in schema.prisma).
- * Grants only cosmetic entitlements, never anything essential, so an unverified confirmation
- * carries low risk; admins can revoke `isSupporter` if it's ever abused.
+ * "Envio do comprovante" — allowed from PENDING_PAYMENT (first upload) or AWAITING_REVIEW
+ * (replace before an admin has reviewed it); moves the request to AWAITING_REVIEW either way.
+ * Deliberately never touches UserSupporter — activation only happens via admin approval.
  */
-export async function confirmContribution(userId: string, contributionId: string) {
-  const contribution = await prisma.supporterContribution.findUnique({ where: { id: contributionId } });
-  if (!contribution || contribution.userId !== userId || contribution.status !== "PENDING") {
-    return { ok: false as const };
+export async function uploadReceipt(userId: string, supportRequestId: string, receiptDataUrl: string): Promise<UploadReceiptResult> {
+  if (receiptDataUrl.length > MAX_RECEIPT_DATA_URL_LENGTH) {
+    return { ok: false, error: "receipt_too_large" };
   }
 
-  await prisma.$transaction([
-    prisma.supporterContribution.update({
-      where: { id: contributionId },
-      data: { status: "CONFIRMED", confirmedAt: new Date() }
-    }),
-    prisma.user.update({
-      where: { id: userId },
-      data: { isSupporter: true }
-    })
-  ]);
+  const request = await prisma.supportRequest.findUnique({ where: { id: supportRequestId } });
+  if (!request) return { ok: false, error: "not_found" };
+  if (request.userId !== userId) return { ok: false, error: "forbidden" };
+  if (request.status !== "PENDING_PAYMENT" && request.status !== "AWAITING_REVIEW") {
+    return { ok: false, error: "already_reviewed" };
+  }
 
-  // supporterSince only set the first time — a separate read+conditional update keeps this
-  // one function idempotent without a raw SQL COALESCE.
-  await prisma.user.updateMany({ where: { id: userId, supporterSince: null }, data: { supporterSince: new Date() } });
+  await prisma.supportRequest.update({
+    where: { id: supportRequestId },
+    data: { receiptUrl: receiptDataUrl, status: "AWAITING_REVIEW" }
+  });
 
-  return { ok: true as const };
+  return { ok: true };
+}
+
+/** The requester's own latest request — drives the "pendente de analise" state on /apoie. */
+export async function getLatestSupportRequest(userId: string) {
+  return prisma.supportRequest.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" }
+  });
 }

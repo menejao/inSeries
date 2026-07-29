@@ -4,6 +4,7 @@ import { notifyFollowersOfPublicReview } from "@/lib/notifications/events";
 import { invalidateRecommendationCache } from "@/lib/recommendations";
 import { invalidateStatsCache } from "@/lib/stats";
 import { recordGamificationEvent } from "@/lib/gamification";
+import { getActiveSupporterUserIds } from "@/lib/supporters/status";
 
 export async function upsertReview(
   userId: string,
@@ -66,21 +67,21 @@ export async function deleteReview(userId: string, seriesId: string) {
  * uma unica consulta agrupada em vez de buscar comentarios review por review (N+1).
  */
 export async function getSeriesReviews(seriesId: string, viewerId?: string | null) {
-  return prisma.review.findMany({
+  const reviews = await prisma.review.findMany({
     where: {
       seriesId,
       OR: [{ visibility: "PUBLIC", hiddenByAdminAt: null }, ...(viewerId ? [{ userId: viewerId }] : [])]
     },
     include: {
-      user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } },
+      user: { select: { id: true, name: true, username: true, avatarUrl: true, showSupporterBadge: true } },
       comments: {
         where: { parentId: null, hiddenByAdminAt: null },
         include: {
-          user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } },
+          user: { select: { id: true, name: true, username: true, avatarUrl: true, showSupporterBadge: true } },
           replies: {
             where: { hiddenByAdminAt: null },
             include: {
-              user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } }
+              user: { select: { id: true, name: true, username: true, avatarUrl: true, showSupporterBadge: true } }
             },
             orderBy: { createdAt: "asc" }
           }
@@ -90,6 +91,28 @@ export async function getSeriesReviews(seriesId: string, viewerId?: string | nul
     },
     orderBy: { updatedAt: "desc" }
   });
+
+  const userIds = new Set<string>();
+  for (const review of reviews) {
+    userIds.add(review.user.id);
+    for (const comment of review.comments) {
+      userIds.add(comment.user.id);
+      for (const reply of comment.replies) userIds.add(reply.user.id);
+    }
+  }
+  const activeSupporterIds = await getActiveSupporterUserIds(Array.from(userIds));
+
+  const withUser = <T extends { id: string }>(user: T) => ({ ...user, isActiveSupporter: activeSupporterIds.has(user.id) });
+
+  return reviews.map((review) => ({
+    ...review,
+    user: withUser(review.user),
+    comments: review.comments.map((comment) => ({
+      ...comment,
+      user: withUser(comment.user),
+      replies: comment.replies.map((reply) => ({ ...reply, user: withUser(reply.user) }))
+    }))
+  }));
 }
 
 export async function getOwnReview(userId: string, seriesId: string) {

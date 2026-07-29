@@ -38,7 +38,7 @@ export type PixPayloadInput = {
   receiverCity: string;
   /** In BRL, e.g. 10.5 — omit for a payer-entered amount (not used today, every suggested value is fixed, but the field supports it). */
   amount?: number;
-  /** Reference id shown back to the payer's bank app and used to reconcile the contribution — SupporterContribution.pixTxId, max 25 chars, alphanumeric. */
+  /** Reference id shown back to the payer's bank app and used to reconcile the request — SupportRequest.pixTxId, max 25 chars, alphanumeric. */
   txId: string;
 };
 
@@ -62,7 +62,7 @@ export function buildPixPayload(input: PixPayloadInput): string {
   return `${withCrcPlaceholder}${crc16(withCrcPlaceholder)}`;
 }
 
-/** A short, unique, alphanumeric reference id for a new contribution — becomes SupporterContribution.pixTxId and the PIX payload's txid. */
+/** A short, unique, alphanumeric reference id for a new request — becomes SupportRequest.pixTxId and the PIX payload's txid. */
 export function generatePixTxId(): string {
   return `INS${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }

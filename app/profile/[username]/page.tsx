@@ -22,6 +22,7 @@ import { computeProfileHighlights } from "@/lib/profile-page/highlights";
 import { getFollowState, getPendingFollowRequests } from "@/lib/social/follow";
 import { isMuted } from "@/lib/social/mute";
 import { isBlocked } from "@/lib/social/block";
+import { getSupporterStatus } from "@/lib/supporters/status";
 import { prisma } from "@/lib/db/prisma";
 
 /**
@@ -90,6 +91,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     canSeeStats ? getViewerPersonaForUser(profile.id) : Promise.resolve(null)
   ]);
 
+  const supporterStatus = await getSupporterStatus(profile.id);
+
   const highlightItems = fullList
     ? isOwner
       ? fullList.items
@@ -112,7 +115,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   return (
     <div className="space-y-8">
       <ProfileHeader
-        profile={profile}
+        profile={{ ...profile, isActiveSupporter: supporterStatus.active }}
         stats={canSeeStats ? stats : null}
         action={
           isOwner ? (

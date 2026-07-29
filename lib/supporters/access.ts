@@ -11,8 +11,3 @@ export function canAccessSupporterProgram(role: string | undefined | null): bool
   if (config.featureFlags.supporterPublicLaunch) return true;
   return role === "ADMIN";
 }
-
-/** Cosmetic-only entitlement check — never gates an essential feature, only badge/name-highlight/beta/poll access. */
-export function hasSupporterBenefits(isSupporter: boolean | undefined | null): boolean {
-  return Boolean(isSupporter);
-}

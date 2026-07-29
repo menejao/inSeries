@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getApiUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 import { withApiObservability } from "@/lib/http/api-handler";
+import { getSupporterStatus } from "@/lib/supporters/status";
 
 const preferencesSchema = z.object({
   showSupporterBadge: z.boolean().optional(),
@@ -10,13 +11,13 @@ const preferencesSchema = z.object({
   supporterFrameStyle: z.string().max(40).nullable().optional()
 });
 
-/** INSERIES-SUPPORTER-SYSTEM-01 — badge visibility toggle + cosmetic banner/frame choice. Only ever touches a supporter's own preferences, never grants `isSupporter` itself. */
+/** INSERIES-SUPPORTER-ACTIVATION-01 — badge visibility toggle + cosmetic banner/frame choice. Only ever touches a supporter's own preferences, never grants supporter status itself. */
 async function preferencesHandler(request: Request) {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const current = await prisma.user.findUnique({ where: { id: user.id }, select: { isSupporter: true } });
-  if (!current?.isSupporter) return NextResponse.json({ error: "not_a_supporter" }, { status: 403 });
+  const status = await getSupporterStatus(user.id);
+  if (!status.active) return NextResponse.json({ error: "not_a_supporter" }, { status: 403 });
 
   const body = await request.json();
   const payload = preferencesSchema.safeParse(body);

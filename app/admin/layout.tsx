@@ -7,6 +7,7 @@ import {
   CalendarIcon,
   CheckCircleIcon,
   FilmIcon,
+  HeartIcon,
   ListIcon,
   SettingsIcon,
   ShieldIcon,
@@ -21,6 +22,7 @@ const NAV_ITEMS: { href: string; label: string; permission: Permission; icon: ty
   { href: "/admin/users", label: "Usuarios", permission: "admin.users", icon: UserIcon },
   { href: "/admin/reviews", label: "Reviews", permission: "admin.reviews", icon: FilmIcon },
   { href: "/admin/lists", label: "Listas", permission: "admin.lists", icon: ListIcon },
+  { href: "/admin/supporters", label: "Apoiadores", permission: "admin.supporters", icon: HeartIcon },
   { href: "/admin/system", label: "Sistema", permission: "admin.system", icon: SettingsIcon },
   { href: "/admin/logs", label: "Logs", permission: "admin.read", icon: ShieldIcon }
 ];
