@@ -3186,49 +3186,44 @@ async function main() {
 
   const ownProfilePage = await request(jarProfile, `/profile/${profileUser.username}`);
   check(
-    "Perfil (Fase 2): cabecalho premium mostra sequencia atual, series acompanhadas/concluidas, episodios e tempo assistido",
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): cabecalho compacto mostra apenas episodios, horas, series concluidas e sequencia atual (sem 'Series acompanhadas')",
     ownProfilePage.status === 200 &&
+      String(ownProfilePage.body).includes("Episodios assistidos") &&
+      String(ownProfilePage.body).includes("Horas assistidas") &&
       String(ownProfilePage.body).includes("Sequencia atual") &&
-      String(ownProfilePage.body).includes("Series acompanhadas") &&
-      String(ownProfilePage.body).includes("Episodios assistidos"),
+      !String(ownProfilePage.body).includes("Series acompanhadas"),
     ownProfilePage.status
   );
   check(
-    "Perfil (Fase 3): estatisticas mostram media de conclusao, tempo restante e Discovery/Quality medio",
-    String(ownProfilePage.body).includes("Media de conclusao") &&
-      String(ownProfilePage.body).includes("Tempo restante") &&
-      (String(ownProfilePage.body).includes("Discovery medio") || String(ownProfilePage.body).includes("Quality medio")),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): bloco de estatisticas detalhadas (dashboard) foi removido",
+    !String(ownProfilePage.body).includes("Media de conclusao") && !String(ownProfilePage.body).includes("Tempo restante"),
     null
   );
   check(
-    "Perfil (Fase 4): timeline mostra atividades reais (assistiu/avaliou/concluiu) e os filtros da Fase 7",
-    String(ownProfilePage.body).includes("assistiu") &&
-      String(ownProfilePage.body).includes("avaliou") &&
-      String(ownProfilePage.body).includes("concluiu") &&
-      String(ownProfilePage.body).includes("Favoritos") &&
-      String(ownProfilePage.body).includes("Conclusoes"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): timeline/feed de atividade foi removido do perfil",
+    !String(ownProfilePage.body).includes("Favoritos") && !String(ownProfilePage.body).includes("Conclusoes"),
     null
   );
   check(
-    "Perfil (Fase 5): dono ve Continuar assistindo (colecao pessoal, nunca exposta a visitantes)",
-    String(ownProfilePage.body).includes("Continuar assistindo"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): 'Continuar assistindo' foi removido do perfil (mesmo pro dono — ja vive no Dashboard)",
+    !String(ownProfilePage.body).includes("Continuar assistindo"),
     null
   );
   check(
-    "Perfil (Fase 5): Favoritas e Reviews recentes reaproveitam os mesmos dados de review ja buscados",
-    String(ownProfilePage.body).includes("Favoritas") && String(ownProfilePage.body).includes("Reviews recentes"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): 'Perfil do espectador' calculado automaticamente aparece pro dono",
+    String(ownProfilePage.body).includes("Perfil do espectador"),
     null
   );
   check(
-    "Perfil (Fase 6): destaques mostram Maior Discovery Score, Maior Quality Score e Melhor serie avaliada",
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): destaques mostram Maior Discovery Score e Melhor serie avaliada",
     String(ownProfilePage.body).includes("Destaques") &&
       String(ownProfilePage.body).includes("Maior Discovery Score") &&
       String(ownProfilePage.body).includes("Melhor serie avaliada"),
     null
   );
   check(
-    "Perfil (Fase 8): novas secoes seguem a regra global de grids (grid-cols-2 fixo)",
-    String(ownProfilePage.body).includes("grid-cols-2"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): secao Series mostra previa com botao 'Ver mais' (modal existente preservado)",
+    String(ownProfilePage.body).includes("Series") && String(ownProfilePage.body).includes("Ver mais"),
     null
   );
 
@@ -3236,26 +3231,26 @@ async function main() {
   await registerUser(jarProfileViewer, "userprofileviewer");
   const visitorProfilePage = await request(jarProfileViewer, `/profile/${profileUser.username}`);
   check(
-    "Perfil (Fase 5): visitante nunca ve Continuar assistindo de outro usuario (sem flag de privacidade para isso, decisao deliberada)",
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): visitante nunca ve Continuar assistindo de outro usuario",
     visitorProfilePage.status === 200 && !String(visitorProfilePage.body).includes("Continuar assistindo"),
     null
   );
   check(
-    "Perfil (Fase 1/6): visitante ainda ve estatisticas/destaques num perfil publico com as flags padrao",
-    String(visitorProfilePage.body).includes("Media de conclusao") && String(visitorProfilePage.body).includes("Destaques"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): visitante ainda ve perfil de espectador/destaques num perfil publico com as flags padrao",
+    String(visitorProfilePage.body).includes("Perfil do espectador") && String(visitorProfilePage.body).includes("Destaques"),
     null
   );
 
   await request(jarProfile, "/api/profile", { method: "PATCH", body: JSON.stringify({ showWatchingSeries: false, showWatchedSeries: false }) });
   const visitorAfterHidingStats = await request(jarProfileViewer, `/profile/${profileUser.username}`);
   check(
-    "Perfil (Fase 1): sem flag dedicada, estatisticas/destaques reaproveitam showWatchingSeries/showWatchedSeries (escondidas quando ambas desligadas)",
-    !String(visitorAfterHidingStats.body).includes("Media de conclusao") && !String(visitorAfterHidingStats.body).includes("Destaques"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): sem flag dedicada, perfil de espectador/destaques reaproveitam showWatchingSeries/showWatchedSeries (escondidos quando ambas desligadas)",
+    !String(visitorAfterHidingStats.body).includes("Perfil do espectador") && !String(visitorAfterHidingStats.body).includes("Destaques"),
     null
   );
   check(
-    "Perfil (Fase 1): Reviews/Favoritas continuam visiveis mesmo com estatisticas escondidas (flags independentes)",
-    String(visitorAfterHidingStats.body).includes("Favoritas") || String(visitorAfterHidingStats.body).includes("Reviews recentes"),
+    "Perfil (INSERIES-PROFILE-REDESIGN-01): Reviews continuam visiveis mesmo com estatisticas escondidas (flags independentes)",
+    String(visitorAfterHidingStats.body).includes("Reviews"),
     null
   );
   await request(jarProfile, "/api/profile", { method: "PATCH", body: JSON.stringify({ showWatchingSeries: true, showWatchedSeries: true }) });

@@ -1,28 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FixedGrid } from "@/components/ui/fixed-grid";
 import { FollowButton } from "@/components/social/follow-button";
 import { ProfileActionsMenu } from "@/components/social/profile-actions-menu";
 import { FollowRequestsPanel } from "@/components/social/follow-requests-panel";
 import { buttonVariants } from "@/components/ui/button";
 import { EyeOffIcon, LockIcon } from "@/components/ui/icons";
 import { ProfileHeader } from "@/components/profile/profile-header";
-import { ProfileStatsSection } from "@/components/profile/profile-stats-section";
+import { ProfilePersonaCard } from "@/components/profile/profile-persona-card";
 import { ProfileHighlights } from "@/components/profile/profile-highlights";
-import { ProfileCollections } from "@/components/profile/profile-collections";
 import { ProfileSeriesLibrary } from "@/components/profile/profile-series-library";
-import { ProfileTimeline } from "@/components/profile/profile-timeline";
-import { ReviewsStatsSection } from "@/components/reviews/reviews-stats-section";
+import { ProfileReviewsPreview } from "@/components/profile/profile-reviews-preview";
+import { ProfileListsPreview } from "@/components/profile/profile-lists-preview";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getProfileByUsername, getPublicListsForUser, getPublicReviewsForUser, getWatchStateSeries } from "@/lib/social/profile";
-import { getProfileActivity } from "@/lib/social/activity";
-import { getMostReviewedSeries, getUserReviewStats } from "@/lib/social/review-stats";
 import { getUserStats } from "@/lib/analytics";
+import { getViewerPersonaForUser } from "@/lib/stats/persona-for-user";
 import { getMyListFullForUser } from "@/lib/my-list";
-import { getContinueWatchingForUser } from "@/lib/continue-watching";
 import { computeProfileHighlights } from "@/lib/profile-page/highlights";
 import { getFollowState, getPendingFollowRequests } from "@/lib/social/follow";
 import { isMuted } from "@/lib/social/mute";
@@ -30,13 +25,13 @@ import { isBlocked } from "@/lib/social/block";
 import { prisma } from "@/lib/db/prisma";
 
 /**
- * INSERIES-PROFILE-PREMIUM-01 — o Perfil como vitrine da jornada do usuario: cabecalho,
- * estatisticas, destaques, colecoes e timeline, tudo reaproveitando servicos existentes
- * (getUserStats, getMyListFullForUser, getContinueWatchingForUser,
- * getProfileActivity) e preservando a mesma regra de privacidade granular ja estabelecida
- * (showWatchingSeries/showWatchedSeries/showLists/showReviews/showActivity +
- * isProfilePrivate). Ver README para o audit completo da Fase 1 e as decisoes de
- * privacidade para as secoes novas (Fase 1/2/3/5/6).
+ * INSERIES-PROFILE-REDESIGN-01 — o Perfil como vitrine da identidade do usuario, nao um
+ * dashboard: cabecalho compacto (poucas estatisticas de destaque), perfil de espectador,
+ * destaques visuais, previa de series (o modal existente, intocado), previa de reviews e
+ * listas publicas. Removidos por completo: bloco de 10 estatisticas, "Continuar assistindo",
+ * favoritas, feed/timeline de atividade e estatisticas de reviews — cada um ja vive (ou nunca
+ * fez sentido fora) de uma pagina dedicada (Estatisticas, Dashboard, Feed). Secoes vazias
+ * (bio/reviews/listas) somem por completo, nunca um "Nenhuma X" generico.
  */
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
@@ -56,25 +51,20 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     isOwner && profile.isProfilePrivate ? getPendingFollowRequests(profile.id) : Promise.resolve([])
   ]);
 
-  // Fase 32 — perfil privado: conteudo so libera quando o follow foi ACEITO ("Solicitado" ainda oculta tudo).
+  // Perfil privado: conteudo so libera quando o follow foi ACEITO ("Solicitado" ainda oculta tudo).
   const hidden = profile.isProfilePrivate && !isOwner && followState !== "following";
 
   const canSeeWatching = isOwner || (!profile.isProfilePrivate && profile.showWatchingSeries);
   const canSeeCompleted = isOwner || (!profile.isProfilePrivate && profile.showWatchedSeries);
   const canSeeLists = isOwner || (!profile.isProfilePrivate && profile.showLists);
   const canSeeReviews = isOwner || (!profile.isProfilePrivate && profile.showReviews);
-  const canSeeActivity = isOwner || (!profile.isProfilePrivate && profile.showActivity);
-  // Fase 1 (INSERIES-PROFILE-PREMIUM-01) — nao existe uma flag de privacidade dedicada para
-  // estatisticas/destaques (estes sao agregados novos, nao cobertos por nenhuma regra
-  // existente). Decisao: tratar como uma extensao dos mesmos dois toggles que ja controlam
-  // as listas de series equivalentes — se o usuario escondeu as duas, tambem escondemos os
-  // agregados derivados delas, em vez de inventar uma flag nova.
+  // Nao existe uma flag de privacidade dedicada para estatisticas/destaques/perfil de
+  // espectador (agregados, nao cobertos por nenhuma regra existente) — tratados como extensao
+  // dos dois toggles que ja controlam as listas de series equivalentes.
   const canSeeStats = isOwner || (!profile.isProfilePrivate && (profile.showWatchingSeries || profile.showWatchedSeries));
 
-  const [watchingSeries, completedSeries, lists, reviews, activity, stats, fullList, continueWatching, reviewStats, mostReviewedSeries] =
-    await Promise.all([
+  const [watchingSeries, completedSeries, lists, reviews, stats, fullList, persona] = await Promise.all([
     canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING", 12) : Promise.resolve([]),
-    // Sem limite: a secao "Concluidas" deve listar TODAS as series que o usuario assistiu.
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
     canSeeLists
       ? isOwner
@@ -91,23 +81,15 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
             where: { userId: profile.id },
             include: { series: { select: { id: true, slug: true, title: true, posterUrl: true } } },
             orderBy: { updatedAt: "desc" },
-            take: 12
+            take: 20
           })
         : getPublicReviewsForUser(profile.id)
       : Promise.resolve([]),
-    canSeeActivity ? getProfileActivity(profile.id, viewer?.id ?? null, 20) : Promise.resolve([]),
     canSeeStats ? getUserStats(profile.id) : Promise.resolve(null),
     canSeeStats ? getMyListFullForUser(profile.id) : Promise.resolve(null),
-    isOwner ? getContinueWatchingForUser(profile.id, { limit: 6 }) : Promise.resolve(null),
-    canSeeReviews ? getUserReviewStats(profile.id) : Promise.resolve(null),
-    canSeeReviews ? getMostReviewedSeries() : Promise.resolve(null)
+    canSeeStats ? getViewerPersonaForUser(profile.id) : Promise.resolve(null)
   ]);
 
-  // Fase 1/6 — "Destaques"/medias (Discovery/Quality) usam getMyListFullForUser, que
-  // devolve os 5 estados de WatchState sem filtro (foi construido assumindo que quem chama
-  // e sempre o dono, para a Minha Lista). Para um visitante, restringimos aos mesmos 2
-  // estados que as flags de privacidade ja autorizam — nunca mais do que
-  // canSeeWatching/canSeeCompleted ja permitem em qualquer outro lugar do perfil.
   const highlightItems = fullList
     ? isOwner
       ? fullList.items
@@ -116,13 +98,11 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   const highlights = computeProfileHighlights(highlightItems);
 
   // Series/Assistindo unificadas numa unica biblioteca (mesmo card, badge de status) — cada
-  // metade so entra se a flag de privacidade correspondente autorizar, sem misturar as duas
-  // regras numa unica mensagem de "oculto".
+  // metade so entra se a flag de privacidade correspondente autorizar.
   const libraryItems = [
     ...(canSeeWatching ? watchingSeries.map((series) => ({ ...series, state: "WATCHING" as const })) : []),
     ...(canSeeCompleted ? completedSeries.map((series) => ({ ...series, state: "COMPLETED" as const })) : [])
   ].sort((a, b) => {
-    // Assistindo sempre primeiro; dentro de cada grupo, mais recente primeiro.
     if (a.state !== b.state) return a.state === "WATCHING" ? -1 : 1;
     const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
     const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
@@ -159,7 +139,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
         <FollowRequestsPanel requests={pendingRequests.map((request) => ({ id: request.id, requester: request.requester }))} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4">
         <Link href={`/profile/${profile.username}/followers`}>
           <Card interactive>
             <p className="text-sm text-muted">Seguidores</p>
@@ -172,14 +152,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
             <p className="mt-2 text-3xl font-black text-ink">{profile._count.following}</p>
           </Card>
         </Link>
-        <Card>
-          <p className="text-sm text-muted">Listas</p>
-          <p className="mt-2 text-3xl font-black text-ink">{hidden ? "-" : lists.length}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-muted">Reviews</p>
-          <p className="mt-2 text-3xl font-black text-ink">{hidden ? "-" : reviews.length}</p>
-        </Card>
       </div>
 
       {hidden ? (
@@ -188,90 +160,23 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           title="Este perfil e privado"
           copy={
             followState === "requested"
-              ? "Sua solicitacao para seguir foi enviada. Assim que for aceita, voce podera ver as atividades desta pessoa."
-              : "Siga este usuario para visualizar suas atividades."
+              ? "Sua solicitacao para seguir foi enviada. Assim que for aceita, voce podera ver o perfil desta pessoa."
+              : "Siga este usuario para visualizar seu perfil."
           }
         />
       ) : (
         <>
-          {canSeeStats && stats ? <ProfileStatsSection stats={stats} highlightItems={highlightItems} /> : null}
+          {persona ? <ProfilePersonaCard persona={persona} /> : null}
 
           <ProfileHighlights highlights={highlights} lastActivityAt={canSeeStats ? (stats?.streaks.lastWatchedAt ?? null) : null} />
 
-          <ProfileCollections
-            isOwner={isOwner}
-            continueWatching={continueWatching}
-            canSeeReviews={canSeeReviews}
-            reviews={reviews}
-          />
-
           <ProfileSeriesLibrary items={libraryItems} />
 
-          <section className="space-y-3">
-            <h2 className="section-title">Listas</h2>
-            {canSeeLists ? (
-              lists.length ? (
-                <FixedGrid mobile={1} tablet={2} desktop={3}>
-                  {lists.map((list) => (
-                    <Link key={list.id} href={`/lists/${list.id}`}>
-                      <Card interactive padding="sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-semibold text-ink">{list.title}</p>
-                          {isOwner && list.visibility !== "PUBLIC" ? <Badge variant="default">Privada</Badge> : null}
-                        </div>
-                        <p className="mt-1 text-sm text-muted">{list._count.items} series</p>
-                      </Card>
-                    </Link>
-                  ))}
-                </FixedGrid>
-              ) : (
-                <EmptyState title="Nenhuma lista publica" copy="Listas publicas aparecem aqui." />
-              )
-            ) : (
-              <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir listas." />
-            )}
-          </section>
+          {canSeeLists ? (
+            <ProfileListsPreview lists={lists.map((list) => ({ id: list.id, title: list.title, itemCount: list._count.items }))} />
+          ) : null}
 
-          <section className="space-y-3">
-            <h2 className="section-title">Reviews</h2>
-            {canSeeReviews ? (
-              reviews.length ? (
-                <div className="space-y-3">
-                  {reviews.map((review) => (
-                    <Card key={review.id}>
-                      <div className="flex items-center justify-between gap-2">
-                        <Link href={`/series/${review.series.slug}`} className="font-semibold text-ink">
-                          {review.series.title}
-                        </Link>
-                        <Badge variant="warning">{review.rating}/5</Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-muted">{review.body}</p>
-                      {isOwner && review.visibility !== "PUBLIC" ? (
-                        <Badge variant="default" className="mt-2">
-                          Privada
-                        </Badge>
-                      ) : null}
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState title="Nenhuma review publica" copy="Reviews publicas aparecem aqui." />
-              )
-            ) : (
-              <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir reviews." />
-            )}
-          </section>
-
-          {canSeeReviews && reviewStats ? <ReviewsStatsSection stats={reviewStats} mostReviewed={mostReviewedSeries} /> : null}
-
-          {canSeeActivity ? (
-            <ProfileTimeline activities={activity} authenticated={Boolean(viewer)} />
-          ) : (
-            <section className="space-y-3">
-              <h2 className="section-title">Atividade</h2>
-              <EmptyState icon={<EyeOffIcon className="h-6 w-6" />} title="Oculto" copy="Este usuario optou por nao exibir atividade." />
-            </section>
-          )}
+          {canSeeReviews ? <ProfileReviewsPreview reviews={reviews} /> : null}
         </>
       )}
     </div>

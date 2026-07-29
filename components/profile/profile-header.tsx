@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { CalendarIcon, CheckCircleIcon, ChartIcon, FlameIcon, PlayIcon } from "@/components/ui/icons";
+import { CalendarIcon, CheckCircleIcon, ChartIcon, FlameIcon } from "@/components/ui/icons";
 import { formatDate, getInitials } from "@/lib/utils";
 import type { UserStats } from "@/lib/analytics";
 
@@ -16,21 +16,20 @@ type ProfileHeaderProfile = {
 };
 
 /**
- * Fase 2 (INSERIES-PROFILE-PREMIUM-01) — cabecalho premium: identidade (avatar/nome/
- * username/data de cadastro/bio) sempre visivel, como antes; a nova linha de numeros
- * (sequencia atual, series acompanhadas, series concluidas, episodios assistidos, tempo
- * assistido) so aparece quando `stats` e passado — a pagina so passa `stats` quando
- * `canSeeStats` e verdadeiro (dono ou perfil publico com pelo menos uma das listas de
- * series visivel), nunca para um perfil oculto.
+ * INSERIES-PROFILE-REDESIGN-01 — cabecalho: identidade (avatar/nome/username/data de
+ * cadastro/bio) sempre visivel; a linha de numeros fica reduzida a "poucas estatisticas de
+ * destaque" (episodios, horas, series concluidas, sequencia atual) — nunca a lista completa
+ * de 10 metricas que vivia aqui antes, essas pertencem a pagina de Estatisticas. So aparece
+ * quando `stats` e passado (dono, ou perfil publico com pelo menos uma lista de series
+ * visivel), nunca para um perfil oculto.
  */
 export function ProfileHeader({ profile, stats, action }: { profile: ProfileHeaderProfile; stats: UserStats | null; action: ReactNode }) {
   const tiles = stats
     ? [
-        { icon: FlameIcon, label: "Sequencia atual", value: `${stats.streaks.currentStreakDays}d` },
-        { icon: PlayIcon, label: "Series acompanhadas", value: stats.overview.seriesWatching },
-        { icon: CheckCircleIcon, label: "Series concluidas", value: stats.overview.seriesCompleted },
         { icon: CheckCircleIcon, label: "Episodios assistidos", value: stats.overview.episodesWatched },
-        { icon: ChartIcon, label: "Tempo assistido", value: `${stats.watchTime.hoursWatched}h` }
+        { icon: ChartIcon, label: "Horas assistidas", value: `${stats.watchTime.hoursWatched}h` },
+        { icon: CheckCircleIcon, label: "Series concluidas", value: stats.overview.seriesCompleted },
+        { icon: FlameIcon, label: "Sequencia atual", value: `${stats.streaks.currentStreakDays}d` }
       ]
     : [];
 
@@ -55,7 +54,7 @@ export function ProfileHeader({ profile, stats, action }: { profile: ProfileHead
       </div>
 
       {tiles.length ? (
-        <div className="grid grid-cols-2 gap-4 border-t border-border pt-5 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 border-t border-border pt-5 sm:grid-cols-4">
           {tiles.map((tile) => (
             <div key={tile.label} className="space-y-1.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/12 text-primary-text">
