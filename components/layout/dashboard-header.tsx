@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
 import { CommandPaletteTrigger } from "@/components/search/command-palette-trigger";
+import { BackButton } from "@/components/layout/back-button";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrador",
@@ -20,6 +21,7 @@ export async function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border/60 bg-canvas/80 px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-sm sm:px-6 lg:px-8">
+      <BackButton />
       <Link href="/" className="flex items-center gap-2 lg:hidden">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-primary-foreground">in</span>
         <span className="text-base font-semibold text-ink">inSeries</span>
