@@ -2,6 +2,7 @@ import type { PropsWithChildren } from "react";
 import { getCurrentUser } from "@/lib/auth/server";
 import { canAccessAdminWorkspace } from "@/lib/admin/rbac";
 import { canAccessRecapWrapped } from "@/lib/recap/window";
+import { canAccessSupporterProgram } from "@/lib/supporters/access";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -15,10 +16,13 @@ export async function DashboardShell({ children }: PropsWithChildren) {
   // once here so both Sidebar and BottomNav (which don't otherwise know about the user's role
   // or the current date) can hide the entry identically.
   const recapWrappedAvailable = user ? canAccessRecapWrapped(user.role === "ADMIN") : false;
+  // INSERIES-SUPPORTER-SYSTEM-01 — "usuarios comuns nao devem visualizar o acesso ao
+  // programa": same hide-the-entry-entirely pattern as Recap Wrapped above.
+  const supporterProgramAvailable = user ? canAccessSupporterProgram(user.role) : false;
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isAdmin={isAdmin} recapWrappedAvailable={recapWrappedAvailable} />
+      <Sidebar isAdmin={isAdmin} recapWrappedAvailable={recapWrappedAvailable} supporterProgramAvailable={supporterProgramAvailable} />
       {/* min-w-0: sem isso, qualquer scroller horizontal interno (tabs rolaveis etc.) infla a coluna flex e cria scroll horizontal na pagina inteira. */}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <DashboardHeader />
@@ -26,7 +30,9 @@ export async function DashboardShell({ children }: PropsWithChildren) {
           <div className="mx-auto w-full max-w-6xl animate-fade-in">{children}</div>
         </main>
       </div>
-      {user ? <BottomNav recapWrappedAvailable={recapWrappedAvailable} /> : null}
+      {user ? (
+        <BottomNav recapWrappedAvailable={recapWrappedAvailable} supporterProgramAvailable={supporterProgramAvailable} />
+      ) : null}
       {user ? <CommandPalette /> : null}
     </div>
   );

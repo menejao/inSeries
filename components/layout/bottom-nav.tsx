@@ -9,6 +9,7 @@ import {
   ChartIcon,
   CompassIcon,
   FilmIcon,
+  HeartIcon,
   HomeIcon,
   ListIcon,
   MoreHorizontalIcon,
@@ -46,10 +47,20 @@ const MORE_NAV: NavItem[] = [
 // out of MORE_NAV entirely and spliced in first only when available.
 const RECAP_ITEM: NavItem = { href: "/recap", label: "Recap", icon: SparklesIcon };
 
-export function BottomNav({ recapWrappedAvailable }: { recapWrappedAvailable: boolean }) {
+// INSERIES-SUPPORTER-SYSTEM-01 — same hide-entirely-when-unavailable pattern as RECAP_ITEM.
+const SUPPORT_ITEM: NavItem = { href: "/apoie", label: "Apoie o inSeries", icon: HeartIcon };
+
+export function BottomNav({
+  recapWrappedAvailable,
+  supporterProgramAvailable
+}: {
+  recapWrappedAvailable: boolean;
+  supporterProgramAvailable: boolean;
+}) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const moreItems = recapWrappedAvailable ? [RECAP_ITEM, ...MORE_NAV] : MORE_NAV;
+  const recapItems = recapWrappedAvailable ? [RECAP_ITEM, ...MORE_NAV] : MORE_NAV;
+  const moreItems = supporterProgramAvailable ? [...recapItems, SUPPORT_ITEM] : recapItems;
   const isMoreActive = moreItems.some((item) => isNavItemActive(pathname, item.href));
 
   return (

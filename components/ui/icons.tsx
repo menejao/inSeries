@@ -194,6 +194,13 @@ export const EyeOffIcon = createIcon(
   </>
 );
 
+export const CopyIcon = createIcon(
+  <>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </>
+);
+
 export const ThumbsUpIcon = createIcon(
   <path d="M7 10v10H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3Zm0 0 4.5-7a2 2 0 0 1 3.7 1.2L14.3 9H19a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 17.6 21H10a3 3 0 0 1-3-3" />
 );

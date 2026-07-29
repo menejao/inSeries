@@ -9,6 +9,8 @@ import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CollectionTagList } from "@/components/media/collection-tag-badge";
 import { FilmIcon, FlameIcon, MessageCircleIcon, SparklesIcon, StarIcon } from "@/components/ui/icons";
+import { SupporterBadge } from "@/components/supporters/supporter-badge";
+import { SupporterName } from "@/components/supporters/supporter-name";
 import { formatRelativeDate, getInitials } from "@/lib/utils";
 import { CommentSection, type CommentItem } from "@/components/reviews/comment-section";
 import {
@@ -29,7 +31,7 @@ type SeriesReview = {
   userId: string;
   createdAt: Date;
   updatedAt: Date;
-  user: { username: string; name: string; avatarUrl: string | null };
+  user: { username: string; name: string; avatarUrl: string | null; isSupporter?: boolean; showSupporterBadge?: boolean };
   comments: CommentItem[];
 };
 
@@ -143,6 +145,7 @@ export function ReviewsSection({
                 const isOwn = viewerId === review.userId;
                 const spoilerHidden = review.containsSpoiler && !revealedSpoilers.has(review.id);
                 const threadCount = countThread(review.comments);
+                const authorSupporter = Boolean(review.user.isSupporter && review.user.showSupporterBadge);
 
                 return (
                   <Card
@@ -153,7 +156,9 @@ export function ReviewsSection({
                       <Link href={`/profile/${review.user.username}`} className="flex items-center gap-2.5">
                         <Avatar label={getInitials(review.user.name)} name={review.user.name} src={review.user.avatarUrl} size="sm" />
                         <span className="leading-tight">
-                          <span className="block font-semibold text-ink">{review.user.name}</span>
+                          <span className="block font-semibold text-ink">
+                            <SupporterName active={authorSupporter}>{review.user.name}</SupporterName>
+                          </span>
                           <span className="block text-xs text-subtle">@{review.user.username}</span>
                         </span>
                       </Link>
@@ -166,6 +171,7 @@ export function ReviewsSection({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
+                      {authorSupporter ? <SupporterBadge /> : null}
                       {review.containsSpoiler ? <Badge variant="danger">Contem spoiler</Badge> : null}
                       {isOwn && review.visibility !== "PUBLIC" ? <Badge variant="default">Somente voce</Badge> : null}
                       {threadCount ? (

@@ -72,14 +72,16 @@ export async function getSeriesReviews(seriesId: string, viewerId?: string | nul
       OR: [{ visibility: "PUBLIC", hiddenByAdminAt: null }, ...(viewerId ? [{ userId: viewerId }] : [])]
     },
     include: {
-      user: { select: { id: true, name: true, username: true, avatarUrl: true } },
+      user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } },
       comments: {
         where: { parentId: null, hiddenByAdminAt: null },
         include: {
-          user: { select: { id: true, name: true, username: true, avatarUrl: true } },
+          user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } },
           replies: {
             where: { hiddenByAdminAt: null },
-            include: { user: { select: { id: true, name: true, username: true, avatarUrl: true } } },
+            include: {
+              user: { select: { id: true, name: true, username: true, avatarUrl: true, isSupporter: true, showSupporterBadge: true } }
+            },
             orderBy: { createdAt: "asc" }
           }
         },

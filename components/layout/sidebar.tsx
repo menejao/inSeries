@@ -10,6 +10,7 @@ import {
   ChartIcon,
   CompassIcon,
   FilmIcon,
+  HeartIcon,
   LayoutDashboardIcon,
   ListIcon,
   PanelLeftIcon,
@@ -48,12 +49,24 @@ const ITEMS: SidebarItem[] = [
 // "destaque no menu" asks for.
 const RECAP_ITEM: SidebarItem = { href: "/recap", label: "Recap", icon: SparklesIcon };
 
+// INSERIES-SUPPORTER-SYSTEM-01 — "usuarios comuns nao devem visualizar o acesso ao programa":
+// same out-of-ITEMS, spliced-in-when-available pattern as RECAP_ITEM above.
+const SUPPORT_ITEM: SidebarItem = { href: "/apoie", label: "Apoie o inSeries", icon: HeartIcon };
+
 const ADMIN_ITEM: SidebarItem = { href: "/admin", label: "Admin", icon: ShieldIcon };
 
 const COLLAPSE_STORAGE_KEY = "inseries-sidebar-collapsed";
 
 /** Fase 5/13 — fixed left on desktop (lg+), collapsible to icon-only, persisted. Never rendered for visitors (Fase 5). */
-export function Sidebar({ isAdmin, recapWrappedAvailable }: { isAdmin: boolean; recapWrappedAvailable: boolean }) {
+export function Sidebar({
+  isAdmin,
+  recapWrappedAvailable,
+  supporterProgramAvailable
+}: {
+  isAdmin: boolean;
+  recapWrappedAvailable: boolean;
+  supporterProgramAvailable: boolean;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -77,7 +90,8 @@ export function Sidebar({ isAdmin, recapWrappedAvailable }: { isAdmin: boolean; 
     });
   }
 
-  const baseItems = recapWrappedAvailable ? [ITEMS[0], RECAP_ITEM, ...ITEMS.slice(1)] : ITEMS;
+  const recapItems = recapWrappedAvailable ? [ITEMS[0], RECAP_ITEM, ...ITEMS.slice(1)] : ITEMS;
+  const baseItems = supporterProgramAvailable ? [...recapItems, SUPPORT_ITEM] : recapItems;
   const items = isAdmin ? [...baseItems, ADMIN_ITEM] : baseItems;
 
   return (

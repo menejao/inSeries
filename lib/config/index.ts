@@ -108,6 +108,10 @@ const envSchema = z.object({
   FEATURE_EXPERIMENTAL_SEARCH: optionalNonEmpty(),
   FEATURE_RECAP: optionalNonEmpty(),
   FEATURE_RECAP_WRAPPED: optionalNonEmpty(),
+  FEATURE_SUPPORTER_PUBLIC_LAUNCH: optionalNonEmpty(),
+  PIX_KEY: optionalNonEmpty(),
+  PIX_RECEIVER_NAME: optionalNonEmpty(),
+  PIX_RECEIVER_CITY: optionalNonEmpty(),
   FEATURE_GAMIFICATION: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_GENRE: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_SIMILAR: optionalNonEmpty(),
@@ -416,6 +420,14 @@ export const config = {
     windowEnd: rawEnv.RECAP_WINDOW_END ?? "01-31",
     cacheTtlSeconds: parseNumberFlag(rawEnv.RECAP_WRAPPED_CACHE_TTL_SECONDS, 86400)
   },
+  // INSERIES-SUPPORTER-SYSTEM-01 — static PIX receiver info (never per-request/user data).
+  // Defaults are placeholders — real launch requires setting these env vars to the project's
+  // actual PIX key/name/city (whoever owns the account that receives contributions).
+  supporters: {
+    pixKey: rawEnv.PIX_KEY ?? "pix@inseries.app",
+    receiverName: rawEnv.PIX_RECEIVER_NAME ?? "InSeries",
+    receiverCity: rawEnv.PIX_RECEIVER_CITY ?? "SAO PAULO"
+  },
   featureFlags: {
     // Was a placeholder (default off) before this sprint implemented the
     // engine — now a shipped, tested feature, so it defaults on like the
@@ -435,6 +447,11 @@ export const config = {
     // INSERIES-RECAP-ENGINE-01 — the cinematic annual Wrapped, distinct from the always-on
     // monthly/yearly recap archive above (config.featureFlags.recap).
     recapWrapped: parseBooleanFlag(rawEnv.FEATURE_RECAP_WRAPPED, true),
+    // INSERIES-SUPPORTER-SYSTEM-01 — "essa restricao devera ser facilmente removida
+    // futuramente": while this stays false, the whole program (menu entry + /apoie route) is
+    // admin-only (see lib/supporters/access.ts). Flipping this one flag on is the entire
+    // public launch — no other structural change is expected.
+    supporterPublicLaunch: parseBooleanFlag(rawEnv.FEATURE_SUPPORTER_PUBLIC_LAUNCH, false),
     // Same reasoning again: shipped and tested this sprint, defaults on.
     gamification: parseBooleanFlag(rawEnv.FEATURE_GAMIFICATION, true)
   }

@@ -3,6 +3,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CalendarIcon, CheckCircleIcon, ChartIcon, FlameIcon } from "@/components/ui/icons";
+import { SupporterBadge } from "@/components/supporters/supporter-badge";
+import { SupporterName } from "@/components/supporters/supporter-name";
 import { formatDate, getInitials } from "@/lib/utils";
 import type { UserStats } from "@/lib/analytics";
 
@@ -13,6 +15,8 @@ type ProfileHeaderProfile = {
   avatarUrl: string | null;
   createdAt: Date;
   isProfilePrivate: boolean;
+  isSupporter?: boolean;
+  showSupporterBadge?: boolean;
 };
 
 /**
@@ -33,6 +37,8 @@ export function ProfileHeader({ profile, stats, action }: { profile: ProfileHead
       ]
     : [];
 
+  const showBadge = Boolean(profile.isSupporter && profile.showSupporterBadge);
+
   return (
     <Card className="space-y-5">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -40,9 +46,12 @@ export function ProfileHeader({ profile, stats, action }: { profile: ProfileHead
           <Avatar label={getInitials(profile.name)} name={profile.name} src={profile.avatarUrl} size="xl" />
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="section-title">{profile.name}</h1>
+              <h1 className="section-title">
+                <SupporterName active={showBadge}>{profile.name}</SupporterName>
+              </h1>
               <Badge variant="secondary">@{profile.username}</Badge>
               {profile.isProfilePrivate ? <Badge variant="default">Privado</Badge> : null}
+              {showBadge ? <SupporterBadge /> : null}
             </div>
             {profile.bio ? <p className="section-copy max-w-xl">{profile.bio}</p> : null}
             <p className="flex items-center gap-1.5 text-xs text-subtle">

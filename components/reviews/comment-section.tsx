@@ -9,9 +9,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PencilIcon, TrashIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
+import { SupporterBadge } from "@/components/supporters/supporter-badge";
 import { formatRelativeDate, getInitials } from "@/lib/utils";
 
-type CommentUser = { id: string; name: string; username: string; avatarUrl: string | null };
+type CommentUser = {
+  id: string;
+  name: string;
+  username: string;
+  avatarUrl: string | null;
+  isSupporter?: boolean;
+  showSupporterBadge?: boolean;
+};
 export type ReplyItem = { id: string; body: string; createdAt: Date; userId: string; user: CommentUser };
 export type CommentItem = { id: string; body: string; createdAt: Date; userId: string; user: CommentUser; replies: ReplyItem[] };
 
@@ -71,6 +79,7 @@ function CommentRow({
           <Link href={`/profile/${comment.user.username}`} className="text-sm font-semibold text-ink">
             @{comment.user.username}
           </Link>
+          {comment.user.isSupporter && comment.user.showSupporterBadge ? <SupporterBadge /> : null}
           <span className="text-xs text-subtle">{formatRelativeDate(comment.createdAt)}</span>
         </div>
 

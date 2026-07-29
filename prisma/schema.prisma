@@ -139,6 +139,17 @@ model User {
   showLists              Boolean               @default(true)
   showReviews            Boolean               @default(true)
   showActivity           Boolean               @default(true)
+  // INSERIES-SUPPORTER-SYSTEM-01 — cosmetic-only supporter status. `isSupporter` is the
+  // single flag every benefit (badge/name highlight/beta access/polls) reads; nothing
+  // essential to the app is ever gated behind it (ticket: "nunca bloquear funcionalidades
+  // essenciais"). No payment gateway is integrated yet — contributions are self-reported
+  // (see SupporterContribution) since PIX confirmation has no webhook to verify against in
+  // this first version; admins can revoke `isSupporter` manually if ever abused.
+  isSupporter            Boolean               @default(false)
+  supporterSince         DateTime?
+  showSupporterBadge     Boolean               @default(true)
+  supporterBannerStyle   String?
+  supporterFrameStyle    String?
   statuses               UserSeriesStatus[]
   episodeProgress        UserEpisodeProgress[]
   followers              Follow[]              @relation("followers")
@@ -164,6 +175,8 @@ model User {
   activityComments       ActivityComment[]
   importJobs             ImportJob[]
   recommendationFeedback RecommendationFeedback[]
+  supporterContributions SupporterContribution[]
+  supporterPollVotes     SupporterPollVote[]
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
@@ -691,4 +704,54 @@ model RecommendationFeedback {
 
   @@unique([userId, seriesId])
   @@index([userId, action])
+}
+
+/// INSERIES-SUPPORTER-SYSTEM-01 — one row per PIX contribution attempt. `status` starts at
+/// PENDING when the payload/QR is generated, moves to CONFIRMED when the user self-reports
+/// having paid (no PSP webhook exists in this first version to verify automatically — see
+/// User.isSupporter doc comment). `provider` is a literal "PIX" today on purpose, not an enum,
+/// so adding card/boleto/PayPal later is a new value, never a schema migration on this column.
+enum SupporterContributionStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model SupporterContribution {
+  id          String                       @id @default(cuid())
+  userId      String
+  amountCents Int
+  provider    String                       @default("PIX")
+  status      SupporterContributionStatus  @default(PENDING)
+  pixTxId     String                       @unique
+  user        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime                     @default(now())
+  confirmedAt DateTime?
+
+  @@index([userId, status])
+}
+
+/// Supporters-only polls ("Participacao" — ticket). `options` is a JSON string array (no
+/// separate options table needed for a single-choice poll); votes are counted live via
+/// SupporterPollVote, never denormalized onto the poll row.
+model SupporterPoll {
+  id        String              @id @default(cuid())
+  question  String
+  options   Json
+  active    Boolean             @default(true)
+  votes     SupporterPollVote[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+model SupporterPollVote {
+  id           String        @id @default(cuid())
+  pollId       String
+  userId       String
+  optionIndex  Int
+  poll         SupporterPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime      @default(now())
+
+  @@unique([pollId, userId])
 }
