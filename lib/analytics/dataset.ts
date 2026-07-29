@@ -42,12 +42,17 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
         startedAt: true,
         completedAt: true,
         lastActivityAt: true,
+        createdAt: true,
         series: {
           select: {
             id: true,
             title: true,
             genres: true,
             watchProviders: true,
+            networks: true,
+            originCountry: true,
+            spokenLanguages: true,
+            firstAirYear: true,
             seasons: { select: { episodeCount: true } }
           }
         }
@@ -84,7 +89,12 @@ export async function fetchAnalyticsDataset(userId: string): Promise<AnalyticsDa
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     lastActivityAt: row.lastActivityAt,
-    totalEpisodes: row.series.seasons.reduce((sum, season) => sum + season.episodeCount, 0)
+    totalEpisodes: row.series.seasons.reduce((sum, season) => sum + season.episodeCount, 0),
+    addedAt: row.createdAt,
+    networks: row.series.networks,
+    originCountry: row.series.originCountry,
+    spokenLanguages: row.series.spokenLanguages,
+    firstAirYear: row.series.firstAirYear
   }));
 
   return {

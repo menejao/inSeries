@@ -3,6 +3,7 @@ import { calculateSeriesProgress } from "@/lib/progress/calculate";
 import { recordActivity } from "@/lib/social/activity";
 import { notifySeriesCompleted } from "@/lib/notifications/events";
 import { invalidateRecommendationCache } from "@/lib/recommendations";
+import { invalidateStatsCache } from "@/lib/stats";
 import { recordGamificationEvent } from "@/lib/gamification";
 
 export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
@@ -57,6 +58,7 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
   }
 
   invalidateRecommendationCache(userId);
+  invalidateStatsCache(userId);
 
   return status;
 }
@@ -71,6 +73,7 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
 export async function removeSeriesStatus(userId: string, seriesId: string) {
   await prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } });
   invalidateRecommendationCache(userId);
+  invalidateStatsCache(userId);
 }
 
 export async function toggleEpisodeProgress(userId: string, episodeId: string, watched: boolean) {
@@ -165,6 +168,7 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
   }
 
   invalidateRecommendationCache(userId);
+  invalidateStatsCache(userId);
 
   return progress;
 }

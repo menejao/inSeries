@@ -88,7 +88,14 @@ const config: Config = {
         // Fase 13 (INSERIES-LANDING-CINEMATIC-IMMERSION-01) — a very slow, subtle zoom on
         // the Hero's active backdrop ("parallax leve"). Long duration + `alternate` so it
         // reads as ambient motion, never a distracting effect.
-        kenburns: { from: { transform: "scale(1)" }, to: { transform: "scale(1.08)" } }
+        kenburns: { from: { transform: "scale(1)" }, to: { transform: "scale(1.08)" } },
+        // INSERIES-STATISTICS-ENGINE-01 — confetti burst (components/stats/confetti.tsx).
+        // Direction/distance come from the --confetti-x/--confetti-y custom properties set
+        // inline per-piece; the keyframe itself stays generic.
+        "confetti-burst": {
+          "0%": { opacity: "1", transform: "translate(-50%, -50%) scale(1)" },
+          "100%": { opacity: "0", transform: "translate(calc(-50% + var(--confetti-x)), calc(-50% + var(--confetti-y))) scale(0.4)" }
+        }
       },
       animation: {
         "fade-in": "fade-in 0.15s ease-out",
@@ -96,7 +103,8 @@ const config: Config = {
         "scale-in": "scale-in 0.15s ease-out",
         "slide-up": "slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)",
         shimmer: "shimmer 1.6s linear infinite",
-        kenburns: "kenburns 20s ease-in-out infinite alternate"
+        kenburns: "kenburns 20s ease-in-out infinite alternate",
+        "confetti-burst": "confetti-burst 1s ease-out forwards"
       }
     }
   },

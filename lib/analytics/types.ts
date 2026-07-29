@@ -36,6 +36,14 @@ export type SeriesStatusRecord = {
   completedAt: Date | null;
   lastActivityAt: Date | null;
   totalEpisodes: number;
+  // INSERIES-STATISTICS-ENGINE-01 — additive fields for the Wrapped-style stats layer
+  // (persona classification, network/country/language rankings, "cacador de lancamentos"
+  // vs "nostalgico" signal). Nobody else reads these; existing consumers are unaffected.
+  addedAt: Date;
+  networks: string[];
+  originCountry: string[];
+  spokenLanguages: string[];
+  firstAirYear: number | null;
 };
 
 /** The single read model every stat in this layer is derived from — see dataset.ts. */

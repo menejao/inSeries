@@ -19,8 +19,19 @@ function intensityClass(count: number, max: number) {
  * GitHub-contributions-style activity calendar. `counts` maps a UTC day
  * key ("YYYY-MM-DD") to an episode-watched count for that day; any day not
  * present is treated as zero. Purely presentational — no data fetching.
+ *
+ * INSERIES-STATISTICS-ENGINE-01 — `onDayClick` (only wired for days with count > 0) lets a
+ * consumer open a day-detail view without this component knowing what that view looks like.
  */
-export function Heatmap({ counts, weeks = 18 }: { counts: Record<string, number>; weeks?: number }) {
+export function Heatmap({
+  counts,
+  weeks = 18,
+  onDayClick
+}: {
+  counts: Record<string, number>;
+  weeks?: number;
+  onDayClick?: (dayKey: string) => void;
+}) {
   const today = new Date();
   const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   const totalDays = weeks * 7;
@@ -52,10 +63,17 @@ export function Heatmap({ counts, weeks = 18 }: { counts: Record<string, number>
         {columns.map((column, columnIndex) => (
           <div key={columnIndex} className="flex flex-col gap-1">
             {column.map((day) => (
-              <div
+              <button
                 key={day.key}
+                type="button"
                 title={`${day.key}: ${day.count} episodio(s)`}
-                className={cn("h-3 w-3 rounded-sm", intensityClass(day.count, max))}
+                disabled={!onDayClick || day.count === 0}
+                onClick={() => onDayClick?.(day.key)}
+                className={cn(
+                  "h-3 w-3 rounded-sm",
+                  intensityClass(day.count, max),
+                  onDayClick && day.count > 0 && "cursor-pointer transition hover:ring-2 hover:ring-primary/60"
+                )}
               />
             ))}
           </div>

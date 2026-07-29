@@ -121,7 +121,8 @@ const envSchema = z.object({
   RECOMMENDATION_WEIGHT_LANGUAGE: optionalNonEmpty(),
   RECOMMENDATION_WEIGHT_COUNTRY: optionalNonEmpty(),
   RECOMMENDATION_CANDIDATE_POOL_SIZE: optionalNonEmpty(),
-  RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty()
+  RECOMMENDATION_CACHE_TTL_SECONDS: optionalNonEmpty(),
+  STATS_CACHE_TTL_SECONDS: optionalNonEmpty()
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -395,6 +396,12 @@ export const config = {
     trendingMaxShare: 0.2,
     candidatePoolSize: parseNumberFlag(rawEnv.RECOMMENDATION_CANDIDATE_POOL_SIZE, 200),
     cacheTtlSeconds: parseNumberFlag(rawEnv.RECOMMENDATION_CACHE_TTL_SECONDS, 300)
+  },
+  // INSERIES-STATISTICS-ENGINE-01 — "cache inteligente... 24 horas". Long TTL is safe because
+  // every write path that could change a stat (episode/status/review) explicitly invalidates
+  // by userId (see lib/stats/cache.ts) — the TTL only matters if an invalidation is ever missed.
+  stats: {
+    cacheTtlSeconds: parseNumberFlag(rawEnv.STATS_CACHE_TTL_SECONDS, 86400)
   },
   featureFlags: {
     // Was a placeholder (default off) before this sprint implemented the
