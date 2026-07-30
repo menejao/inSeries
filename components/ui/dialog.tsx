@@ -28,6 +28,14 @@ const sizeClasses = { md: "max-w-md", lg: "max-w-2xl" };
 export function Dialog({ open, onClose, title, description, children, footer, className, size = "md", padded = true }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  // Consumers overwhelmingly pass an inline `onClose` (`() => setOpen(false)`), a new function
+  // identity every render. A ref keeps the handler callable without making it a dependency of
+  // the effect below — otherwise every keystroke in a dialog's own input (which re-renders the
+  // parent, which recreates `onClose`) would re-run the effect and re-steal focus onto the
+  // first focusable element (the close button), exactly the "loses focus after one character"
+  // bug this fixes.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => setMounted(true), []);
 
@@ -44,7 +52,7 @@ export function Dialog({ open, onClose, title, description, children, footer, cl
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !panel) return;
@@ -69,7 +77,7 @@ export function Dialog({ open, onClose, title, description, children, footer, cl
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!mounted || !open) return null;
 
