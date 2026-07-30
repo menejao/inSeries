@@ -3094,10 +3094,12 @@ async function main() {
     null
   );
   check(
-    "Minha Lista (Fase 5/6/8): toolbar com busca, filtros e ordenacao renderizada",
+    "Minha Lista (redesign): busca + status/ordenacao principais renderizados, filtros avancados recolhidos por padrao",
     String(myListPage.body).includes("Buscar na Minha Lista") &&
       String(myListPage.body).includes("Ultima atividade") &&
-      String(myListPage.body).includes("Genero"),
+      String(myListPage.body).includes("Todos os status") &&
+      String(myListPage.body).includes("Filtros avancados") &&
+      !String(myListPage.body).includes("Genero"),
     null
   );
   check(

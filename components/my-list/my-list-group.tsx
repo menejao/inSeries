@@ -1,30 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { ChevronDownIcon } from "@/components/ui/icons";
-import Link from "next/link";
 import { MyListItemCard } from "@/components/my-list/my-list-item-card";
-import { PosterImage } from "@/components/media/poster-image";
-import { PosterBadge } from "@/components/media/poster-badge";
-import { formatRelativeDate } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { MyListPosterCard } from "@/components/my-list/my-list-poster-card";
+import { formatRelativeDate, cn } from "@/lib/utils";
 import type { MyListGroupKey, MyListItem } from "@/lib/my-list/types";
+import type { WatchNextItem } from "@/lib/watch-next/types";
+
+const PREVIEW_LIMIT = 6;
+/** Grupos "poster-only" — mesma composicao visual (INSERIES-MY-LIST-REDESIGN-01: "Concluidas... servira como referencia visual para as demais" / "Quero assistir: priorizar apenas o poster"). */
+const POSTER_ONLY_GROUPS: MyListGroupKey[] = ["COMPLETED", "WANT_TO_WATCH"];
+
+function sessionStorageKey(groupKey: MyListGroupKey) {
+  return `inseries-mylist-collapsed-${groupKey.toLowerCase()}`;
+}
 
 /**
- * Fase 2 (INSERIES-MY-LISTS-PREMIUM-01) — cada grupo e independente: contador, ultima
- * atividade (o `lastActivityAt`/`addedAt` mais recente do proprio grupo), expandir/recolher.
- * `FixedGrid` garante a regra global (nunca grid quebrado).
- *
- * Fase 16 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — "quando listas estiverem vazias...
- * preferencialmente ocultar completamente a secao": grupo vazio nao renderiza nada (nao
- * renderiza mais um Empty State por grupo vazio).
- *
- * Fase 14 — "Concluidas": grid limpo focado no poster, sem cards grandes, posteres sem
- * distorcao. Reusa `SeriesPosterCard` (ja usado em Landing/Series semelhantes, `variant=
- * "collection"` mostra "Colecao completa") em vez de `MyListItemCard` - unico grupo que usa
- * essa composicao, os demais continuam com o card completo de organizacao.
+ * INSERIES-MY-LIST-REDESIGN-01 — cada secao: colapsavel (estado persistido em
+ * `sessionStorage`, "durante a sessao do usuario", mesma convencao de try/catch silencioso do
+ * collapse da Sidebar mas com sessionStorage em vez de localStorage), grupo vazio some por
+ * completo, e mostra so `PREVIEW_LIMIT` itens ate o usuario clicar "Ver mais" — nunca a
+ * biblioteca inteira de uma vez ("evitar paginas extremamente longas").
  */
 export function MyListGroup({
   groupKey,
@@ -32,16 +32,38 @@ export function MyListGroup({
   items,
   selectedIds,
   onToggleSelect,
-  defaultExpanded = true
+  watchNextBySeriesId
 }: {
   groupKey: MyListGroupKey;
   label: string;
   items: MyListItem[];
   selectedIds: Set<string>;
   onToggleSelect: (seriesId: string) => void;
-  defaultExpanded?: boolean;
+  watchNextBySeriesId: Map<string, WatchNextItem>;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(sessionStorageKey(groupKey));
+      if (stored === "1") setExpanded(false);
+    } catch {
+      // sessionStorage indisponivel (modo privado) — mantem expandido por padrao.
+    }
+  }, [groupKey]);
+
+  function toggleExpanded() {
+    setExpanded((value) => {
+      const next = !value;
+      try {
+        sessionStorage.setItem(sessionStorageKey(groupKey), next ? "0" : "1");
+      } catch {
+        // Ignora — o estado so nao persiste entre paginas nesta sessao.
+      }
+      return next;
+    });
+  }
 
   if (!items.length) return null;
 
@@ -51,14 +73,12 @@ export function MyListGroup({
     return latest;
   }, null);
 
+  const visibleItems = showAll ? items : items.slice(0, PREVIEW_LIMIT);
+  const posterOnly = POSTER_ONLY_GROUPS.includes(groupKey);
+
   return (
     <section id={`grupo-${groupKey.toLowerCase()}`} className="scroll-mt-24 space-y-3">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-4 text-left"
-      >
+      <button type="button" onClick={toggleExpanded} aria-expanded={expanded} className="flex w-full items-center justify-between gap-4 text-left">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
           {label}
           <Badge variant="secondary">{items.length}</Badge>
@@ -70,37 +90,35 @@ export function MyListGroup({
       </button>
 
       {expanded ? (
-        groupKey === "COMPLETED" ? (
-          <FixedGrid mobile={2} tablet={4} desktop={5} wide={6}>
-            {items.map((item) => (
-              <Link key={item.series.id} href={`/series/${item.series.slug}`} className="group block">
-                <div className="relative aspect-[2/3] overflow-hidden rounded-3xl border border-border shadow-card transition duration-300 ease-out group-hover:-translate-y-1 group-hover:border-border-strong group-hover:shadow-raised">
-                  <PosterImage
-                    src={item.series.posterUrl}
-                    alt={item.series.title}
-                    sizes="(min-width: 1024px) 190px, (min-width: 640px) 33vw, 40vw"
-                    imageClassName="transition duration-500 ease-out group-hover:scale-110"
-                  />
-                  <PosterBadge variant="secondary" className="absolute left-2 top-2">
-                    Colecao completa
-                  </PosterBadge>
-                </div>
-                <p className="mt-2 line-clamp-1 text-sm font-semibold text-ink">{item.series.title}</p>
-              </Link>
-            ))}
-          </FixedGrid>
-        ) : (
-          <FixedGrid mobile={1} tablet={2} desktop={3}>
-            {items.map((item) => (
-              <MyListItemCard
-                key={item.series.id}
-                item={item}
-                selected={selectedIds.has(item.series.id)}
-                onToggleSelect={() => onToggleSelect(item.series.id)}
-              />
-            ))}
-          </FixedGrid>
-        )
+        <>
+          {posterOnly ? (
+            <FixedGrid mobile={2} tablet={4} desktop={5} wide={6}>
+              {visibleItems.map((item) => (
+                <MyListPosterCard key={item.series.id} item={item} badge={groupKey === "COMPLETED" ? "Colecao completa" : undefined} />
+              ))}
+            </FixedGrid>
+          ) : (
+            <FixedGrid mobile={1} tablet={2} desktop={3}>
+              {visibleItems.map((item) => (
+                <MyListItemCard
+                  key={item.series.id}
+                  item={item}
+                  selected={selectedIds.has(item.series.id)}
+                  onToggleSelect={() => onToggleSelect(item.series.id)}
+                  nextEpisode={groupKey === "WATCHING" ? watchNextBySeriesId.get(item.series.id) : undefined}
+                />
+              ))}
+            </FixedGrid>
+          )}
+
+          {!showAll && items.length > PREVIEW_LIMIT ? (
+            <div className="flex justify-center">
+              <Button variant="secondary" size="sm" onClick={() => setShowAll(true)}>
+                Ver mais ({items.length - PREVIEW_LIMIT})
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </section>
   );

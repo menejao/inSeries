@@ -1,4 +1,4 @@
-import type { MyListItem } from "@/lib/my-list/types";
+import type { MyListGroupKey, MyListItem } from "@/lib/my-list/types";
 
 export type MyListSortField =
   | "lastActivity"
@@ -16,6 +16,8 @@ export type MyListSortDirection = "asc" | "desc";
 
 export type MyListFilters = {
   query: string;
+  /** INSERIES-MY-LIST-REDESIGN-01 — filtro principal "Status": quando definido, so essa secao (grupo) e renderizada; nunca filtra itens individualmente (favoritas/estado se sobrepoem). */
+  status: MyListGroupKey | null;
   genre: string | null;
   year: number | null;
   language: string | null;
@@ -29,6 +31,7 @@ export type MyListFilters = {
 
 export const EMPTY_MY_LIST_FILTERS: MyListFilters = {
   query: "",
+  status: null,
   genre: null,
   year: null,
   language: null,

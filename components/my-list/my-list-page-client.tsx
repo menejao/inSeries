@@ -14,6 +14,7 @@ import {
   type MyListSortField
 } from "@/lib/my-list/filter-sort";
 import { MY_LIST_GROUP_LABELS, type MyListGroupKey, type MyListItem } from "@/lib/my-list/types";
+import type { WatchNextItem } from "@/lib/watch-next/types";
 
 /**
  * Fase 11 (INSERIES-DASHBOARD-AND-MY-LIST-EXPERIENCE-01) — ordem sugerida pelo ticket:
@@ -22,17 +23,27 @@ import { MY_LIST_GROUP_LABELS, type MyListGroupKey, type MyListItem } from "@/li
 const GROUP_ORDER: MyListGroupKey[] = ["WATCHING", "WANT_TO_WATCH", "COMPLETED", "FAVORITES", "PAUSED", "DROPPED"];
 
 /**
- * Fase 2/5/6/7/8 (INSERIES-MY-LISTS-PREMIUM-01) — o orquestrador client da pagina: mantem
- * busca/filtros/ordenacao/selecao em estado local e deriva os 6 grupos por `useMemo`, sempre
- * sobre o array ja carregado pelo servidor (`getMyListFullForUser`, uma unica vez) — nenhuma
- * das interacoes desta pagina dispara uma nova query.
+ * INSERIES-MY-LIST-REDESIGN-01 — o orquestrador client da pagina: mantem busca/filtros/
+ * ordenacao/selecao em estado local e deriva os 6 grupos por `useMemo`, sempre sobre o array
+ * ja carregado pelo servidor (`getMyListFullForUser`, uma unica vez). O filtro "Status" (novo)
+ * so restringe QUAIS grupos aparecem — nunca filtra itens dentro de um grupo, ja que cada
+ * grupo ja e um recorte por status.
  */
-export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists: Array<{ id: string; title: string }> }) {
+export function MyListPageClient({
+  items,
+  lists,
+  watchNextBySeriesId
+}: {
+  items: MyListItem[];
+  lists: Array<{ id: string; title: string }>;
+  watchNextBySeriesId: Record<string, WatchNextItem>;
+}) {
   const [filters, setFilters] = useState(EMPTY_MY_LIST_FILTERS);
   const [sortField, setSortField] = useState<MyListSortField>("lastActivity");
   const [sortDirection, setSortDirection] = useState<MyListSortDirection>("desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  const watchNextMap = useMemo(() => new Map(Object.entries(watchNextBySeriesId)), [watchNextBySeriesId]);
   const filterOptions = useMemo(() => getMyListFilterOptions(items), [items]);
 
   const visibleItems = useMemo(
@@ -48,6 +59,8 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
     }
     return byState;
   }, [visibleItems]);
+
+  const visibleGroupKeys = filters.status ? GROUP_ORDER.filter((key) => key === filters.status) : GROUP_ORDER;
 
   function toggleSelect(seriesId: string) {
     setSelectedIds((current) => {
@@ -67,6 +80,8 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
     );
   }
 
+  const anyGroupVisible = visibleGroupKeys.some((key) => (groups.get(key) ?? []).length > 0);
+
   return (
     <div className="space-y-8">
       <MyListToolbar
@@ -81,9 +96,9 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
         options={filterOptions}
       />
 
-      {visibleItems.length ? (
-        <div className="space-y-8">
-          {GROUP_ORDER.map((key) => (
+      {anyGroupVisible ? (
+        <div className="space-y-10">
+          {visibleGroupKeys.map((key) => (
             <MyListGroup
               key={key}
               groupKey={key}
@@ -91,6 +106,7 @@ export function MyListPageClient({ items, lists }: { items: MyListItem[]; lists:
               items={groups.get(key) ?? []}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
+              watchNextBySeriesId={watchNextMap}
             />
           ))}
         </div>
