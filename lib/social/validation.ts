@@ -10,7 +10,14 @@ export const profileUpdateSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   username: usernameSchema.optional(),
   bio: z.string().trim().max(280).optional().nullable(),
-  avatarUrl: z.union([z.string().trim().url(), z.literal("")]).optional().nullable(),
+  avatarUrl: z
+    .union([
+      z.string().trim().url(),
+      z.string().trim().regex(/^data:image\/(jpeg|png|webp|gif);base64,/).max(200000),
+      z.literal("")
+    ])
+    .optional()
+    .nullable(),
   isProfilePrivate: z.boolean().optional(),
   showWatchedSeries: z.boolean().optional(),
   showWatchingSeries: z.boolean().optional(),

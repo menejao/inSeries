@@ -190,6 +190,13 @@ export const TrashIcon = createIcon(
   </>
 );
 
+export const EyeIcon = createIcon(
+  <>
+    <path d="M2 12C2 12 5 5 12 5s10 7 10 7-3 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </>
+);
+
 export const EyeOffIcon = createIcon(
   <>
     <path d="M3 3l18 18" />

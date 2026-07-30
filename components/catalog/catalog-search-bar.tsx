@@ -16,9 +16,12 @@ export function CatalogSearchBar({ defaultValue }: { defaultValue?: string }) {
   const [value, setValue] = useState(defaultValue ?? "");
   const [, startTransition] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFocusedRef = useRef(false);
 
   useEffect(() => {
-    setValue(defaultValue ?? "");
+    if (!isFocusedRef.current) {
+      setValue(defaultValue ?? "");
+    }
   }, [defaultValue]);
 
   function handleChange(next: string) {
@@ -40,6 +43,8 @@ export function CatalogSearchBar({ defaultValue }: { defaultValue?: string }) {
       label="Buscar por titulo ou sinopse"
       value={value}
       onChange={(event) => handleChange(event.target.value)}
+      onFocus={() => { isFocusedRef.current = true; }}
+      onBlur={() => { isFocusedRef.current = false; }}
       placeholder="Buscar series por titulo ou sinopse..."
       className="text-base"
     />

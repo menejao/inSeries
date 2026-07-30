@@ -104,7 +104,8 @@ export function toSeriesSummary(
     numberOfSeasons: number | null;
     numberOfEpisodes: number | null;
   },
-  userState?: WatchState
+  userState?: WatchState,
+  isFavorite?: boolean
 ): Series {
   return {
     id: model.id,
@@ -139,6 +140,7 @@ export function toSeriesSummary(
     numberOfSeasons: model.numberOfSeasons,
     numberOfEpisodes: model.numberOfEpisodes,
     userState,
+    isFavorite,
     seasons: []
   };
 }
@@ -275,19 +277,22 @@ export async function searchSeries(params: SeriesDiscoveryParams, userId?: strin
     ]);
 
     // One extra query for user states — bounded by page size, never N+1
-    const userStateMap = new Map<string, WatchState>();
+    const userDataMap = new Map<string, { state: WatchState; isFavorite: boolean }>();
     if (userId && rows.length > 0) {
       const statuses = await prisma.userSeriesStatus.findMany({
         where: { userId, seriesId: { in: rows.map((r) => r.id) } },
-        select: { seriesId: true, state: true }
+        select: { seriesId: true, state: true, isFavorite: true }
       });
       for (const s of statuses) {
-        userStateMap.set(s.seriesId, s.state as WatchState);
+        userDataMap.set(s.seriesId, { state: s.state as WatchState, isFavorite: s.isFavorite });
       }
     }
 
     return {
-      items: rows.map((row) => toSeriesSummary(row, userStateMap.get(row.id))),
+      items: rows.map((row) => {
+        const userData = userDataMap.get(row.id);
+        return toSeriesSummary(row, userData?.state, userData?.isFavorite);
+      }),
       page,
       pageSize,
       total,

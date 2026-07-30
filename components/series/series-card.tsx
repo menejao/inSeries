@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
 import { PosterBadge } from "@/components/media/poster-badge";
-import { StarIcon } from "@/components/ui/icons";
+import { StarIcon, HeartIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { WATCH_STATE_LABELS } from "@/lib/progress/labels";
 import { SeriesCardActions } from "@/components/series/series-card-actions";
@@ -70,7 +70,12 @@ export function SeriesCard({ series, showQuickActions = false }: { series: Serie
       </Link>
       {showQuickActions ? (
         <div className="absolute right-2 top-2 z-10">
-          <SeriesCardActions seriesId={series.id} initialState={series.userState} />
+          <SeriesCardActions seriesId={series.id} initialState={series.userState} initialFavorite={series.isFavorite} />
+        </div>
+      ) : null}
+      {series.isFavorite && !showQuickActions ? (
+        <div className="absolute right-2 top-2">
+          <HeartIcon className="h-4 w-4 fill-current text-error-text drop-shadow" />
         </div>
       ) : null}
     </div>

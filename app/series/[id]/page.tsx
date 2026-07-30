@@ -18,6 +18,7 @@ import { SeriesGallery } from "@/components/series/series-gallery";
 import { SeriesTrailers } from "@/components/series/series-trailers";
 import { SeriesTimeline } from "@/components/series/series-timeline";
 import { AddToListButton } from "@/components/series/add-to-list-button";
+import { SeriesFavoriteButton } from "@/components/series/series-favorite-button";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { CalendarIcon, ListIcon, StarIcon } from "@/components/ui/icons";
@@ -89,10 +90,14 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   if (user && dbAvailable && initialSeasonEpisodesRaw.length) {
     const watchedRows = await prisma.userEpisodeProgress.findMany({
       where: { userId: user.id, episodeId: { in: initialSeasonEpisodesRaw.map((episode) => episode.id) }, watched: true },
-      select: { episodeId: true }
+      select: { episodeId: true, watchedAt: true }
     });
-    const watchedIds = new Set(watchedRows.map((row) => row.episodeId));
-    initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) }));
+    const watchedMap = new Map(watchedRows.map((row) => [row.episodeId, row.watchedAt]));
+    initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({
+      ...episode,
+      watched: watchedMap.has(episode.id),
+      watchedAt: watchedMap.get(episode.id)?.toISOString() ?? null
+    }));
   }
 
   // "Sua jornada com esta serie" — ultimas atividades do usuario ligadas a esta serie
@@ -192,6 +197,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             {/* Acoes: Acompanhar / Lista / Avaliar / Mais acoes */}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <SeriesStatusActions seriesId={series.id} initialState={statusRow?.state ?? null} authenticated={Boolean(user)} />
+              <SeriesFavoriteButton seriesId={series.id} initialFavorite={statusRow?.isFavorite ?? false} authenticated={Boolean(user)} />
               <AddToListButton seriesId={series.id} lists={userLists} authenticated={Boolean(user)} />
               <Link href="#reviews" className={buttonVariants({ variant: "secondary", size: "md" })}>
                 <StarIcon className="h-4 w-4" />

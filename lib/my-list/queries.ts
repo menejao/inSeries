@@ -15,7 +15,6 @@ import { MY_LIST_GROUP_LABELS, type MyListFullData, type MyListGroup, type MyLis
  * catalog size or to how many series the user tracks (Fase 9 — no N+1).
  */
 const PREVIEW_LIMIT = 6;
-const FAVORITE_MIN_RATING = 4;
 
 const PREVIEW_SELECT = {
   id: true,
@@ -52,20 +51,16 @@ export async function getMyListSummaryForUser(userId: string): Promise<MyListSum
       take: PREVIEW_LIMIT,
       select: { series: { select: PREVIEW_SELECT } }
     }),
-    // Fase 1 (INSERIES-MY-LISTS-PREMIUM-01) — auditoria encontrou que "Abandonadas" (o 5o
-    // valor do enum WatchState, DROPPED) nunca era consultado aqui, apesar de a mutation
-    // (upsertSeriesStatus) e a UI de status da serie (SeriesStatusActions, "Abandonada") ja
-    // suportarem esse estado havia sprints. Gap de cobertura, nao uma regra nova.
     prisma.userSeriesStatus.findMany({
       where: { userId, state: "DROPPED" },
       orderBy: { lastActivityAt: "desc" },
       take: PREVIEW_LIMIT,
       select: { series: { select: PREVIEW_SELECT } }
     }),
-    prisma.review.count({ where: { userId, rating: { gte: FAVORITE_MIN_RATING } } }),
-    prisma.review.findMany({
-      where: { userId, rating: { gte: FAVORITE_MIN_RATING } },
-      orderBy: { rating: "desc" },
+    prisma.userSeriesStatus.count({ where: { userId, isFavorite: true } }),
+    prisma.userSeriesStatus.findMany({
+      where: { userId, isFavorite: true },
+      orderBy: { updatedAt: "desc" },
       take: PREVIEW_LIMIT,
       select: { series: { select: PREVIEW_SELECT } }
     })
@@ -165,13 +160,10 @@ function toSeriesCard(model: {
 }
 
 /**
- * Fase 2/12 (INSERIES-MY-LISTS-PREMIUM-01) — the full "Minha Lista" page's single data
+ * Fase 2/12 (INSERIES-MY-LISTS-PREMIUM-01) — the full "Minhas Series" page's single data
  * source: every `UserSeriesStatus` row for the user (all 5 states), each with a lean
- * `Series` select (no `seasons`/`episodes` join — those aren't needed by the card, and
- * `/me/watching`'s old per-series `getCatalogSeriesBySlug` loop was exactly this N+1,
- * audited in Fase 1). One `UserSeriesStatus.findMany` + one `Review.findMany` (for the
- * favorite/rating signal), both in parallel — never one query per tracked series.
- * Grouping/filtering/sorting/search all happen client-side over this single array.
+ * `Series` select. One `UserSeriesStatus.findMany` + one `Review.findMany` (for rating
+ * display), both in parallel — never one query per tracked series.
  */
 export async function getMyListFullForUser(userId: string): Promise<MyListFullData> {
   const [statuses, reviews] = await Promise.all([
@@ -185,19 +177,19 @@ export async function getMyListFullForUser(userId: string): Promise<MyListFullDa
         completedAt: true,
         createdAt: true,
         updatedAt: true,
+        isFavorite: true,
         series: { select: SERIES_CARD_SELECT }
       }
     }),
     prisma.review.findMany({
-      where: { userId, rating: { gte: FAVORITE_MIN_RATING } },
-      select: { seriesId: true, rating: true, createdAt: true, updatedAt: true, series: { select: SERIES_CARD_SELECT } }
+      where: { userId },
+      select: { seriesId: true, rating: true }
     })
   ]);
 
   const reviewBySeriesId = new Map(reviews.map((review) => [review.seriesId, review]));
-  const trackedSeriesIds = new Set(statuses.map((status) => status.series.id));
 
-  const trackedItems: MyListItem[] = statuses.map((status) => {
+  const items: MyListItem[] = statuses.map((status) => {
     const review = reviewBySeriesId.get(status.series.id);
     return {
       series: toSeriesCard(status.series),
@@ -208,29 +200,20 @@ export async function getMyListFullForUser(userId: string): Promise<MyListFullDa
       completedAt: status.completedAt,
       addedAt: status.createdAt,
       updatedAt: status.updatedAt,
-      isFavorite: Boolean(review),
+      isFavorite: status.isFavorite,
       reviewRating: review?.rating ?? null
     };
   });
 
-  // Fase 2/5 — a series favoritada (review >= 4) mas nunca rastreada via UserSeriesStatus
-  // ainda precisa aparecer (so no grupo Favoritas): sem isso, ela ficaria invisivel na
-  // Minha Lista completa, apesar de ja contar no resumo do Dashboard
-  // (getMyListSummaryForUser sempre consultou Review de forma independente do status).
-  const favoriteOnlyItems: MyListItem[] = reviews
-    .filter((review) => !trackedSeriesIds.has(review.seriesId))
-    .map((review) => ({
-      series: toSeriesCard(review.series),
-      state: null,
-      completionPercent: 0,
-      lastActivityAt: null,
-      startedAt: null,
-      completedAt: null,
-      addedAt: review.createdAt,
-      updatedAt: review.updatedAt,
-      isFavorite: true,
-      reviewRating: review.rating
-    }));
+  return { items };
+}
 
-  return { items: [...trackedItems, ...favoriteOnlyItems] };
+export async function getFavoriteSeriesForUser(userId: string, limit = 6) {
+  const statuses = await prisma.userSeriesStatus.findMany({
+    where: { userId, isFavorite: true },
+    take: limit,
+    orderBy: { updatedAt: "desc" },
+    select: { series: { select: { id: true, slug: true, title: true, posterUrl: true } } }
+  });
+  return statuses.map((s) => s.series);
 }

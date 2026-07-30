@@ -4,6 +4,7 @@ import { PosterImage } from "@/components/media/poster-image";
 import { cn, formatEpisodeCode } from "@/lib/utils";
 import type { Episode } from "@/lib/types";
 import { EpisodeWatchButton } from "@/components/series/episode-watch-button";
+import { EpisodeWatchedAtEditor } from "@/components/series/episode-watched-at-editor";
 
 /**
  * Fase 5 (INSERIES-SERIES-PAGE-PREMIUM-01) — image always visible (mobile included, previously `hidden sm:block`), premium hover lift consistent with every other card in the app.
@@ -39,6 +40,9 @@ export function EpisodeRow({
           <p className="text-xs text-subtle">
             {episode.runtimeMinutes || "n/d"} min · {episode.airedOn || "n/d"}
           </p>
+          {episode.watched && episode.watchedAt && authenticated ? (
+            <EpisodeWatchedAtEditor episodeId={episode.id} initialWatchedAt={episode.watchedAt} />
+          ) : null}
         </div>
         <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} size="sm" />
       </div>

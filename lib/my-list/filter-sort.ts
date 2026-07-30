@@ -27,6 +27,9 @@ export type MyListFilters = {
   keyword: string | null;
   minQualityScore: number | null;
   minDiscoveryScore: number | null;
+  /** Filtra itens individualmente em todos os grupos: so exibe series marcadas como favoritas. */
+  onlyFavorites: boolean;
+  minVoteAverage: number | null;
 };
 
 export const EMPTY_MY_LIST_FILTERS: MyListFilters = {
@@ -40,7 +43,9 @@ export const EMPTY_MY_LIST_FILTERS: MyListFilters = {
   tag: null,
   keyword: null,
   minQualityScore: null,
-  minDiscoveryScore: null
+  minDiscoveryScore: null,
+  onlyFavorites: false,
+  minVoteAverage: null
 };
 
 /**
@@ -70,6 +75,8 @@ export function filterMyListItems(items: MyListItem[], filters: MyListFilters): 
     if (filters.provider && !item.series.watchProviders.includes(filters.provider)) return false;
     if (filters.tag && !item.series.collectionTags.includes(filters.tag)) return false;
     if (filters.keyword && !item.series.keywords.includes(filters.keyword)) return false;
+    if (filters.onlyFavorites && !item.isFavorite) return false;
+    if (filters.minVoteAverage && (item.series.voteAverage ?? 0) < filters.minVoteAverage) return false;
     if (filters.minQualityScore && (item.series.qualityScore ?? 0) < filters.minQualityScore) return false;
     if (filters.minDiscoveryScore && (item.series.discoveryScore ?? 0) < filters.minDiscoveryScore) return false;
     return true;
