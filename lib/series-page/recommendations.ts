@@ -59,7 +59,7 @@ async function getTmdbLocalMatches(externalId: string | null, fetcher: (id: stri
     return tmdbIds
       .map((id) => byExternalId.get(id))
       .filter((row): row is NonNullable<typeof row> => Boolean(row))
-      .map(toSeriesSummary);
+      .map((row) => toSeriesSummary(row));
   } catch (error) {
     if (error instanceof TmdbConfigurationError) return [];
     return [];
@@ -80,7 +80,7 @@ async function getSameCreatorSeries(series: Series): Promise<Series[]> {
     orderBy: [{ qualityScore: { sort: "desc", nulls: "last" } }],
     take: CANDIDATE_POOL
   });
-  return rows.map(toSeriesSummary);
+  return rows.map((row) => toSeriesSummary(row));
 }
 
 async function getSameCastSeries(seriesId: string, castIds: number[]): Promise<Series[]> {
