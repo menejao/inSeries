@@ -26,11 +26,17 @@ async function seasonEpisodesHandler(request: Request, { params }: { params: Pro
 
   const watchedRows = await prisma.userEpisodeProgress.findMany({
     where: { userId: user.id, episodeId: { in: episodes.map((episode) => episode.id) }, watched: true },
-    select: { episodeId: true }
+    select: { episodeId: true, watchedAt: true }
   });
-  const watchedIds = new Set(watchedRows.map((row) => row.episodeId));
+  const watchedMap = new Map(watchedRows.map((row) => [row.episodeId, row.watchedAt]));
 
-  return NextResponse.json({ data: episodes.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) })) });
+  return NextResponse.json({
+    data: episodes.map((episode) => ({
+      ...episode,
+      watched: watchedMap.has(episode.id),
+      watchedAt: watchedMap.get(episode.id)?.toISOString() ?? null
+    }))
+  });
 }
 
 export const GET = withApiObservability("series.season-episodes", seasonEpisodesHandler);

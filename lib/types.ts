@@ -8,6 +8,7 @@ export type Episode = {
   runtimeMinutes: number;
   airedOn: string;
   watched: boolean;
+  watchedAt?: string | null;
   stillUrl?: string;
 };
 

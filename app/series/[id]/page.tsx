@@ -89,10 +89,14 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
   if (user && dbAvailable && initialSeasonEpisodesRaw.length) {
     const watchedRows = await prisma.userEpisodeProgress.findMany({
       where: { userId: user.id, episodeId: { in: initialSeasonEpisodesRaw.map((episode) => episode.id) }, watched: true },
-      select: { episodeId: true }
+      select: { episodeId: true, watchedAt: true }
     });
-    const watchedIds = new Set(watchedRows.map((row) => row.episodeId));
-    initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({ ...episode, watched: watchedIds.has(episode.id) }));
+    const watchedMap = new Map(watchedRows.map((row) => [row.episodeId, row.watchedAt]));
+    initialSeasonEpisodes = initialSeasonEpisodesRaw.map((episode) => ({
+      ...episode,
+      watched: watchedMap.has(episode.id),
+      watchedAt: watchedMap.get(episode.id)?.toISOString() ?? null
+    }));
   }
 
   // "Sua jornada com esta serie" — ultimas atividades do usuario ligadas a esta serie
