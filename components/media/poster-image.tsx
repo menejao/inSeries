@@ -47,6 +47,7 @@ export function PosterImage({
               fill
               sizes={sizes}
               priority={priority}
+              unoptimized
               className={cn("object-cover", imageClassName)}
               onLoad={() => setLoaded(true)}
               onError={() => setFailed(true)}
@@ -84,6 +85,7 @@ export function BackdropImage({
               fill
               sizes={sizes}
               priority={priority}
+              unoptimized
               className={cn("object-cover", imageClassName)}
               onLoad={() => setLoaded(true)}
               onError={() => setFailed(true)}
