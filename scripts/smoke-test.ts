@@ -748,8 +748,8 @@ async function main() {
     achievementsPageAfterAll.status
   );
   check(
-    "pagina de conquistas mostra progresso de nivel (4 conquistas desbloqueadas de 15)",
-    String(achievementsPageAfterAll.body).includes("4/15"),
+    "pagina de conquistas (redesign) mostra progresso de nivel (4 conquistas desbloqueadas do catalogo expandido)",
+    String(achievementsPageAfterAll.body).includes("4 de 31 conquistas desbloqueadas"),
     achievementsPageAfterAll.status
   );
 

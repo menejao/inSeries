@@ -17,6 +17,8 @@ type ProfileHeaderProfile = {
   isProfilePrivate: boolean;
   isActiveSupporter?: boolean;
   showSupporterBadge?: boolean;
+  /** INSERIES-ACHIEVEMENTS-REDESIGN-01 — "titulos devem aparecer... no perfil do usuario". Null when gamification is off or the user has 0 points (level 1 badge would be noise for a brand-new account). */
+  levelTitle?: string | null;
 };
 
 /**
@@ -52,6 +54,7 @@ export function ProfileHeader({ profile, stats, action }: { profile: ProfileHead
               <Badge variant="secondary">@{profile.username}</Badge>
               {profile.isProfilePrivate ? <Badge variant="default">Privado</Badge> : null}
               {showBadge ? <SupporterBadge /> : null}
+              {profile.levelTitle ? <Badge variant="primary">🏆 {profile.levelTitle}</Badge> : null}
             </div>
             {profile.bio ? <p className="section-copy max-w-xl">{profile.bio}</p> : null}
             <p className="flex items-center gap-1.5 text-xs text-subtle">

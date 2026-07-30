@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { isFeatureEnabled } from "@/lib/config/flags";
 import { createNotification } from "@/lib/notifications/service";
 import { ACHIEVEMENT_DEFINITIONS } from "@/lib/gamification/achievements";
+import { buildFullContext } from "@/lib/gamification/context";
 import { getLevelProgress } from "@/lib/gamification/levels";
 import type {
   AchievementsOverviewOutcome,
@@ -80,7 +81,7 @@ export async function unlockAchievement(userId: string, slug: string, metadata?:
     userId,
     type: "ACHIEVEMENT_UNLOCKED",
     title: "Conquista desbloqueada",
-    body: `Voce desbloqueou "${achievement.name}".`,
+    body: `Voce desbloqueou "${achievement.name}" (+${achievement.points} pts).`,
     href: "/me/achievements",
     achievementId: achievement.id
   });
@@ -122,9 +123,19 @@ export async function getUserAchievementsOverview(userId: string): Promise<Achie
   }));
 
   // Hidden-but-unearned achievements never appear in `locked` — no secret achievements are defined yet, but the filter is ready for one.
-  const locked: LockedAchievementSummary[] = catalog
-    .filter((achievement) => !unlockedSlugs.has(achievement.slug) && !achievement.hidden)
-    .map((achievement) => ({
+  const lockedAchievements = catalog.filter((achievement) => !unlockedSlugs.has(achievement.slug) && !achievement.hidden);
+
+  // INSERIES-ACHIEVEMENTS-REDESIGN-01 — a full aggregate context, only computed when there's
+  // at least one locked achievement to show progress for (skips the extra queries entirely
+  // for a user who's somehow unlocked everything).
+  const context = lockedAchievements.length ? await buildFullContext(userId) : null;
+  const definitionBySlug = new Map(ACHIEVEMENT_DEFINITIONS.map((definition) => [definition.slug, definition]));
+
+  const locked: LockedAchievementSummary[] = lockedAchievements.map((achievement) => {
+    const definition = definitionBySlug.get(achievement.slug);
+    const current = definition && context ? definition.metric(context) : 0;
+    const target = definition?.target ?? 1;
+    return {
       slug: achievement.slug,
       name: achievement.name,
       description: achievement.description,
@@ -132,8 +143,15 @@ export async function getUserAchievementsOverview(userId: string): Promise<Achie
       category: achievement.category,
       rarity: achievement.rarity,
       points: achievement.points,
-      hidden: achievement.hidden
-    }));
+      hidden: achievement.hidden,
+      progress: { current: Math.min(current, target), target, unit: definition?.unit ?? "" }
+    };
+  });
+
+  // "Proximas conquistas": closest to unlocking first (highest progress ratio), ties broken by lowest points (easier next win first).
+  const nextAchievements = [...locked]
+    .sort((a, b) => b.progress.current / b.progress.target - a.progress.current / a.progress.target || a.points - b.points)
+    .slice(0, 5);
 
   return {
     enabled: true,
@@ -144,9 +162,24 @@ export async function getUserAchievementsOverview(userId: string): Promise<Achie
       unlocked,
       locked,
       lastUnlocked: unlocked[0] ?? null,
-      nextSuggested: locked[0] ?? null
+      nextAchievements,
+      recentlyUnlocked: unlocked.slice(0, 6)
     }
   };
+}
+
+/**
+ * INSERIES-ACHIEVEMENTS-REDESIGN-01 — "os titulos devem aparecer no Hero e no perfil":
+ * a cheap version of `getUserAchievementsOverview` for the profile header, where only the
+ * level/title badge is needed — never runs `buildFullContext` (the analytics dataset fetch +
+ * 4 counts that power locked-achievement progress bars), just sums `Achievement.points`.
+ */
+export async function getUserLevel(userId: string) {
+  if (!isFeatureEnabled("gamification")) return null;
+
+  const unlocks = await prisma.userAchievement.findMany({ where: { userId }, select: { achievement: { select: { points: true } } } });
+  const points = unlocks.reduce((sum, unlock) => sum + unlock.achievement.points, 0);
+  return getLevelProgress(points);
 }
 
 export async function getGamificationAdminSnapshot(): Promise<GamificationAdminSnapshot> {

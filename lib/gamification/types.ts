@@ -18,10 +18,11 @@ export type GamificationEventType = GamificationEvent["type"];
 
 /**
  * Aggregates available to achievement rules. Built fresh per event by
- * engine.ts — only the fields relevant to that event's category are
- * populated with real numbers; the rest stay at their zero-value default,
- * which is harmless because no rule outside that category runs for this
- * event anyway (see the `triggers` filter in engine.ts).
+ * engine.ts's `buildContextForEvent` — only the fields relevant to that
+ * event's category are populated with real numbers, the rest stay at zero
+ * (harmless, since no rule outside that category runs for this event — see
+ * the `triggers` filter). `buildFullContext` (also engine.ts) populates
+ * every field at once, for the Conquistas page's progress bars.
  */
 export type AchievementEvalContext = {
   userId: string;
@@ -35,6 +36,13 @@ export type AchievementEvalContext = {
   followingCount: number;
 };
 
+/**
+ * INSERIES-ACHIEVEMENTS-REDESIGN-01 — `metric`/`target` replace the old opaque `isUnlocked`
+ * predicate: the exact same pair of numbers now drives BOTH the unlock check
+ * (`metric(ctx) >= target`, see engine.ts) AND the "18/50 series" progress bar on locked
+ * achievements — one source of truth instead of a boolean-only rule plus a separate,
+ * hand-maintained progress calculation.
+ */
 export type AchievementDefinition = {
   slug: string;
   name: string;
@@ -46,8 +54,13 @@ export type AchievementDefinition = {
   points: number;
   hidden: boolean;
   triggers: GamificationEventType[];
-  isUnlocked: (context: AchievementEvalContext) => boolean;
+  metric: (context: AchievementEvalContext) => number;
+  target: number;
+  /** Short unit label for the progress line, e.g. "series", "episodios", "horas", "dias". */
+  unit: string;
 };
+
+export type AchievementProgress = { current: number; target: number; unit: string };
 
 export type UnlockedAchievementSummary = {
   slug: string;
@@ -69,15 +82,18 @@ export type LockedAchievementSummary = {
   rarity: AchievementRarity;
   points: number;
   hidden: boolean;
+  progress: AchievementProgress;
 };
 
 export type LevelProgress = {
   level: number;
+  title: string;
   points: number;
   currentLevelThreshold: number;
   nextLevelThreshold: number;
   progressPercent: number;
   pointsToNextLevel: number;
+  isMaxLevel: boolean;
 };
 
 export type AchievementsOverview = {
@@ -87,7 +103,10 @@ export type AchievementsOverview = {
   unlocked: UnlockedAchievementSummary[];
   locked: LockedAchievementSummary[];
   lastUnlocked: UnlockedAchievementSummary | null;
-  nextSuggested: LockedAchievementSummary | null;
+  /** 3-5 locked achievements closest to unlocking (highest progress ratio first) — "Proximas conquistas". */
+  nextAchievements: LockedAchievementSummary[];
+  /** Most recently unlocked, capped for the "Recentemente desbloqueadas" section (subset of `unlocked`). */
+  recentlyUnlocked: UnlockedAchievementSummary[];
 };
 
 export type AchievementsOverviewOutcome = { enabled: true; overview: AchievementsOverview } | { enabled: false; overview: null };

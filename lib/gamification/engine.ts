@@ -4,6 +4,17 @@ import { ACHIEVEMENT_DEFINITIONS } from "@/lib/gamification/achievements";
 import { unlockAchievement } from "@/lib/gamification/service";
 import type { AchievementEvalContext, GamificationEvent } from "@/lib/gamification/types";
 
+const EMPTY_CONTEXT: Omit<AchievementEvalContext, "userId"> = {
+  episodesWatchedCount: 0,
+  hoursWatched: 0,
+  genreEpisodeCounts: {},
+  longestStreakDays: 0,
+  seriesCompletedCount: 0,
+  reviewsCount: 0,
+  listsCount: 0,
+  followingCount: 0
+};
+
 /**
  * Fase 4/13 — builds only the aggregates the triggering event's category of
  * achievements needs, never the full picture every time. `EPISODE_WATCHED`
@@ -12,17 +23,7 @@ import type { AchievementEvalContext, GamificationEvent } from "@/lib/gamificati
  * fetch instead of 4 separate queries — every other event is a single count.
  */
 async function buildContextForEvent(event: GamificationEvent): Promise<AchievementEvalContext> {
-  const base: AchievementEvalContext = {
-    userId: event.userId,
-    episodesWatchedCount: 0,
-    hoursWatched: 0,
-    genreEpisodeCounts: {},
-    longestStreakDays: 0,
-    seriesCompletedCount: 0,
-    reviewsCount: 0,
-    listsCount: 0,
-    followingCount: 0
-  };
+  const base: AchievementEvalContext = { userId: event.userId, ...EMPTY_CONTEXT };
 
   switch (event.type) {
     case "EPISODE_WATCHED": {
@@ -74,7 +75,7 @@ export async function evaluateEvent(event: GamificationEvent): Promise<void> {
   const context = await buildContextForEvent(event);
 
   for (const definition of stillLocked) {
-    if (definition.isUnlocked(context)) {
+    if (definition.metric(context) >= definition.target) {
       await unlockAchievement(event.userId, definition.slug);
     }
   }

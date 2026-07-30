@@ -1,59 +1,38 @@
-import { StatTile } from "@/components/stats/stat-tile";
-import { LevelProgressCard } from "@/components/achievements/level-progress-card";
-import { AchievementCard } from "@/components/achievements/achievement-card";
+import { AchievementsHero } from "@/components/achievements/achievements-hero";
+import { NextAchievementsSection } from "@/components/achievements/next-achievements-section";
+import { RecentlyUnlockedSection } from "@/components/achievements/recently-unlocked-section";
+import { AchievementsExplorer } from "@/components/achievements/achievements-explorer";
 import { AchievementsUnavailable } from "@/components/achievements/achievements-unavailable";
-import { TrophyIcon } from "@/components/ui/icons";
 import { requireUser } from "@/lib/auth/server";
-import { CATEGORY_LABELS, CATEGORY_ORDER, getUserAchievementsOverview, type AchievementCategory } from "@/lib/gamification";
+import { getUserAchievementsOverview } from "@/lib/gamification";
 
+/**
+ * INSERIES-ACHIEVEMENTS-REDESIGN-01 — "as conquistas devem criar uma jornada continua de
+ * progresso, nao apenas uma colecao de badges": Hero vira painel de progresso (nivel/titulo/
+ * XP/ultima conquista), seguido por "Proximas conquistas" (o proximo objetivo, sempre
+ * visivel) e "Recentemente desbloqueadas", com o album completo (filtravel por categoria)
+ * por ultimo — nunca 6 secoes de categoria abertas ao mesmo tempo como antes.
+ */
 export default async function AchievementsPage() {
   const user = await requireUser();
   const result = await getUserAchievementsOverview(user.id);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <p className="eyebrow">Colecao</p>
         <h1 className="section-title">Conquistas</h1>
-        <p className="section-copy">Badges, nivel e progresso construidos a partir das suas acoes reais no inSeries.</p>
+        <p className="section-copy">Sua jornada de progresso no inSeries — construida a partir das suas acoes reais na plataforma.</p>
       </div>
 
       {!result.enabled ? (
         <AchievementsUnavailable />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="sm:col-span-2">
-              <LevelProgressCard level={result.overview.level} points={result.overview.points} />
-            </div>
-            <StatTile
-              label="Conquistas desbloqueadas"
-              value={`${result.overview.unlocked.length}/${result.overview.totalAchievements}`}
-            />
-          </div>
-
-          {CATEGORY_ORDER.map((category: AchievementCategory) => {
-            const unlockedInCategory = result.overview.unlocked.filter((a) => a.category === category);
-            const lockedInCategory = result.overview.locked.filter((a) => a.category === category);
-            if (unlockedInCategory.length === 0 && lockedInCategory.length === 0) return null;
-
-            return (
-              <section key={category} className="space-y-3">
-                <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
-                  <TrophyIcon className="h-5 w-5 text-subtle" />
-                  {CATEGORY_LABELS[category]}
-                </h2>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                  {unlockedInCategory.map((achievement) => (
-                    <AchievementCard key={achievement.slug} achievement={achievement} unlocked />
-                  ))}
-                  {lockedInCategory.map((achievement) => (
-                    <AchievementCard key={achievement.slug} achievement={achievement} unlocked={false} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+          <AchievementsHero overview={result.overview} />
+          <NextAchievementsSection items={result.overview.nextAchievements} />
+          <RecentlyUnlockedSection items={result.overview.recentlyUnlocked} />
+          <AchievementsExplorer unlocked={result.overview.unlocked} locked={result.overview.locked} />
         </>
       )}
     </div>

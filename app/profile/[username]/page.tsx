@@ -23,6 +23,7 @@ import { getFollowState, getPendingFollowRequests } from "@/lib/social/follow";
 import { isMuted } from "@/lib/social/mute";
 import { isBlocked } from "@/lib/social/block";
 import { getSupporterStatus } from "@/lib/supporters/status";
+import { getUserLevel } from "@/lib/gamification";
 import { prisma } from "@/lib/db/prisma";
 
 /**
@@ -91,7 +92,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     canSeeStats ? getViewerPersonaForUser(profile.id) : Promise.resolve(null)
   ]);
 
-  const supporterStatus = await getSupporterStatus(profile.id);
+  const [supporterStatus, level] = await Promise.all([getSupporterStatus(profile.id), getUserLevel(profile.id)]);
 
   const highlightItems = fullList
     ? isOwner
@@ -115,7 +116,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   return (
     <div className="space-y-8">
       <ProfileHeader
-        profile={{ ...profile, isActiveSupporter: supporterStatus.active }}
+        profile={{ ...profile, isActiveSupporter: supporterStatus.active, levelTitle: level && level.points > 0 ? level.title : null }}
         stats={canSeeStats ? stats : null}
         action={
           isOwner ? (

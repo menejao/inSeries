@@ -1,11 +1,15 @@
 import type { AchievementEvalContext } from "@/lib/gamification/types";
 
-/** Reusable "numeric aggregate crossed a threshold" rule — most achievements are exactly this. */
-export function atLeast(selector: (context: AchievementEvalContext) => number, threshold: number) {
-  return (context: AchievementEvalContext) => selector(context) >= threshold;
-}
+/** Reusable metric selectors — paired with a `target` on each `AchievementDefinition` (achievements.ts) to drive both the unlock check and the progress bar from one place. */
+export const episodesWatched = (context: AchievementEvalContext) => context.episodesWatchedCount;
+export const hoursWatched = (context: AchievementEvalContext) => context.hoursWatched;
+export const seriesCompleted = (context: AchievementEvalContext) => context.seriesCompletedCount;
+export const reviewsWritten = (context: AchievementEvalContext) => context.reviewsCount;
+export const listsCreated = (context: AchievementEvalContext) => context.listsCount;
+export const followingCount = (context: AchievementEvalContext) => context.followingCount;
+export const streakDays = (context: AchievementEvalContext) => context.longestStreakDays;
 
 /** Same idea, scoped to one genre's episode count (see `genreEpisodeCounts` in the eval context). */
-export function genreAtLeast(genre: string, threshold: number) {
-  return (context: AchievementEvalContext) => (context.genreEpisodeCounts[genre] ?? 0) >= threshold;
+export function genreEpisodes(genre: string) {
+  return (context: AchievementEvalContext) => context.genreEpisodeCounts[genre] ?? 0;
 }
