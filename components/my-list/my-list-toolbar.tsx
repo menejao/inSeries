@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ChevronDownIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, HeartIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { MY_LIST_GROUP_LABELS, type MyListGroupKey } from "@/lib/my-list/types";
 import { EMPTY_MY_LIST_FILTERS, type MyListFilters, type MyListSortDirection, type MyListSortField, type getMyListFilterOptions } from "@/lib/my-list/filter-sort";
@@ -55,7 +55,7 @@ export function MyListToolbar({
   }
 
   const hasActiveAdvancedFilters = Object.entries(filters).some(([key, value]) => {
-    if (key === "query" || key === "status") return false;
+    if (key === "query" || key === "status" || key === "onlyFavorites") return false;
     return value !== null;
   });
 
@@ -100,6 +100,21 @@ export function MyListToolbar({
 
         <button
           type="button"
+          onClick={() => set("onlyFavorites", !filters.onlyFavorites)}
+          aria-pressed={filters.onlyFavorites}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+            filters.onlyFavorites
+              ? "border-error/50 bg-error/10 text-error-text"
+              : "border-border text-muted hover:border-border-strong hover:text-ink"
+          )}
+        >
+          <HeartIcon className={cn("h-3.5 w-3.5", filters.onlyFavorites && "fill-current")} />
+          Favoritas
+        </button>
+
+        <button
+          type="button"
           onClick={() => setAdvancedOpen((value) => !value)}
           aria-expanded={advancedOpen}
           className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-sm font-medium text-muted transition hover:border-border-strong hover:text-ink"
@@ -112,7 +127,7 @@ export function MyListToolbar({
 
       {advancedOpen ? (
         <div className="space-y-3 rounded-3xl border border-border bg-surface/70 p-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
             <Select aria-label="Filtrar por genero" value={filters.genre ?? ""} onChange={(event) => set("genre", event.target.value || null)}>
               <option value="">Genero</option>
               {options.genres.map((genre) => (
@@ -170,6 +185,42 @@ export function MyListToolbar({
               {options.keywords.map((keyword) => (
                 <option key={keyword} value={keyword}>
                   {keyword}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Nota minima"
+              value={filters.minVoteAverage?.toString() ?? ""}
+              onChange={(event) => set("minVoteAverage", event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Nota minima</option>
+              {[5, 6, 7, 7.5, 8, 8.5, 9].map((score) => (
+                <option key={score} value={score}>
+                  {"≥"} {score.toFixed(1)}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Quality Score minimo"
+              value={filters.minQualityScore?.toString() ?? ""}
+              onChange={(event) => set("minQualityScore", event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Quality Score</option>
+              {[5, 6, 7, 8, 9].map((score) => (
+                <option key={score} value={score}>
+                  {"≥"} {score}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Discovery Score minimo"
+              value={filters.minDiscoveryScore?.toString() ?? ""}
+              onChange={(event) => set("minDiscoveryScore", event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Discovery Score</option>
+              {[5, 6, 7, 8, 9].map((score) => (
+                <option key={score} value={score}>
+                  {"≥"} {score}
                 </option>
               ))}
             </Select>
