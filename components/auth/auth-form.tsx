@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 
 type AuthFormProps = {
   mode: "login" | "register";
@@ -27,6 +28,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const nameId = useId();
   const usernameId = useId();
   const loginId = useId();
@@ -120,7 +122,26 @@ export function AuthForm({ mode }: AuthFormProps) {
           <label htmlFor={passwordId} className="text-sm font-medium text-ink">
             Senha
           </label>
-          <Input id={passwordId} name="password" type="password" placeholder="Minimo 8 caracteres" minLength={8} required />
+          <div className="relative">
+            <Input
+              id={passwordId}
+              name="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Minimo 8 caracteres"
+              minLength={8}
+              required
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((p) => !p)}
+              aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              tabIndex={-1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-subtle transition hover:text-ink"
+            >
+              {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
         <Button className="w-full" size="lg" disabled={isPending} loading={isPending}>
           {mode === "login" ? "Entrar" : "Criar conta"}

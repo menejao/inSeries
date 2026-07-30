@@ -31,7 +31,7 @@ type SidebarItem = { href: string; label: string; icon: (props: IconProps) => Re
  */
 const ITEMS: SidebarItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
-  { href: "/me/minha-lista", label: "Minha Lista", icon: BookIcon },
+  { href: "/me/minha-lista", label: "Minhas Series", icon: BookIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
   { href: "/series", label: "Catalogo", icon: TvIcon },
   { href: "/feed", label: "Feed", icon: FilmIcon },

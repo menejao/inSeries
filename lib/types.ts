@@ -38,6 +38,7 @@ export type Series = {
   backdropUrl: string;
   seasons: Season[];
   userState?: WatchState;
+  isFavorite?: boolean;
   voteAverage?: number | null;
   // INSERIES-CATALOG-INTELLIGENCE-EXPERIENCE-01 — metadata already synced/derived by the
   // catalog pipeline (see lib/catalog/quality-score.ts, collection-tags.ts, normalize.ts),

@@ -10,6 +10,7 @@ import { EyeOffIcon, LockIcon } from "@/components/ui/icons";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfilePersonaCard } from "@/components/profile/profile-persona-card";
 import { ProfileHighlights } from "@/components/profile/profile-highlights";
+import { ProfileFavoritesSection } from "@/components/profile/profile-favorites-section";
 import { ProfileSeriesLibrary } from "@/components/profile/profile-series-library";
 import { ProfileReviewsPreview } from "@/components/profile/profile-reviews-preview";
 import { ProfileListsPreview } from "@/components/profile/profile-lists-preview";
@@ -17,7 +18,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { getProfileByUsername, getPublicListsForUser, getPublicReviewsForUser, getWatchStateSeries } from "@/lib/social/profile";
 import { getUserStats } from "@/lib/analytics";
 import { getViewerPersonaForUser } from "@/lib/stats/persona-for-user";
-import { getMyListFullForUser } from "@/lib/my-list";
+import { getMyListFullForUser, getFavoriteSeriesForUser } from "@/lib/my-list";
 import { computeProfileHighlights } from "@/lib/profile-page/highlights";
 import { getFollowState, getPendingFollowRequests } from "@/lib/social/follow";
 import { isMuted } from "@/lib/social/mute";
@@ -65,7 +66,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   // dos dois toggles que ja controlam as listas de series equivalentes.
   const canSeeStats = isOwner || (!profile.isProfilePrivate && (profile.showWatchingSeries || profile.showWatchedSeries));
 
-  const [watchingSeries, completedSeries, lists, reviews, stats, fullList, persona] = await Promise.all([
+  const [watchingSeries, completedSeries, lists, reviews, stats, fullList, persona, favoriteSeries] = await Promise.all([
     canSeeWatching ? getWatchStateSeries(profile.id, "WATCHING", 12) : Promise.resolve([]),
     canSeeCompleted ? getWatchStateSeries(profile.id, "COMPLETED") : Promise.resolve([]),
     canSeeLists
@@ -89,7 +90,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
       : Promise.resolve([]),
     canSeeStats ? getUserStats(profile.id) : Promise.resolve(null),
     canSeeStats ? getMyListFullForUser(profile.id) : Promise.resolve(null),
-    canSeeStats ? getViewerPersonaForUser(profile.id) : Promise.resolve(null)
+    canSeeStats ? getViewerPersonaForUser(profile.id) : Promise.resolve(null),
+    canSeeStats ? getFavoriteSeriesForUser(profile.id) : Promise.resolve([])
   ]);
 
   const [supporterStatus, level] = await Promise.all([getSupporterStatus(profile.id), getUserLevel(profile.id)]);
@@ -173,6 +175,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
           {persona ? <ProfilePersonaCard persona={persona} /> : null}
 
           <ProfileHighlights highlights={highlights} lastActivityAt={canSeeStats ? (stats?.streaks.lastWatchedAt ?? null) : null} />
+
+          <ProfileFavoritesSection favorites={favoriteSeries} />
 
           <ProfileSeriesLibrary items={libraryItems} />
 

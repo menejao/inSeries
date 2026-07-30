@@ -62,7 +62,7 @@ export function MyListToolbar({
   return (
     <div className="space-y-3">
       <SearchBar
-        label="Buscar na Minha Lista"
+        label="Buscar nas Minhas Series"
         placeholder="Buscar por titulo..."
         value={filters.query}
         onChange={(event) => set("query", event.target.value)}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { MoreVerticalIcon, CheckIcon } from "@/components/ui/icons";
+import { MoreVerticalIcon, CheckIcon, HeartIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { WatchState } from "@/lib/types";
 import { WATCH_STATE_LABELS, WATCH_STATE_ORDER } from "@/lib/progress/labels";
@@ -14,9 +14,18 @@ const WATCH_STATE_COLORS: Record<WatchState, string> = {
   COMPLETED: "text-primary-text"
 };
 
-export function SeriesCardActions({ seriesId, initialState }: { seriesId: string; initialState?: WatchState }) {
+export function SeriesCardActions({
+  seriesId,
+  initialState,
+  initialFavorite
+}: {
+  seriesId: string;
+  initialState?: WatchState;
+  initialFavorite?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(initialState);
+  const [isFavorite, setIsFavorite] = useState(initialFavorite ?? false);
   const [isPending, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +61,16 @@ export function SeriesCardActions({ seriesId, initialState }: { seriesId: string
     });
   }
 
+  function handleFavorite(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+    startTransition(async () => {
+      await fetch(`/api/series/${seriesId}/favorite`, { method: "POST" });
+      setIsFavorite((prev) => !prev);
+    });
+  }
+
   function handleRemove(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -59,6 +78,7 @@ export function SeriesCardActions({ seriesId, initialState }: { seriesId: string
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/status`, { method: "DELETE" });
       setState(undefined);
+      setIsFavorite(false);
     });
   }
 
@@ -92,9 +112,19 @@ export function SeriesCardActions({ seriesId, initialState }: { seriesId: string
               {WATCH_STATE_LABELS[ws]}
             </button>
           ))}
-          {state && (
+          {state ? (
             <>
               <div className="mx-2 my-1 border-t border-border" />
+              <button
+                onClick={handleFavorite}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-surface-strong",
+                  isFavorite ? "text-error-text" : "text-ink"
+                )}
+              >
+                <HeartIcon className={cn("h-3.5 w-3.5 shrink-0", isFavorite && "fill-current")} />
+                {isFavorite ? "Remover dos favoritos" : "Favoritar"}
+              </button>
               <button
                 onClick={handleRemove}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted transition hover:bg-surface-strong hover:text-ink"
@@ -103,7 +133,7 @@ export function SeriesCardActions({ seriesId, initialState }: { seriesId: string
                 Remover da lista
               </button>
             </>
-          )}
+          ) : null}
         </div>
       )}
     </div>

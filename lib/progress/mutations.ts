@@ -98,7 +98,10 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
  * so a limpeza reversa de um `upsertSeriesStatus` anterior.
  */
 export async function removeSeriesStatus(userId: string, seriesId: string) {
-  await prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } });
+  await prisma.$transaction([
+    prisma.userEpisodeProgress.deleteMany({ where: { userId, episode: { season: { seriesId } } } }),
+    prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } })
+  ]);
   invalidateRecommendationCache(userId);
   invalidateStatsCache(userId);
 }
