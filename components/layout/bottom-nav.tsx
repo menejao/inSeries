@@ -30,7 +30,7 @@ type NavItem = { href: string; label: string; icon: (props: IconProps) => React.
  */
 const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Inicio", icon: HomeIcon },
-  { href: "/me/minha-lista", label: "Minha Lista", icon: TvIcon },
+  { href: "/me/minha-lista", label: "Minhas Series", icon: TvIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
   { href: "/series", label: "Series", icon: CompassIcon }
 ];

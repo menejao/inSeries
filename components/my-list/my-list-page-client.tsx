@@ -74,7 +74,7 @@ export function MyListPageClient({
   if (!items.length) {
     return (
       <EmptyState
-        title="Sua Minha Lista esta vazia"
+        title="Suas Minhas Series estao vazias"
         copy="Adicione series com um status (Assistindo, Quero assistir...) na pagina de qualquer serie para organiza-las aqui."
       />
     );

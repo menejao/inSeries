@@ -9,10 +9,34 @@ import { recordGamificationEvent } from "@/lib/gamification";
 export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
   const previous = await prisma.userSeriesStatus.findUnique({
     where: { userId_seriesId: { userId, seriesId } },
-    select: { state: true }
+    select: { state: true, startedAt: true }
   });
 
+  // Bulk-mark all aired episodes as watched when explicitly setting COMPLETED
+  if (state === "COMPLETED") {
+    const now = new Date();
+    const airedEpisodes = await prisma.episode.findMany({
+      where: { season: { seriesId }, OR: [{ airedAt: null }, { airedAt: { lte: now } }] },
+      select: { id: true }
+    });
+    const episodeIds = airedEpisodes.map((e) => e.id);
+    if (episodeIds.length > 0) {
+      await prisma.$transaction([
+        prisma.userEpisodeProgress.updateMany({
+          where: { userId, episodeId: { in: episodeIds }, watched: false },
+          data: { watched: true, watchedAt: now }
+        }),
+        prisma.userEpisodeProgress.createMany({
+          data: episodeIds.map((episodeId) => ({ userId, episodeId, watched: true, watchedAt: now })),
+          skipDuplicates: true
+        })
+      ]);
+    }
+  }
+
   const progress = await calculateSeriesProgress(userId, seriesId);
+  const now = new Date();
+  const trackingStart = previous?.startedAt ?? (state !== "WANT_TO_WATCH" ? now : null);
 
   const status = await prisma.userSeriesStatus.upsert({
     where: {
@@ -24,16 +48,19 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
     update: {
       state,
       completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: new Date(),
-      completedAt: state === "COMPLETED" ? new Date() : null
+      lastActivityAt: now,
+      completedAt: state === "COMPLETED" ? now : null,
+      ...(state === "WATCHING" || state === "COMPLETED" ? { lastWatchedAt: now } : {})
     },
     create: {
       userId,
       seriesId,
       state,
       completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: new Date(),
-      completedAt: state === "COMPLETED" ? new Date() : null
+      lastActivityAt: now,
+      startedAt: trackingStart,
+      completedAt: state === "COMPLETED" ? now : null,
+      ...(state === "WATCHING" || state === "COMPLETED" ? { lastWatchedAt: now } : {})
     }
   });
 
@@ -71,7 +98,10 @@ export async function upsertSeriesStatus(userId: string, seriesId: string, state
  * so a limpeza reversa de um `upsertSeriesStatus` anterior.
  */
 export async function removeSeriesStatus(userId: string, seriesId: string) {
-  await prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } });
+  await prisma.$transaction([
+    prisma.userEpisodeProgress.deleteMany({ where: { userId, episode: { season: { seriesId } } } }),
+    prisma.userSeriesStatus.deleteMany({ where: { userId, seriesId } })
+  ]);
   invalidateRecommendationCache(userId);
   invalidateStatsCache(userId);
 }
@@ -127,11 +157,33 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
 
   const previousStatus = await prisma.userSeriesStatus.findUnique({
     where: { userId_seriesId: { userId, seriesId: episode.season.seriesId } },
-    select: { state: true }
+    select: { state: true, startedAt: true }
   });
 
   const progress = await calculateSeriesProgress(userId, episode.season.seriesId);
-  const inferredState = progress?.completed ? "COMPLETED" : watched ? "WATCHING" : "WATCHING";
+  const now = new Date();
+  const currentState = previousStatus?.state;
+
+  // State transition rules:
+  // - Always promote to COMPLETED when all aired episodes are watched
+  // - WANT_TO_WATCH → WATCHING on first episode watch
+  // - COMPLETED → WATCHING when unwatching an episode
+  // - PAUSED/DROPPED are preserved unless the series becomes COMPLETED
+  // - New trackers default to WATCHING
+  let inferredState: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH";
+  if (progress?.completed) {
+    inferredState = "COMPLETED";
+  } else if (!watched && currentState === "COMPLETED") {
+    inferredState = "WATCHING";
+  } else if (currentState === "PAUSED" || currentState === "DROPPED") {
+    inferredState = currentState;
+  } else if (!currentState || currentState === "WANT_TO_WATCH") {
+    inferredState = "WATCHING";
+  } else {
+    inferredState = currentState;
+  }
+
+  const trackingStart = previousStatus?.startedAt ?? (watched ? now : null);
 
   await prisma.userSeriesStatus.upsert({
     where: {
@@ -143,16 +195,19 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
     update: {
       state: inferredState,
       completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: new Date(),
-      completedAt: progress?.completed ? new Date() : null
+      lastActivityAt: now,
+      completedAt: progress?.completed ? now : null,
+      ...(watched ? { lastWatchedAt: now } : {})
     },
     create: {
       userId,
       seriesId: episode.season.seriesId,
       state: inferredState,
       completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: new Date(),
-      completedAt: progress?.completed ? new Date() : null
+      lastActivityAt: now,
+      startedAt: trackingStart,
+      completedAt: progress?.completed ? now : null,
+      ...(watched ? { lastWatchedAt: now } : {})
     }
   });
 

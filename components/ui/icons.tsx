@@ -135,6 +135,10 @@ export const MoreHorizontalIcon = createIcon(
   <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={2.75} />
 );
 
+export const MoreVerticalIcon = createIcon(
+  <path d="M12 5h.01M12 12h.01M12 19h.01" strokeWidth={2.75} />
+);
+
 export const LogOutIcon = createIcon(
   <>
     <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />
@@ -183,6 +187,13 @@ export const TrashIcon = createIcon(
   <>
     <path d="M4 7h16M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2" />
     <path d="M6.5 7 7.3 19a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9L17.5 7" />
+  </>
+);
+
+export const EyeIcon = createIcon(
+  <>
+    <path d="M2 12C2 12 5 5 12 5s10 7 10 7-3 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
   </>
 );
 

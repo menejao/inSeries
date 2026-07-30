@@ -107,7 +107,7 @@ async function fetchSmartList(key: SmartListKey, limit: number, skip = 0): Promi
   const { orderBy } = SMART_LISTS[key];
   const where = resolveWhere(SMART_LISTS[key]);
   const rows = await prisma.series.findMany({ where, orderBy, take: limit, skip });
-  return rows.map(toSeriesSummary);
+  return rows.map((row) => toSeriesSummary(row));
 }
 
 export const listMaisPopulares = (limit = DEFAULT_LIMIT, skip = 0) => fetchSmartList("MAIS_POPULARES", limit, skip);

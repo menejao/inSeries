@@ -160,7 +160,7 @@ export async function getRecommendationHomeSections(userId: string): Promise<Rec
       orderBy: { voteAverage: "desc" },
       take: OVERFETCH
     });
-    const items = pickUnique(rows.map(toSeriesSummary), used, ITEMS_PER_SECTION);
+    const items = pickUnique(rows.map((row) => toSeriesSummary(row)), used, ITEMS_PER_SECTION);
     if (!items.length) return;
     sections.push({
       category: "because-you-watched",
@@ -244,7 +244,7 @@ export async function getRecommendationCategoryPage(
     return {
       title: `Porque voce assistiu ${reference.title}`,
       description: "",
-      items: rows.map(toSeriesSummary),
+      items: rows.map((row) => toSeriesSummary(row)),
       page: safePage,
       totalPages: Math.max(1, Math.ceil(total / CATEGORY_PAGE_SIZE))
     };
