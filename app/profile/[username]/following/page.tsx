@@ -60,8 +60,8 @@ export default async function FollowingPage({
           copy={viewer?.id === profile.id ? "Encontre pessoas com gostos parecidos e acompanhe o que elas estao assistindo." : ""}
           action={
             viewer?.id === profile.id ? (
-              <Link href="/explore" className={buttonVariants({ variant: "primary" })}>
-                Explorar pessoas
+              <Link href="/feed" className={buttonVariants({ variant: "primary" })}>
+                Ir para o Feed
               </Link>
             ) : undefined
           }

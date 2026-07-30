@@ -4,27 +4,23 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { PosterImage } from "@/components/media/poster-image";
-import { FlameIcon, MessageCircleIcon, StarIcon, UserIcon } from "@/components/ui/icons";
+import { FlameIcon, MessageCircleIcon, StarIcon } from "@/components/ui/icons";
 import { getInitials } from "@/lib/utils";
-import type { ActiveUser, FeaturedReview, RecentDiscussion, TrendingSeriesEntry } from "@/lib/social/feed-discovery";
+import type { FeaturedReview, TrendingSeriesEntry } from "@/lib/social/feed-discovery";
 
 /**
- * Fase 5 (INSERIES-SOCIAL-FEED-01) — os 4 blocos recebem dados ja derivados (ver
- * lib/social/feed-discovery.ts) do mesmo batch de atividades da lista principal — nenhuma
- * consulta propria, um Server Component simples.
+ * INSERIES-FEED-REDESIGN-01 — "conteudos complementares", sempre abaixo da timeline: Trending
+ * (posters, sem competir visualmente com os cards da timeline) e uma unica Review em destaque.
+ * Nunca renderiza nada acima da timeline nem empurra ela pra baixo (ver app/feed/page.tsx).
  */
 export function FeedDiscoveryPanel({
   trending,
-  featuredReviews,
-  discussions,
-  activeUsers
+  featuredReview
 }: {
   trending: TrendingSeriesEntry[];
-  featuredReviews: FeaturedReview[];
-  discussions: RecentDiscussion[];
-  activeUsers: ActiveUser[];
+  featuredReview: FeaturedReview | null;
 }) {
-  if (!trending.length && !featuredReviews.length && !discussions.length && !activeUsers.length) return null;
+  if (!trending.length && !featuredReview) return null;
 
   return (
     <section className="space-y-6">
@@ -46,90 +42,38 @@ export function FeedDiscoveryPanel({
         </div>
       ) : null}
 
-      {featuredReviews.length || discussions.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {featuredReviews.length ? (
-            <div className="space-y-3">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-                <StarIcon className="h-5 w-5 text-subtle" /> Reviews em destaque
-              </h2>
-              <div className="space-y-3">
-                {featuredReviews.map((review) => (
-                  <Card key={review.id} className="space-y-1.5 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-raised">
-                    <div className="flex items-center justify-between gap-2">
-                      <Link href={`/profile/${review.user.username}`} className="flex items-center gap-2 text-sm font-semibold text-ink">
-                        <Avatar label={getInitials(review.user.name)} name={review.user.name} src={review.user.avatarUrl} size="sm" />
-                        {review.user.name}
-                      </Link>
-                      <Badge variant="warning">
-                        <StarIcon className="h-3 w-3 fill-current" /> {review.rating}/5
-                      </Badge>
-                    </div>
-                    <Link href={`/series/${review.series.slug}#reviews`} className="text-sm font-medium text-primary hover:underline">
-                      {review.series.title}
-                    </Link>
-                    {review.containsSpoiler ? (
-                      <p className="text-sm italic text-subtle">Contem spoiler — abra a serie para ler.</p>
-                    ) : (
-                      <p className="line-clamp-2 text-sm text-muted">{review.body}</p>
-                    )}
-                    {review.commentCount > 0 ? (
-                      <Badge variant="secondary">
-                        <MessageCircleIcon className="h-3 w-3" /> {review.commentCount}
-                      </Badge>
-                    ) : null}
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {discussions.length ? (
-            <div className="space-y-3">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-                <MessageCircleIcon className="h-5 w-5 text-subtle" /> Discussoes recentes
-              </h2>
-              <div className="space-y-3">
-                {discussions.map((discussion) => (
-                  <Card key={discussion.id} className="space-y-1.5 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-raised">
-                    <Link href={`/profile/${discussion.user.username}`} className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      <Avatar label={getInitials(discussion.user.name)} name={discussion.user.name} src={discussion.user.avatarUrl} size="sm" />
-                      {discussion.user.name}
-                    </Link>
-                    <p className="line-clamp-2 text-sm text-muted">{discussion.body}</p>
-                    {discussion.series ? (
-                      <Link href={`/series/${discussion.series.slug}#reviews`} className="text-xs font-semibold text-primary hover:underline">
-                        {discussion.series.title}
-                      </Link>
-                    ) : null}
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {activeUsers.length ? (
+      {featuredReview ? (
         <div className="space-y-3">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-            <UserIcon className="h-5 w-5 text-subtle" /> Usuarios ativos
+            <StarIcon className="h-5 w-5 text-subtle" /> Review em destaque
           </h2>
-          <FixedGrid mobile={2} tablet={3} desktop={3}>
-            {activeUsers.map((user) => (
-              <Link
-                key={user.id}
-                href={`/profile/${user.username}`}
-                className="flex items-center gap-2.5 rounded-2xl border border-border bg-surface/70 p-3 transition duration-200 ease-out hover:-translate-y-1 hover:border-border-strong hover:shadow-raised"
-              >
-                <Avatar label={getInitials(user.name)} name={user.name} src={user.avatarUrl} size="sm" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-ink">{user.name}</span>
-                  <span className="block truncate text-xs text-subtle">{user.activityCount} atividades</span>
-                </span>
+          <Card className="space-y-2 transition duration-200 ease-out hover:-translate-y-1 hover:shadow-raised">
+            <div className="flex items-center justify-between gap-2">
+              <Link href={`/profile/${featuredReview.user.username}`} className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Avatar label={getInitials(featuredReview.user.name)} name={featuredReview.user.name} src={featuredReview.user.avatarUrl} size="sm" />
+                {featuredReview.user.name}
               </Link>
-            ))}
-          </FixedGrid>
+              <Badge variant="warning">
+                <StarIcon className="h-3 w-3 fill-current" /> {featuredReview.rating}/5
+              </Badge>
+            </div>
+            <Link href={`/series/${featuredReview.series.slug}#reviews`} className="text-sm font-medium text-primary hover:underline">
+              {featuredReview.series.title}
+            </Link>
+            <p className="line-clamp-3 text-sm text-muted">{featuredReview.body}</p>
+            <div className="flex items-center justify-between gap-2">
+              {featuredReview.commentCount > 0 ? (
+                <Badge variant="secondary">
+                  <MessageCircleIcon className="h-3 w-3" /> {featuredReview.commentCount}
+                </Badge>
+              ) : (
+                <span />
+              )}
+              <Link href={`/series/${featuredReview.series.slug}#reviews`} className="text-xs font-semibold text-primary hover:underline">
+                Ler review
+              </Link>
+            </div>
+          </Card>
         </div>
       ) : null}
     </section>

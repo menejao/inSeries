@@ -1332,23 +1332,28 @@ async function main() {
     feedPersonalA.status
   );
 
-  // ---- Feed Social Premium (INSERIES-SOCIAL-FEED-01): cards/filtros/ordenacao/descoberta ----
+  // ---- Feed redesign (INSERIES-FEED-REDESIGN-01): busca de usuarios, filtros rapidos, descoberta ----
   check(
-    "Feed (Fase 4): toolbar de filtro e ordenacao presente",
-    String(feedPersonalA.body).includes("Filtrar feed") && String(feedPersonalA.body).includes("Ordenar feed"),
+    "Feed (redesign): busca de usuarios (substitui /explore) presente no topo",
+    String(feedPersonalA.body).includes("Buscar por nome ou @username"),
     feedPersonalA.status
   );
   check(
-    "Feed (Fase 4): opcao de ordenacao Mais comentados presente",
-    String(feedPersonalA.body).includes("Mais comentados") && String(feedPersonalA.body).includes("Relevantes"),
+    "Feed (redesign): filtros rapidos de tipo de atividade presentes",
+    String(feedPersonalA.body).includes("Assistindo") &&
+      String(feedPersonalA.body).includes("Concluiu") &&
+      String(feedPersonalA.body).includes("Seguidores"),
     feedPersonalA.status
   );
   check(
-    "Feed (Fase 5): blocos de descoberta (Trending/Reviews em destaque/Usuarios ativos) aparecem",
-    String(feedPersonalA.body).includes("Trending entre usuarios") &&
-      String(feedPersonalA.body).includes("Reviews em destaque") &&
-      String(feedPersonalA.body).includes("Usuarios ativos"),
+    "Feed (redesign): 'Usuarios ativos' foi removido",
+    !String(feedPersonalA.body).includes("Usuarios ativos"),
     feedPersonalA.status
+  );
+  check(
+    "/explore foi removido (404)",
+    (await request({ value: "" }, "/explore")).status === 404,
+    ""
   );
 
   // Comentario de teste na PROPRIA review de A (nao na de B) — mantem este bloco isolado da

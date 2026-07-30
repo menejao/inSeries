@@ -64,7 +64,18 @@ const activityInclude = {
       _count: { select: { comments: true } }
     }
   },
-  list: { select: { id: true, title: true } },
+  list: {
+    select: {
+      id: true,
+      title: true,
+      _count: { select: { items: true } },
+      items: {
+        take: 4,
+        orderBy: { position: "asc" },
+        select: { series: { select: { id: true, posterUrl: true, title: true } } }
+      }
+    }
+  },
   comment: { select: { id: true, body: true, reviewId: true, parentId: true } },
   targetUser: { select: { id: true, username: true, name: true } },
   // Fase 25/27/28 (INSERIES-SOCIAL-NETWORK-EXPERIENCE-01) — curtidas/comentarios ficam
@@ -112,66 +123,82 @@ async function excludedAuthorIds(viewerId?: string | null) {
   return [...muted, ...blocked];
 }
 
-export async function getGlobalFeed(viewerId?: string | null, limit = 30): Promise<ActivityFeedItem[]> {
+export type FeedPage = { items: ActivityFeedItem[]; nextCursor: string | null };
+
+/**
+ * INSERIES-FEED-REDESIGN-01 — real cursor pagination (id-based, tie-broken with the already
+ * unique `id`) replaces the old "fetch 150 then slice in memory" approach: only `limit` rows
+ * ever leave the database per request, and `nextCursor` (the last row's id, or null once
+ * exhausted) is what the client sends back to fetch the next page — see app/api/feed/route.ts.
+ */
+async function paginate(where: Prisma.ActivityWhereInput, limit: number, cursor?: string | null) {
+  return prisma.activity.findMany({
+    where,
+    include: activityInclude,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+  });
+}
+
+function toFeedPage(rows: Prisma.ActivityGetPayload<{ include: typeof activityInclude }>[], limit: number) {
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+}
+
+export async function getGlobalFeed(viewerId?: string | null, limit = 20, cursor?: string | null): Promise<FeedPage> {
   const excluded = await excludedAuthorIds(viewerId);
-  const activities = await prisma.activity.findMany({
-    where: {
+  const rows = await paginate(
+    {
       visibility: "PUBLIC",
       OR: typeVisibilityBranches(viewerId ?? undefined),
       ...(excluded.length ? { userId: { notIn: excluded } } : {})
     },
-    include: activityInclude,
-    orderBy: { createdAt: "desc" },
-    take: limit
-  });
-  return withLikedByViewer(activities, viewerId);
+    limit,
+    cursor
+  );
+  const { items, nextCursor } = toFeedPage(rows, limit);
+  return { items: await withLikedByViewer(items, viewerId), nextCursor };
 }
 
 /** Fase 20 — "Para voce": atividades proprias + de quem o usuario segue (rankeado cronologicamente por ora). */
-export async function getPersonalFeed(userId: string, limit = 30): Promise<ActivityFeedItem[]> {
+export async function getPersonalFeed(userId: string, limit = 20, cursor?: string | null): Promise<FeedPage> {
   const [following, excluded] = await Promise.all([
     prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
     excludedAuthorIds(userId)
   ]);
   const relevantIds = [userId, ...following.map((item) => item.followingId)].filter((id) => !excluded.includes(id));
 
-  const activities = await prisma.activity.findMany({
-    where: {
-      userId: { in: relevantIds },
-      visibility: "PUBLIC",
-      OR: typeVisibilityBranches(userId)
-    },
-    include: activityInclude,
-    orderBy: { createdAt: "desc" },
-    take: limit
-  });
-  return withLikedByViewer(activities, userId);
+  const rows = await paginate(
+    { userId: { in: relevantIds }, visibility: "PUBLIC", OR: typeVisibilityBranches(userId) },
+    limit,
+    cursor
+  );
+  const { items, nextCursor } = toFeedPage(rows, limit);
+  return { items: await withLikedByViewer(items, userId), nextCursor };
 }
 
 /**
  * Fase 21 — "Seguindo": exclusivamente atividades de quem o usuario segue (nunca as proprias),
  * cronologico, sem silenciados/bloqueados.
  */
-export async function getFollowingFeed(userId: string, limit = 30): Promise<ActivityFeedItem[]> {
+export async function getFollowingFeed(userId: string, limit = 20, cursor?: string | null): Promise<FeedPage> {
   const [following, excluded] = await Promise.all([
     prisma.follow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
     excludedAuthorIds(userId)
   ]);
   const followingIds = following.map((item) => item.followingId).filter((id) => !excluded.includes(id));
 
-  if (!followingIds.length) return [];
+  if (!followingIds.length) return { items: [], nextCursor: null };
 
-  const activities = await prisma.activity.findMany({
-    where: {
-      userId: { in: followingIds },
-      visibility: "PUBLIC",
-      OR: typeVisibilityBranches()
-    },
-    include: activityInclude,
-    orderBy: { createdAt: "desc" },
-    take: limit
-  });
-  return withLikedByViewer(activities, userId);
+  const rows = await paginate(
+    { userId: { in: followingIds }, visibility: "PUBLIC", OR: typeVisibilityBranches() },
+    limit,
+    cursor
+  );
+  const { items, nextCursor } = toFeedPage(rows, limit);
+  return { items: await withLikedByViewer(items, userId), nextCursor };
 }
 
 export async function getRecentActivityForUser(userId: string, limit = 5): Promise<ActivityFeedItem[]> {

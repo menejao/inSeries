@@ -18,7 +18,6 @@ import {
   SparklesIcon,
   TrophyIcon,
   TvIcon,
-  UserIcon,
   type IconProps
 } from "@/components/ui/icons";
 
@@ -36,7 +35,6 @@ const ITEMS: SidebarItem[] = [
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
   { href: "/series", label: "Catalogo", icon: TvIcon },
   { href: "/feed", label: "Feed", icon: FilmIcon },
-  { href: "/explore", label: "Explorar", icon: UserIcon },
   { href: "/recommendations", label: "Recomendacoes", icon: CompassIcon },
   { href: "/me/stats", label: "Estatisticas", icon: ChartIcon },
   { href: "/me/achievements", label: "Conquistas", icon: TrophyIcon },
