@@ -22,9 +22,9 @@ export async function getSeriesProgressSummary(
   seriesId: string,
   seasons: Array<{ number: number; episodeCount: number }>
 ): Promise<SeriesProgressSummary> {
-  const totalEpisodes = seasons.reduce((sum, season) => sum + season.episodeCount, 0);
+  const now = new Date();
 
-  const [watchedEpisodes, lastWatchedRow, watchedPerSeason] = await Promise.all([
+  const [watchedEpisodes, lastWatchedRow, watchedPerSeason, airedPerSeason] = await Promise.all([
     prisma.userEpisodeProgress.count({ where: { userId, watched: true, episode: { season: { seriesId } } } }),
     prisma.userEpisodeProgress.findFirst({
       where: { userId, watched: true, episode: { season: { seriesId } } },
@@ -34,6 +34,13 @@ export async function getSeriesProgressSummary(
     prisma.userEpisodeProgress.findMany({
       where: { userId, watched: true, episode: { season: { seriesId } } },
       select: { episode: { select: { season: { select: { number: true } } } } }
+    }),
+    prisma.episode.findMany({
+      where: {
+        season: { seriesId },
+        OR: [{ airedAt: null }, { airedAt: { lte: now } }]
+      },
+      select: { seasonId: true, season: { select: { number: true } } }
     })
   ]);
 
@@ -43,8 +50,19 @@ export async function getSeriesProgressSummary(
     watchedCountBySeason.set(seasonNumber, (watchedCountBySeason.get(seasonNumber) ?? 0) + 1);
   }
 
+  const airedCountBySeason = new Map<number, number>();
+  for (const row of airedPerSeason) {
+    const seasonNumber = row.season.number;
+    airedCountBySeason.set(seasonNumber, (airedCountBySeason.get(seasonNumber) ?? 0) + 1);
+  }
+
+  const totalEpisodes = [...airedCountBySeason.values()].reduce((sum, c) => sum + c, 0);
+
   const completedSeasonNumbers = seasons
-    .filter((season) => season.episodeCount > 0 && (watchedCountBySeason.get(season.number) ?? 0) === season.episodeCount)
+    .filter((season) => {
+      const aired = airedCountBySeason.get(season.number) ?? 0;
+      return aired > 0 && (watchedCountBySeason.get(season.number) ?? 0) === aired;
+    })
     .map((season) => season.number);
 
   return {

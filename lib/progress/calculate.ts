@@ -24,12 +24,14 @@ export function computeSeriesProgressFromEpisodes(allEpisodes: Array<{ id: strin
 }
 
 export async function calculateSeriesProgress(userId: string, seriesId: string) {
+  const now = new Date();
   const series = await prisma.series.findUnique({
     where: { id: seriesId },
     include: {
       seasons: {
         include: {
           episodes: {
+            where: { OR: [{ airedAt: null }, { airedAt: { lte: now } }] },
             orderBy: { number: "asc" }
           }
         },
