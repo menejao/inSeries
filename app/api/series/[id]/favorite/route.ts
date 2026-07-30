@@ -14,17 +14,15 @@ async function toggleFavoriteHandler(request: Request, { params }: { params: Pro
     select: { isFavorite: true }
   });
 
-  if (!existing) {
-    return NextResponse.json({ error: "not_in_library" }, { status: 404 });
-  }
+  const nextFavorite = !existing?.isFavorite;
 
-  const updated = await prisma.userSeriesStatus.update({
+  await prisma.userSeriesStatus.upsert({
     where: { userId_seriesId: { userId: user.id, seriesId } },
-    data: { isFavorite: !existing.isFavorite },
-    select: { isFavorite: true }
+    update: { isFavorite: nextFavorite },
+    create: { userId: user.id, seriesId, state: "WANT_TO_WATCH", isFavorite: nextFavorite }
   });
 
-  return NextResponse.json({ data: { isFavorite: updated.isFavorite } });
+  return NextResponse.json({ data: { isFavorite: nextFavorite } });
 }
 
 export const POST = withApiObservability("series.favorite", toggleFavoriteHandler);

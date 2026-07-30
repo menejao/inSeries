@@ -18,6 +18,7 @@ import { SeriesGallery } from "@/components/series/series-gallery";
 import { SeriesTrailers } from "@/components/series/series-trailers";
 import { SeriesTimeline } from "@/components/series/series-timeline";
 import { AddToListButton } from "@/components/series/add-to-list-button";
+import { SeriesFavoriteButton } from "@/components/series/series-favorite-button";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { FixedGrid } from "@/components/ui/fixed-grid";
 import { CalendarIcon, ListIcon, StarIcon } from "@/components/ui/icons";
@@ -196,6 +197,7 @@ export default async function SeriesDetailsPage({ params }: { params: Promise<{ 
             {/* Acoes: Acompanhar / Lista / Avaliar / Mais acoes */}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <SeriesStatusActions seriesId={series.id} initialState={statusRow?.state ?? null} authenticated={Boolean(user)} />
+              <SeriesFavoriteButton seriesId={series.id} initialFavorite={statusRow?.isFavorite ?? false} authenticated={Boolean(user)} />
               <AddToListButton seriesId={series.id} lists={userLists} authenticated={Boolean(user)} />
               <Link href="#reviews" className={buttonVariants({ variant: "secondary", size: "md" })}>
                 <StarIcon className="h-4 w-4" />
