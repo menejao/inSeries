@@ -405,6 +405,7 @@ model UserSeriesStatus {
   lastActivityAt    DateTime?
   startedAt         DateTime?
   completedAt       DateTime?
+  lastWatchedAt     DateTime?
   user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   series            Series     @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   createdAt         DateTime   @default(now())

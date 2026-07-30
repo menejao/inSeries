@@ -9,6 +9,7 @@ import { CatalogGrid } from "@/components/catalog/catalog-grid";
 import { CatalogPagination } from "@/components/catalog/catalog-pagination";
 import { getCatalogFilterMetadata, searchSeries, type SeriesSortOption } from "@/lib/discovery/search";
 import { getUnifiedSearchResults } from "@/lib/catalog/unified-search";
+import { getCurrentUser } from "@/lib/auth/server";
 
 const SORT_OPTIONS: SeriesSortOption[] = ["discovery", "popular", "latest", "title", "rating", "onair"];
 
@@ -43,11 +44,15 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
   const page = params.page ? Number(params.page) : 1;
   const q = params.q?.trim();
 
-  // Fase 4 (INSERIES-CATALOG-TRANSPARENT-SEARCH-AND-SILENT-IMPORT-01) — com termo de busca,
-  // local + TMDb sao combinados numa lista unica sem paginacao tradicional (ver
-  // getUnifiedSearchResults); sem termo, o catalogo continua sendo so o banco local, paginado
-  // normalmente (comportamento anterior, intocado).
+  // Resolve user first (cached via React cache) so userId is available for the browse query
+  const currentUser = await getCurrentUser();
+  const userId = currentUser?.id;
+
   const [searchResult, browseResult, metadata] = await Promise.all([
+    // Fase 4 (INSERIES-CATALOG-TRANSPARENT-SEARCH-AND-SILENT-IMPORT-01) — com termo de busca,
+    // local + TMDb sao combinados numa lista unica sem paginacao tradicional (ver
+    // getUnifiedSearchResults); sem termo, o catalogo continua sendo so o banco local, paginado
+    // normalmente (comportamento anterior, intocado).
     q
       ? getUnifiedSearchResults({
           q,
@@ -64,22 +69,26 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
       : Promise.resolve(null),
     q
       ? Promise.resolve(null)
-      : searchSeries({
-          genre: params.genre,
-          status: params.status,
-          year,
-          tag: params.tag,
-          provider: params.provider,
-          country: params.country,
-          language: params.language,
-          keyword: params.keyword,
-          sort,
-          page
-        }),
+      : searchSeries(
+          {
+            genre: params.genre,
+            status: params.status,
+            year,
+            tag: params.tag,
+            provider: params.provider,
+            country: params.country,
+            language: params.language,
+            keyword: params.keyword,
+            sort,
+            page
+          },
+          userId
+        ),
     getCatalogFilterMetadata()
   ]);
 
   const items = q ? (searchResult?.items ?? []) : (browseResult?.items ?? []);
+  const showQuickActions = !!userId;
 
   return (
     <div className="space-y-6">
@@ -114,7 +123,7 @@ export default async function SeriesPage({ searchParams }: { searchParams: Promi
 
         {items.length ? (
           <>
-            <CatalogGrid items={items} />
+            <CatalogGrid items={items} showQuickActions={showQuickActions} />
             {/* Fase: busca hibrida (local + TMDb combinados) nao usa paginacao tradicional — so o catalogo sem termo de busca pagina. */}
             {!q && browseResult ? <CatalogPagination page={browseResult.page} totalPages={browseResult.totalPages} /> : null}
           </>

@@ -2,7 +2,7 @@ import type { Prisma, SeriesLifecycleStatus } from "@prisma/client";
 import { canUseDatabase, isMissingTableError } from "@/lib/db/health";
 import { prisma } from "@/lib/db/prisma";
 import { mockSeries } from "@/lib/catalog/mock-data";
-import type { Series } from "@/lib/types";
+import type { Series, WatchState } from "@/lib/types";
 
 // Fase 20 (INSERIES-CATALOG-POPULATION-AND-EXPERIENCE-V3) — "discovery" e a ordenacao por
 // Relevancia (o ranking interno combinado, ver lib/discovery/discovery-score.ts); "onair" e
@@ -70,39 +70,42 @@ function normalizeStatusFilter(status?: string): SeriesLifecycleStatus | undefin
 }
 
 /** Exported for lib/catalog/smart-lists.ts — same "no seasons/episodes" shape every card-only list needs (Fase 12: avoids an unnecessary join). */
-export function toSeriesSummary(model: {
-  id: string;
-  slug: string;
-  title: string;
-  originalTitle: string | null;
-  overview: string | null;
-  posterUrl: string | null;
-  backdropUrl: string | null;
-  firstAirYear: number | null;
-  language: string | null;
-  network: string | null;
-  genres: string[];
-  status: SeriesLifecycleStatus;
-  popularityScore: number | null;
-  voteAverage: number | null;
-  qualityScore: number | null;
-  discoveryScore: number | null;
-  collectionTags: string[];
-  watchProviders: string[];
-  keywords: string[];
-  type: string | null;
-  logoUrl: string | null;
-  originCountry: string[];
-  spokenLanguages: string[];
-  createdBy: string[];
-  networks: string[];
-  productionCompanies: string[];
-  productionCountries: string[];
-  tagline: string | null;
-  homepage: string | null;
-  numberOfSeasons: number | null;
-  numberOfEpisodes: number | null;
-}): Series {
+export function toSeriesSummary(
+  model: {
+    id: string;
+    slug: string;
+    title: string;
+    originalTitle: string | null;
+    overview: string | null;
+    posterUrl: string | null;
+    backdropUrl: string | null;
+    firstAirYear: number | null;
+    language: string | null;
+    network: string | null;
+    genres: string[];
+    status: SeriesLifecycleStatus;
+    popularityScore: number | null;
+    voteAverage: number | null;
+    qualityScore: number | null;
+    discoveryScore: number | null;
+    collectionTags: string[];
+    watchProviders: string[];
+    keywords: string[];
+    type: string | null;
+    logoUrl: string | null;
+    originCountry: string[];
+    spokenLanguages: string[];
+    createdBy: string[];
+    networks: string[];
+    productionCompanies: string[];
+    productionCountries: string[];
+    tagline: string | null;
+    homepage: string | null;
+    numberOfSeasons: number | null;
+    numberOfEpisodes: number | null;
+  },
+  userState?: WatchState
+): Series {
   return {
     id: model.id,
     slug: model.slug,
@@ -135,6 +138,7 @@ export function toSeriesSummary(model: {
     homepage: model.homepage,
     numberOfSeasons: model.numberOfSeasons,
     numberOfEpisodes: model.numberOfEpisodes,
+    userState,
     seasons: []
   };
 }
@@ -230,7 +234,7 @@ function fallbackSearch(params: SeriesDiscoveryParams): SeriesSearchResult {
  * reused by the catalog, calendar, lists, profile and a future dedicated search
  * engine (see lib/discovery/provider.ts).
  */
-export async function searchSeries(params: SeriesDiscoveryParams): Promise<SeriesSearchResult> {
+export async function searchSeries(params: SeriesDiscoveryParams, userId?: string): Promise<SeriesSearchResult> {
   const { page, pageSize } = normalizePagination(params.page, params.pageSize);
 
   if (!(await canUseDatabase())) {
@@ -270,8 +274,20 @@ export async function searchSeries(params: SeriesDiscoveryParams): Promise<Serie
       prisma.series.count({ where })
     ]);
 
+    // One extra query for user states — bounded by page size, never N+1
+    const userStateMap = new Map<string, WatchState>();
+    if (userId && rows.length > 0) {
+      const statuses = await prisma.userSeriesStatus.findMany({
+        where: { userId, seriesId: { in: rows.map((r) => r.id) } },
+        select: { seriesId: true, state: true }
+      });
+      for (const s of statuses) {
+        userStateMap.set(s.seriesId, s.state as WatchState);
+      }
+    }
+
     return {
-      items: rows.map(toSeriesSummary),
+      items: rows.map((row) => toSeriesSummary(row, userStateMap.get(row.id))),
       page,
       pageSize,
       total,
