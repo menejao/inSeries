@@ -803,27 +803,38 @@ model SupporterPollVote {
 /// (draft -> approve -> publish) has somewhere real to persist state end-to-end.
 enum SocialContentStatus {
   DRAFT
+  PENDING_APPROVAL
   APPROVED
+  REJECTED
   PUBLISHED
   FAILED
   ARCHIVED
 }
 
 model SocialContent {
-  id           String                    @id @default(cuid())
-  type         String
-  title        String
-  description  String
-  status       SocialContentStatus       @default(DRAFT)
-  templateId   String?
-  template     SocialTemplate?           @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  publications SocialPublication[]
-  history      SocialAutomationHistory[]
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
+  id             String                    @id @default(cuid())
+  type           String
+  title          String
+  description    String
+  status         SocialContentStatus       @default(DRAFT)
+  templateId     String?
+  template       SocialTemplate?           @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  publications   SocialPublication[]
+  history        SocialAutomationHistory[]
+  // INSERIES-SOCIAL-CONTENT-ENGINE-02 — content-engine payload/source metadata. All nullable so
+  // existing rows created by the manual generator (which never sets these) stay valid.
+  format         String?
+  sourceSeriesId String?
+  ctaId          String?
+  hookId         String?
+  payload        Json?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
 
   @@index([status, createdAt])
   @@index([templateId])
+  @@index([format])
+  @@index([sourceSeriesId])
 }
 
 enum SocialNetwork {
@@ -878,6 +889,14 @@ enum SocialAutomationAction {
   PUBLISH_SUCCEEDED
   PUBLISH_FAILED
   RETRY_SCHEDULED
+  CONTENT_SELECTION_STARTED
+  CONTENT_CANDIDATES_ANALYZED
+  CONTENT_TOPIC_SELECTED
+  CONTENT_FALLBACK_APPLIED
+  CONTENT_REJECTED_SAFETY
+  CONTENT_SUBMITTED_FOR_APPROVAL
+  CONTENT_APPROVED
+  CONTENT_REJECTED
 }
 
 /// Append-only audit trail — every module in packages/social-automation writes here on every
