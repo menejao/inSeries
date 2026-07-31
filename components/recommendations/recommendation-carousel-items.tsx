@@ -21,7 +21,6 @@ export function RecommendationCarouselItems({ items, priority = false }: { items
             <RecommendationFeedbackMenu
               seriesId={series.id}
               onHide={() => setHiddenIds((current) => new Set(current).add(series.id))}
-              hasRatingBadge={typeof series.voteAverage === "number"}
             />
             <SeriesPosterCard series={series} priority={priority && index < 4} />
           </div>

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { toSeriesSummary } from "@/lib/discovery/search";
 import { getRecommendationsForUser, getDiscoveryRecommendations } from "@/lib/recommendations/service";
+import { getRelatedByAffinity } from "@/lib/series-page/recommendations";
 import {
   countSmartList,
   listEmAlta,
@@ -10,6 +11,7 @@ import {
   listPremiadas
 } from "@/lib/catalog/smart-lists";
 import type { CandidateSeries } from "@/lib/recommendations/types";
+import type { NormalizedCastMember } from "@/lib/catalog/normalize";
 import type { Series } from "@/lib/types";
 
 /**
@@ -155,12 +157,13 @@ export async function getRecommendationHomeSections(userId: string): Promise<Rec
       (await prisma.userSeriesStatus.findMany({ where: { userId }, select: { seriesId: true } })).map((row) => row.seriesId)
     );
 
-    const rows = await prisma.series.findMany({
-      where: { id: { notIn: [reference.id, ...alreadyTracked] }, genres: { hasSome: reference.genres } },
-      orderBy: { voteAverage: "desc" },
-      take: OVERFETCH
-    });
-    const items = pickUnique(rows.map((row) => toSeriesSummary(row)), used, ITEMS_PER_SECTION);
+    // INSERIES-RECOMMENDATION-ENGINE-01 — mesma logica multi-camada (genero+keywords+tags+
+    // elenco+criador+idioma+pais) da pagina da serie, no lugar do antigo "qualquer serie com
+    // genero em comum, ordenada por nota": genero sozinho gerava recomendacoes sem relacao
+    // real com a serie que deu nome a secao.
+    const referenceCastIds = ((reference.cast ?? []) as unknown as NormalizedCastMember[]).map((member) => member.id);
+    const rows = await getRelatedByAffinity(toSeriesSummary(reference), referenceCastIds, new Set([reference.id, ...alreadyTracked]));
+    const items = pickUnique(rows, used, ITEMS_PER_SECTION);
     if (!items.length) return;
     sections.push({
       category: "because-you-watched",
@@ -236,17 +239,16 @@ export async function getRecommendationCategoryPage(
     const alreadyTracked = new Set(
       (await prisma.userSeriesStatus.findMany({ where: { userId }, select: { seriesId: true } })).map((row) => row.seriesId)
     );
-    const where = { id: { notIn: [reference.id, ...alreadyTracked] }, genres: { hasSome: reference.genres } };
-    const [rows, total] = await Promise.all([
-      prisma.series.findMany({ where, orderBy: { voteAverage: "desc" }, take: CATEGORY_PAGE_SIZE, skip }),
-      prisma.series.count({ where })
-    ]);
+    // Mesmo ranking multi-camada de addBecauseYouWatched acima — a lista ja vem ordenada por
+    // afinidade, entao a paginacao aqui e so um slice sobre o array (nao uma nova query).
+    const referenceCastIds = ((reference.cast ?? []) as unknown as NormalizedCastMember[]).map((member) => member.id);
+    const ranked = await getRelatedByAffinity(toSeriesSummary(reference), referenceCastIds, new Set([reference.id, ...alreadyTracked]));
     return {
       title: `Porque voce assistiu ${reference.title}`,
       description: "",
-      items: rows.map((row) => toSeriesSummary(row)),
+      items: ranked.slice(skip, skip + CATEGORY_PAGE_SIZE),
       page: safePage,
-      totalPages: Math.max(1, Math.ceil(total / CATEGORY_PAGE_SIZE))
+      totalPages: Math.max(1, Math.ceil(ranked.length / CATEGORY_PAGE_SIZE))
     };
   }
 

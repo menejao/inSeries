@@ -30,11 +30,11 @@ export function SeriesCard({ series, showQuickActions = false }: { series: Serie
             imageClassName="transition duration-300 ease-out group-hover:scale-105"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/95 via-canvas/25 to-transparent" />
-          <div className="absolute left-2 top-2">
-            <PosterBadge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</PosterBadge>
-          </div>
-          {!showQuickActions && typeof series.voteAverage === "number" ? (
-            <div className="absolute right-2 top-2">
+          {/* INSERIES-RECOMMENDATION-ENGINE-01 — nota sempre na esquerda, acao (quando
+              autenticado) sempre na direita; status sai do poster e vai pro rodape junto do
+              ano, pra nunca disputar canto com nota nem acao. */}
+          {typeof series.voteAverage === "number" ? (
+            <div className="absolute left-2 top-2">
               <PosterBadge>
                 <StarIcon className="h-3 w-3 fill-current text-warning-text" />
                 {series.voteAverage.toFixed(1)}
@@ -43,14 +43,11 @@ export function SeriesCard({ series, showQuickActions = false }: { series: Serie
           ) : null}
           <div className="absolute inset-x-0 bottom-0 space-y-1.5 p-3">
             <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <p className="text-xs text-muted">{series.year || "—"}</p>
-              {showQuickActions && typeof series.voteAverage === "number" ? (
-                <span className="flex items-center gap-0.5 text-xs text-muted">
-                  <StarIcon className="h-3 w-3 fill-current text-warning-text" />
-                  {series.voteAverage.toFixed(1)}
-                </span>
-              ) : null}
+              <PosterBadge variant={getStatusBadgeVariant(series.status)} className="px-1.5 py-0.5 text-[10px]">
+                {getStatusLabel(series.status)}
+              </PosterBadge>
             </div>
             <div className="hidden opacity-0 transition duration-200 group-hover:opacity-100 sm:block">
               <p className="line-clamp-2 text-xs text-ink/85">{series.overview}</p>

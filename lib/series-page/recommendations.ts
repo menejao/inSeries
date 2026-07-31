@@ -78,7 +78,7 @@ function jaccard(a: string[], b: string[]): number {
  * motor de recomendacoes pessoal (lib/recommendations), aqui sem depender do historico do
  * usuario (a pagina da serie e a mesma pra qualquer visitante).
  */
-async function getRelatedByAffinity(series: Series, seriesCastIds: number[], excludeIds: Set<string>): Promise<Series[]> {
+export async function getRelatedByAffinity(series: Series, seriesCastIds: number[], excludeIds: Set<string>): Promise<Series[]> {
   if (!(await canUseDatabase())) return [];
   if (!series.genres.length && !series.keywords.length && !series.collectionTags.length) return [];
 

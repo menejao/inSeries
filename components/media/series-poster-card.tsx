@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
 import { CollectionTagBadge } from "@/components/media/collection-tag-badge";
 import { PosterBadge } from "@/components/media/poster-badge";
+import { Badge } from "@/components/ui/badge";
 import { StarIcon } from "@/components/ui/icons";
 import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { cn } from "@/lib/utils";
@@ -55,29 +56,31 @@ export function SeriesPosterCard({
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/90 via-canvas/10 to-transparent opacity-0 transition duration-300 group-hover:opacity-100" />
 
-        <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
-          {variant === "new" ? <PosterBadge variant="danger">NOVO</PosterBadge> : null}
-          {variant === "status" ? <PosterBadge variant={getStatusBadgeVariant(series.status)}>{getStatusLabel(series.status)}</PosterBadge> : null}
-          {variant === "collection" ? <PosterBadge variant="secondary">Colecao completa</PosterBadge> : null}
-          {variant === "default" && primaryTag ? (
-            <div className="opacity-0 transition duration-200 group-hover:opacity-100">
-              <CollectionTagBadge tag={primaryTag} overlay />
-            </div>
-          ) : null}
-        </div>
-
+        {/* INSERIES-RECOMMENDATION-ENGINE-01 — nota sempre na esquerda: a direita fica
+            reservada pro menu de acoes externo (RecommendationFeedbackMenu), que so aparece
+            nos carrosseis com variant="default" — nunca junto de NOVO/Colecao completa. */}
         {typeof series.voteAverage === "number" ? (
-          <PosterBadge className={cn("absolute right-2 top-2", variant === "rating" ? "px-2.5 py-1 text-sm" : undefined)}>
+          <PosterBadge className={cn("absolute left-2 top-2", variant === "rating" ? "px-2.5 py-1 text-sm" : undefined)}>
             <StarIcon className={cn("fill-current text-warning-text", variant === "rating" ? "h-3.5 w-3.5" : "h-3 w-3")} />
             {series.voteAverage.toFixed(1)}
           </PosterBadge>
         ) : null}
+
+        <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+          {variant === "new" ? <PosterBadge variant="danger">NOVO</PosterBadge> : null}
+          {variant === "collection" ? <PosterBadge variant="secondary">Colecao completa</PosterBadge> : null}
+        </div>
 
         <div className="absolute inset-x-0 bottom-0 space-y-1 p-2.5">
           {variant === "episodes" && seasonEpisodeLabel ? (
             <p className="text-[11px] font-semibold text-ink opacity-0 transition duration-300 group-hover:opacity-100">
               {seasonEpisodeLabel}
             </p>
+          ) : null}
+          {variant === "default" && primaryTag ? (
+            <div className="opacity-0 transition duration-200 group-hover:opacity-100">
+              <CollectionTagBadge tag={primaryTag} overlay />
+            </div>
           ) : null}
           {series.genres.length ? (
             <div className="flex flex-wrap gap-1 opacity-0 transition duration-300 group-hover:opacity-100">
@@ -91,9 +94,14 @@ export function SeriesPosterCard({
         </div>
       </div>
       <p className={cn("mt-2 line-clamp-1 font-semibold text-ink", large ? "text-base" : "text-sm")}>{series.title}</p>
-      <p className="text-xs text-muted">
-        {series.year || "—"}
-        {series.platform ? ` · ${series.platform}` : ""}
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <span>{series.year || "—"}</span>
+        {series.platform ? <span>· {series.platform}</span> : null}
+        {variant === "status" ? (
+          <Badge variant={getStatusBadgeVariant(series.status)} className="px-1.5 py-0.5 text-[10px]">
+            {getStatusLabel(series.status)}
+          </Badge>
+        ) : null}
       </p>
     </Link>
   );

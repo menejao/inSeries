@@ -62,7 +62,10 @@ function resolveWhere(definition: SmartListDefinition): Prisma.SeriesWhereInput 
 }
 
 const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
-  MAIS_POPULARES: { orderBy: { popularityScore: "desc" } },
+  // INSERIES-RECOMMENDATION-ENGINE-01 — "Populares" sem piso deixava passar series com
+  // popularityScore ruidoso (poucos votos, pouco engajamento real) na frente de series
+  // genuinamente populares; exige o mesmo piso de votos usado por "Mais bem avaliadas".
+  MAIS_POPULARES: { where: { voteCount: { gte: MIN_VOTES_FOR_RATED } }, orderBy: { popularityScore: "desc" } },
   MAIS_BEM_AVALIADAS: { where: { voteCount: { gte: MIN_VOTES_FOR_RATED } }, orderBy: { voteAverage: "desc" } },
   NOVIDADES: { orderBy: [{ firstAirYear: "desc" }, { createdAt: "desc" }] },
   MINISSERIES: { where: { collectionTags: { has: "Minissérie" } }, orderBy: { qualityScore: "desc" } },
