@@ -139,6 +139,13 @@ model User {
   showLists              Boolean               @default(true)
   showReviews            Boolean               @default(true)
   showActivity           Boolean               @default(true)
+  // INSERIES-SERIES-STATUS-ENGINE-01 — "pausar automaticamente series inativas": preferencia
+  // do usuario, nunca aplicada retroativamente por um cron sem consentimento (default ligado,
+  // mas sempre reversivel em Configuracoes). `autoPauseInactiveDays: null` = "Nunca" (a
+  // automacao fica desligada na pratica sem precisar de um segundo boolean). O periodo
+  // sugerido pelo ticket (60 dias) e o default de uma nova conta.
+  autoPauseInactiveSeries Boolean              @default(true)
+  autoPauseInactiveDays  Int?                  @default(60)
   // INSERIES-SUPPORTER-ACTIVATION-01 — replaced the old boolean `isSupporter` with a proper
   // UserSupporter record (status/startedAt/expiresAt): "Nao utilizar apenas um campo
   // booleano". Every benefit reads UserSupporter.status === ACTIVE, never a field on User

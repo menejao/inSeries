@@ -45,7 +45,9 @@ async function profileHandler(request: Request) {
       showWatchingSeries: true,
       showLists: true,
       showReviews: true,
-      showActivity: true
+      showActivity: true,
+      autoPauseInactiveSeries: true,
+      autoPauseInactiveDays: true
     }
   });
 

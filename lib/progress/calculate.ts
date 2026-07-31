@@ -1,4 +1,5 @@
-﻿import { prisma } from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
+import { isEpisodeAvailable } from "@/lib/progress/availability";
 
 /**
  * Fase 12 (INSERIES-SERIES-PAGE-PREMIUM-01) — the pure computation `calculateSeriesProgress`
@@ -7,12 +8,18 @@
  * get the identical result without `calculateSeriesProgress`'s two queries re-fetching the
  * same series/progress rows a second time. `calculateSeriesProgress` itself is unchanged
  * for every other caller — same signature, same queries, same return shape.
+ *
+ * INSERIES-SERIES-STATUS-ENGINE-01 — "o sistema nunca devera considerar episodios futuros":
+ * `allEpisodes` is filtered down to available ones (`isEpisodeAvailable`) before anything is
+ * counted — a series with 10 aired episodes + 1 announced-but-unreleased one reaches 100%
+ * (Concluida) once the 10 aired ones are watched, exactly like the ticket's example.
  */
-export function computeSeriesProgressFromEpisodes(allEpisodes: Array<{ id: string }>, watchedIds: Set<string>) {
-  const totalEpisodes = allEpisodes.length;
-  const watchedEpisodes = allEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
+export function computeSeriesProgressFromEpisodes(allEpisodes: Array<{ id: string; airedAt?: Date | null }>, watchedIds: Set<string>) {
+  const availableEpisodes = allEpisodes.filter((episode) => isEpisodeAvailable(episode.airedAt ?? null));
+  const totalEpisodes = availableEpisodes.length;
+  const watchedEpisodes = availableEpisodes.filter((episode) => watchedIds.has(episode.id)).length;
   const percentage = totalEpisodes ? Math.round((watchedEpisodes / totalEpisodes) * 100) : 0;
-  const nextEpisode = allEpisodes.find((episode) => !watchedIds.has(episode.id)) ?? null;
+  const nextEpisode = availableEpisodes.find((episode) => !watchedIds.has(episode.id)) ?? null;
 
   return {
     totalEpisodes,

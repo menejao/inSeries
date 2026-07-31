@@ -30,10 +30,10 @@ type SidebarItem = { href: string; label: string; icon: (props: IconProps) => Re
  * 2o item, logo apos "Inicio") - mesma posicao replicada aqui.
  */
 const ITEMS: SidebarItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
+  { href: "/", label: "Inicio", icon: LayoutDashboardIcon },
   { href: "/me/minha-lista", label: "Minhas Series", icon: BookIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
-  { href: "/series", label: "Catalogo", icon: TvIcon },
+  { href: "/series", label: "Séries", icon: TvIcon },
   { href: "/feed", label: "Feed", icon: FilmIcon },
   { href: "/recommendations", label: "Recomendacoes", icon: CompassIcon },
   { href: "/me/stats", label: "Estatisticas", icon: ChartIcon },

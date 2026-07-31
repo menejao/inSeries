@@ -112,27 +112,25 @@ export function SeriesCardActions({
               {WATCH_STATE_LABELS[ws]}
             </button>
           ))}
+          <div className="mx-2 my-1 border-t border-border" />
+          <button
+            onClick={handleFavorite}
+            className={cn(
+              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-surface-strong",
+              isFavorite ? "text-error-text" : "text-ink"
+            )}
+          >
+            <HeartIcon className={cn("h-3.5 w-3.5 shrink-0", isFavorite && "fill-current")} />
+            {isFavorite ? "Remover dos favoritos" : "Favoritar"}
+          </button>
           {state ? (
-            <>
-              <div className="mx-2 my-1 border-t border-border" />
-              <button
-                onClick={handleFavorite}
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-surface-strong",
-                  isFavorite ? "text-error-text" : "text-ink"
-                )}
-              >
-                <HeartIcon className={cn("h-3.5 w-3.5 shrink-0", isFavorite && "fill-current")} />
-                {isFavorite ? "Remover dos favoritos" : "Favoritar"}
-              </button>
-              <button
-                onClick={handleRemove}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted transition hover:bg-surface-strong hover:text-ink"
-              >
-                <span className="h-3.5 w-3.5 shrink-0" />
-                Remover da lista
-              </button>
-            </>
+            <button
+              onClick={handleRemove}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted transition hover:bg-surface-strong hover:text-ink"
+            >
+              <span className="h-3.5 w-3.5 shrink-0" />
+              Remover da lista
+            </button>
           ) : null}
         </div>
       )}

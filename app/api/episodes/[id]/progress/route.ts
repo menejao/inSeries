@@ -26,6 +26,9 @@ async function progressHandler(request: Request) {
   if (!progress) {
     return NextResponse.json({ error: "episode_not_found" }, { status: 404 });
   }
+  if ("error" in progress) {
+    return NextResponse.json({ error: progress.error }, { status: 400 });
+  }
 
   return NextResponse.json({ data: progress });
 }

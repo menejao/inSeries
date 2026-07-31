@@ -78,28 +78,26 @@ export function SeasonSelector({
 
   function markWholeSeasonWatched() {
     if (!season || !episodes) return;
-    const unwatchedIds = episodes.filter((episode) => !episode.watched).map((episode) => episode.id);
-    if (!unwatchedIds.length) return;
+    const now = new Date();
+    const hasUnwatchedAvailable = episodes.some((episode) => !episode.watched && episode.airedOn && new Date(episode.airedOn) <= now);
+    if (!hasUnwatchedAvailable) return;
 
     startTransition(async () => {
-      const results = await Promise.all(
-        unwatchedIds.map((episodeId) =>
-          fetch(`/api/episodes/${episodeId}/progress`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ episodeId, watched: true })
-          })
-        )
-      );
+      // INSERIES-SERIES-STATUS-ENGINE-01 — single request, single recalculation (server-side
+      // `markSeasonWatched`), replacing the old one-request-per-episode loop. Only episodes
+      // already aired are marked — the server is the one source of truth for "available".
+      const response = await fetch(`/api/series/${seriesId}/season/${season.number}/watch`, { method: "POST" });
 
-      if (results.some((response) => !response.ok)) {
+      if (!response.ok) {
         toast({ title: "Erro ao marcar a temporada", variant: "error" });
         return;
       }
 
       setEpisodesByNumber((current) => ({
         ...current,
-        [season.number]: (current[season.number] ?? []).map((episode) => ({ ...episode, watched: true }))
+        [season.number]: (current[season.number] ?? []).map((episode) =>
+          episode.airedOn && new Date(episode.airedOn) <= new Date() ? { ...episode, watched: true } : episode
+        )
       }));
       toast({ title: `Temporada ${season.number} marcada como assistida`, variant: "success" });
       router.refresh();
@@ -110,13 +108,20 @@ export function SeasonSelector({
     return <EmptyState title="Temporadas indisponiveis" copy="Serie importada sem temporadas locais ainda." />;
   }
 
-  const watchedInSeason = episodes?.filter((episode) => episode.watched).length ?? 0;
-  const remaining = season.episodeCount - watchedInSeason;
-  const allWatched = Boolean(episodes?.length) && watchedInSeason === episodes?.length;
-  const progressPercent = season.episodeCount > 0 ? (watchedInSeason / season.episodeCount) * 100 : 0;
-  const remainingMinutes = episodes?.filter((episode) => !episode.watched).reduce((sum, episode) => sum + (episode.runtimeMinutes || 0), 0) ?? 0;
+  // INSERIES-SERIES-STATUS-ENGINE-01 — "temporada assistida" e um estado DERIVADO, calculado
+  // apenas sobre episodios ja lancados: uma temporada com todos os episodios disponiveis
+  // assistidos + 1 episodio futuro anunciado ainda conta como "Temporada assistida" (o botao
+  // so volta a ficar habilitado quando um episodio ja assistido for desmarcado, nunca por
+  // causa de um episodio que ainda nem foi ao ar).
+  const now = new Date();
+  const availableEpisodes = episodes?.filter((episode) => episode.airedOn && new Date(episode.airedOn) <= now) ?? [];
+  const watchedInSeason = availableEpisodes.filter((episode) => episode.watched).length;
+  const remaining = availableEpisodes.length - watchedInSeason;
+  const allWatched = Boolean(availableEpisodes.length) && watchedInSeason === availableEpisodes.length;
+  const progressPercent = availableEpisodes.length > 0 ? (watchedInSeason / availableEpisodes.length) * 100 : 0;
+  const remainingMinutes = availableEpisodes.filter((episode) => !episode.watched).reduce((sum, episode) => sum + (episode.runtimeMinutes || 0), 0);
   const lastWatched = episodes ? [...episodes].reverse().find((episode) => episode.watched) : undefined;
-  const nextEpisode = episodes?.find((episode) => !episode.watched);
+  const nextEpisode = availableEpisodes.find((episode) => !episode.watched);
 
   return (
     <div className="flex min-h-0 flex-col space-y-4" style={matchedHeight ? { maxHeight: matchedHeight } : undefined}>

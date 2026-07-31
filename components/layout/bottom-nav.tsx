@@ -32,7 +32,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Inicio", icon: HomeIcon },
   { href: "/me/minha-lista", label: "Minhas Series", icon: TvIcon },
   { href: "/calendar", label: "Calendario", icon: CalendarIcon },
-  { href: "/series", label: "Series", icon: CompassIcon }
+  { href: "/series", label: "Séries", icon: TvIcon }
 ];
 
 const MORE_NAV: NavItem[] = [

@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { ProfileDetailsForm } from "@/components/social/profile-details-form";
 import { ProfilePrivacyForm } from "@/components/social/profile-privacy-form";
+import { AutoPauseForm } from "@/components/social/auto-pause-form";
 import { requireUser } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/prisma";
 
@@ -35,7 +36,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       showWatchingSeries: true,
       showLists: true,
       showReviews: true,
-      showActivity: true
+      showActivity: true,
+      autoPauseInactiveSeries: true,
+      autoPauseInactiveDays: true
     }
   });
 
@@ -59,13 +62,27 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       />
 
       {tab === "perfil" ? (
-        <Card>
-          <h2 className="text-lg font-semibold text-ink">Editar perfil</h2>
-          <p className="mt-1 section-copy">Nome, username, bio e avatar sao aplicados ao seu perfil publico.</p>
-          <div className="mt-5">
-            <ProfileDetailsForm initial={fullUser} />
-          </div>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <h2 className="text-lg font-semibold text-ink">Editar perfil</h2>
+            <p className="mt-1 section-copy">Nome, username, bio e avatar sao aplicados ao seu perfil publico.</p>
+            <div className="mt-5">
+              <ProfileDetailsForm initial={fullUser} />
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-lg font-semibold text-ink">Acompanhamento</h2>
+            <p className="mt-1 section-copy">
+              Series marcadas como Assistindo sem nenhum episodio novo por um tempo podem ser pausadas automaticamente — nunca abandonadas.
+            </p>
+            <div className="mt-5">
+              <AutoPauseForm
+                initial={{ autoPauseInactiveSeries: fullUser.autoPauseInactiveSeries, autoPauseInactiveDays: fullUser.autoPauseInactiveDays }}
+              />
+            </div>
+          </Card>
+        </div>
       ) : null}
 
       {tab === "privacidade" ? (

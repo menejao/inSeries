@@ -1,86 +1,105 @@
 import { prisma } from "@/lib/db/prisma";
 import { calculateSeriesProgress } from "@/lib/progress/calculate";
+import { isEpisodeAvailable } from "@/lib/progress/availability";
+import { resolveStateAfterEpisodeChange } from "@/lib/progress/status-resolver";
 import { recordActivity } from "@/lib/social/activity";
 import { notifySeriesCompleted } from "@/lib/notifications/events";
 import { invalidateRecommendationCache } from "@/lib/recommendations";
 import { invalidateStatsCache } from "@/lib/stats";
 import { recordGamificationEvent } from "@/lib/gamification";
+import type { WatchState } from "@/lib/types";
 
-export async function upsertSeriesStatus(userId: string, seriesId: string, state: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH") {
+/**
+ * INSERIES-SERIES-STATUS-ENGINE-01 — applies a freshly computed progress result to
+ * `UserSeriesStatus`, deciding `completedAt`/`lastActivityAt` consistently for every caller
+ * (manual status change, single episode toggle, bulk season/series completion). Never called
+ * directly by API routes — always through one of the mutations below, so there is exactly one
+ * place that writes this row.
+ */
+async function writeSeriesStatus(
+  userId: string,
+  seriesId: string,
+  state: WatchState,
+  progress: { percentage: number; completed: boolean },
+  options: { touchLastActivity: boolean; touchLastWatched?: boolean; trackingStart?: Date | null }
+) {
+  const now = new Date();
+  const data = {
+    state,
+    completionPercent: progress.percentage,
+    completedAt: state === "COMPLETED" ? now : null,
+    ...(options.touchLastActivity ? { lastActivityAt: now } : {}),
+    ...(options.touchLastWatched ? { lastWatchedAt: now } : {})
+  };
+
+  return prisma.userSeriesStatus.upsert({
+    where: { userId_seriesId: { userId, seriesId } },
+    update: data,
+    create: { userId, seriesId, lastActivityAt: now, startedAt: options.trackingStart ?? null, ...data }
+  });
+}
+
+/**
+ * INSERIES-SERIES-STATUS-ENGINE-01 — "selecionar Concluida": marca automaticamente todos os
+ * episodios DISPONIVEIS (nunca futuros) como assistidos, recalcula tudo e registra a data da
+ * conclusao. The one place that bulk-marks a whole series watched — reused by `upsertSeriesStatus`
+ * (manual "Concluida" selection) and available for the catalog quick-actions menu.
+ */
+async function markAllAvailableEpisodesWatched(userId: string, seriesId: string) {
+  const series = await prisma.series.findUnique({
+    where: { id: seriesId },
+    include: { seasons: { include: { episodes: { select: { id: true, airedAt: true } } } } }
+  });
+  if (!series) return;
+
+  const availableEpisodeIds = series.seasons
+    .flatMap((season) => season.episodes)
+    .filter((episode) => isEpisodeAvailable(episode.airedAt))
+    .map((episode) => episode.id);
+
+  if (!availableEpisodeIds.length) return;
+
+  const now = new Date();
+  await prisma.$transaction(
+    availableEpisodeIds.map((episodeId) =>
+      prisma.userEpisodeProgress.upsert({
+        where: { userId_episodeId: { userId, episodeId } },
+        update: { watched: true, watchedAt: now },
+        create: { userId, episodeId, watched: true, watchedAt: now }
+      })
+    )
+  );
+}
+
+export async function upsertSeriesStatus(userId: string, seriesId: string, state: WatchState) {
   const previous = await prisma.userSeriesStatus.findUnique({
     where: { userId_seriesId: { userId, seriesId } },
     select: { state: true, startedAt: true }
   });
 
-  // Bulk-mark all aired episodes as watched when explicitly setting COMPLETED
+  // INSERIES-SERIES-STATUS-ENGINE-01 — "ao selecionar Concluida... marcar automaticamente
+  // todos os episodios disponiveis" vs. "ao selecionar Assistindo... nenhum episodio deve ser
+  // alterado automaticamente, apenas o status": COMPLETED is the only manual selection with an
+  // episode side-effect.
   if (state === "COMPLETED") {
-    const now = new Date();
-    const airedEpisodes = await prisma.episode.findMany({
-      where: { season: { seriesId }, OR: [{ airedAt: null }, { airedAt: { lte: now } }] },
-      select: { id: true }
-    });
-    const episodeIds = airedEpisodes.map((e) => e.id);
-    if (episodeIds.length > 0) {
-      await prisma.$transaction([
-        prisma.userEpisodeProgress.updateMany({
-          where: { userId, episodeId: { in: episodeIds }, watched: false },
-          data: { watched: true, watchedAt: now }
-        }),
-        prisma.userEpisodeProgress.createMany({
-          data: episodeIds.map((episodeId) => ({ userId, episodeId, watched: true, watchedAt: now })),
-          skipDuplicates: true
-        })
-      ]);
-    }
+    await markAllAvailableEpisodesWatched(userId, seriesId);
   }
 
-  const progress = await calculateSeriesProgress(userId, seriesId);
-  const now = new Date();
-  const trackingStart = previous?.startedAt ?? (state !== "WANT_TO_WATCH" ? now : null);
-
-  const status = await prisma.userSeriesStatus.upsert({
-    where: {
-      userId_seriesId: {
-        userId,
-        seriesId
-      }
-    },
-    update: {
-      state,
-      completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: now,
-      completedAt: state === "COMPLETED" ? now : null,
-      ...(state === "WATCHING" || state === "COMPLETED" ? { lastWatchedAt: now } : {})
-    },
-    create: {
-      userId,
-      seriesId,
-      state,
-      completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: now,
-      startedAt: trackingStart,
-      completedAt: state === "COMPLETED" ? now : null,
-      ...(state === "WATCHING" || state === "COMPLETED" ? { lastWatchedAt: now } : {})
-    }
+  const progress = (await calculateSeriesProgress(userId, seriesId)) ?? { percentage: 0, completed: false };
+  const trackingStart = previous?.startedAt ?? (state !== "WANT_TO_WATCH" ? new Date() : null);
+  const status = await writeSeriesStatus(userId, seriesId, state, progress, {
+    touchLastActivity: true,
+    touchLastWatched: state === "WATCHING" || state === "COMPLETED",
+    trackingStart
   });
 
   if (!previous || previous.state !== state) {
     if (state === "COMPLETED" && previous?.state !== "COMPLETED") {
-      await recordActivity({
-        userId,
-        type: "SERIES_COMPLETED",
-        seriesId,
-        metadata: { from: previous?.state ?? null }
-      });
+      await recordActivity({ userId, type: "SERIES_COMPLETED", seriesId, metadata: { from: previous?.state ?? null } });
       await notifySeriesCompleted(userId, seriesId);
       await recordGamificationEvent({ type: "SERIES_COMPLETED", userId, seriesId });
     } else if (state !== "COMPLETED") {
-      await recordActivity({
-        userId,
-        type: "SERIES_STATUS_CHANGED",
-        seriesId,
-        metadata: { from: previous?.state ?? null, to: state }
-      });
+      await recordActivity({ userId, type: "SERIES_STATUS_CHANGED", seriesId, metadata: { from: previous?.state ?? null, to: state } });
     }
   }
 
@@ -109,15 +128,17 @@ export async function removeSeriesStatus(userId: string, seriesId: string) {
 export async function toggleEpisodeProgress(userId: string, episodeId: string, watched: boolean) {
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },
-    include: {
-      season: {
-        select: { seriesId: true }
-      }
-    }
+    include: { season: { select: { seriesId: true } } }
   });
 
   if (!episode) {
     return null;
+  }
+
+  // "Episodios futuros... nao podem ser marcados automaticamente como assistidos" — applies to
+  // manual marking too: an unaired episode simply cannot be checked off.
+  if (watched && !isEpisodeAvailable(episode.airedAt)) {
+    return { error: "episode_not_available" as const };
   }
 
   const previousProgress = await prisma.userEpisodeProgress.findUnique({
@@ -127,31 +148,14 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
   const wasWatched = previousProgress?.watched ?? false;
 
   await prisma.userEpisodeProgress.upsert({
-    where: {
-      userId_episodeId: {
-        userId,
-        episodeId
-      }
-    },
-    update: {
-      watched,
-      watchedAt: watched ? new Date() : null
-    },
-    create: {
-      userId,
-      episodeId,
-      watched,
-      watchedAt: watched ? new Date() : null
-    }
+    where: { userId_episodeId: { userId, episodeId } },
+    update: { watched, watchedAt: watched ? new Date() : null },
+    create: { userId, episodeId, watched, watchedAt: watched ? new Date() : null }
   });
 
-  if (watched && !wasWatched) {
-    await recordActivity({
-      userId,
-      type: "EPISODE_WATCHED",
-      seriesId: episode.season.seriesId,
-      episodeId
-    });
+  const justWatched = watched && !wasWatched;
+  if (justWatched) {
+    await recordActivity({ userId, type: "EPISODE_WATCHED", seriesId: episode.season.seriesId, episodeId });
     await recordGamificationEvent({ type: "EPISODE_WATCHED", userId });
   }
 
@@ -160,64 +164,20 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
     select: { state: true, startedAt: true }
   });
 
-  const progress = await calculateSeriesProgress(userId, episode.season.seriesId);
-  const now = new Date();
-  const currentState = previousStatus?.state;
+  const progress = (await calculateSeriesProgress(userId, episode.season.seriesId)) ?? { percentage: 0, completed: false };
+  const nextState = resolveStateAfterEpisodeChange(previousStatus?.state ?? null, progress, justWatched);
+  const trackingStart = previousStatus?.startedAt ?? (watched ? new Date() : null);
 
-  // State transition rules:
-  // - Always promote to COMPLETED when all aired episodes are watched
-  // - WANT_TO_WATCH → WATCHING on first episode watch
-  // - COMPLETED → WATCHING when unwatching an episode
-  // - PAUSED/DROPPED are preserved unless the series becomes COMPLETED
-  // - New trackers default to WATCHING
-  let inferredState: "WATCHING" | "COMPLETED" | "PAUSED" | "DROPPED" | "WANT_TO_WATCH";
-  if (progress?.completed) {
-    inferredState = "COMPLETED";
-  } else if (!watched && currentState === "COMPLETED") {
-    inferredState = "WATCHING";
-  } else if (currentState === "PAUSED" || currentState === "DROPPED") {
-    inferredState = currentState;
-  } else if (!currentState || currentState === "WANT_TO_WATCH") {
-    inferredState = "WATCHING";
-  } else {
-    inferredState = currentState;
-  }
-
-  const trackingStart = previousStatus?.startedAt ?? (watched ? now : null);
-
-  await prisma.userSeriesStatus.upsert({
-    where: {
-      userId_seriesId: {
-        userId,
-        seriesId: episode.season.seriesId
-      }
-    },
-    update: {
-      state: inferredState,
-      completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: now,
-      completedAt: progress?.completed ? now : null,
-      ...(watched ? { lastWatchedAt: now } : {})
-    },
-    create: {
-      userId,
-      seriesId: episode.season.seriesId,
-      state: inferredState,
-      completionPercent: progress?.percentage ?? 0,
-      lastActivityAt: now,
-      startedAt: trackingStart,
-      completedAt: progress?.completed ? now : null,
-      ...(watched ? { lastWatchedAt: now } : {})
-    }
+  // "Desmarcar um episodio nao devera atualizar lastWatchedAt como uma nova atividade de
+  // visualizacao" — lastActivityAt only moves forward when an episode was actually watched.
+  await writeSeriesStatus(userId, episode.season.seriesId, nextState, progress, {
+    touchLastActivity: justWatched,
+    touchLastWatched: watched,
+    trackingStart
   });
 
-  if (progress?.completed && previousStatus?.state !== "COMPLETED") {
-    await recordActivity({
-      userId,
-      type: "SERIES_COMPLETED",
-      seriesId: episode.season.seriesId,
-      metadata: { from: previousStatus?.state ?? null }
-    });
+  if (progress.completed && previousStatus?.state !== "COMPLETED") {
+    await recordActivity({ userId, type: "SERIES_COMPLETED", seriesId: episode.season.seriesId, metadata: { from: previousStatus?.state ?? null } });
     await notifySeriesCompleted(userId, episode.season.seriesId);
     await recordGamificationEvent({ type: "SERIES_COMPLETED", userId, seriesId: episode.season.seriesId });
   }
@@ -226,4 +186,68 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
   invalidateStatsCache(userId);
 
   return progress;
+}
+
+/**
+ * INSERIES-SERIES-STATUS-ENGINE-01 — "marcar temporada como assistida": marks every AVAILABLE
+ * episode of the season watched in one batch (never future ones), then recalculates the whole
+ * series' progress/status once — not one `toggleEpisodeProgress` call per episode (the old
+ * `SeasonSelector` behavior), which re-read/re-wrote `UserSeriesStatus` once per episode.
+ */
+export async function markSeasonWatched(userId: string, seasonId: string) {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    include: { episodes: { select: { id: true, airedAt: true } } }
+  });
+  if (!season) return null;
+
+  const availableEpisodeIds = season.episodes.filter((episode) => isEpisodeAvailable(episode.airedAt)).map((episode) => episode.id);
+  if (!availableEpisodeIds.length) return { seriesId: season.seriesId, markedCount: 0 };
+
+  const alreadyWatched = await prisma.userEpisodeProgress.findMany({
+    where: { userId, episodeId: { in: availableEpisodeIds }, watched: true },
+    select: { episodeId: true }
+  });
+  const alreadyWatchedIds = new Set(alreadyWatched.map((row) => row.episodeId));
+  const toMark = availableEpisodeIds.filter((id) => !alreadyWatchedIds.has(id));
+
+  if (toMark.length) {
+    const now = new Date();
+    await prisma.$transaction(
+      toMark.map((episodeId) =>
+        prisma.userEpisodeProgress.upsert({
+          where: { userId_episodeId: { userId, episodeId } },
+          update: { watched: true, watchedAt: now },
+          create: { userId, episodeId, watched: true, watchedAt: now }
+        })
+      )
+    );
+    await recordGamificationEvent({ type: "EPISODE_WATCHED", userId });
+  }
+
+  const previousStatus = await prisma.userSeriesStatus.findUnique({
+    where: { userId_seriesId: { userId, seriesId: season.seriesId } },
+    select: { state: true, startedAt: true }
+  });
+
+  const progress = (await calculateSeriesProgress(userId, season.seriesId)) ?? { percentage: 0, completed: false };
+  const nextState = resolveStateAfterEpisodeChange(previousStatus?.state ?? null, progress, toMark.length > 0);
+  const trackingStart = previousStatus?.startedAt ?? (toMark.length > 0 ? new Date() : null);
+
+  await writeSeriesStatus(userId, season.seriesId, nextState, progress, {
+    touchLastActivity: toMark.length > 0,
+    touchLastWatched: toMark.length > 0,
+    trackingStart
+  });
+
+  if (progress.completed && previousStatus?.state !== "COMPLETED") {
+    await recordActivity({ userId, type: "SERIES_COMPLETED", seriesId: season.seriesId, metadata: { from: previousStatus?.state ?? null } });
+    await notifySeriesCompleted(userId, season.seriesId);
+    await recordGamificationEvent({ type: "SERIES_COMPLETED", userId, seriesId: season.seriesId });
+  }
+
+  invalidateRecommendationCache(userId);
+  invalidateStatsCache(userId);
+
+  return { seriesId: season.seriesId, markedCount: toMark.length, progress };
 }

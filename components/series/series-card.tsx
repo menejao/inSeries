@@ -21,6 +21,11 @@ const WATCH_STATE_BADGE_CLASSES: Record<string, string> = {
  * (excesso visual, fora da lista da Fase 8): Quality Score, Collection Tags/generos e
  * provedores de streaming no card — essas informacoes continuam disponiveis na pagina da
  * serie, que e onde o usuario decide "assistir onde".
+ *
+ * INSERIES-CATALOG-QUICK-ACTIONS-01 — "•••" no canto superior direito, so quando autenticado:
+ * abre um menu pra trocar o status de acompanhamento sem sair do Catalogo. `series.userState`
+ * (quando presente) tambem vira um badge discreto no canto inferior, pra bater com o que a
+ * Minha Lista mostra.
  */
 export function SeriesCard({ series, showQuickActions = false }: { series: Series; showQuickActions?: boolean }) {
   return (

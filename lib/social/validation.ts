@@ -23,7 +23,9 @@ export const profileUpdateSchema = z.object({
   showWatchingSeries: z.boolean().optional(),
   showLists: z.boolean().optional(),
   showReviews: z.boolean().optional(),
-  showActivity: z.boolean().optional()
+  showActivity: z.boolean().optional(),
+  autoPauseInactiveSeries: z.boolean().optional(),
+  autoPauseInactiveDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).nullable().optional()
 });
 
 export const listVisibilitySchema = z.enum(["PUBLIC", "PRIVATE"]);
