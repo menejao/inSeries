@@ -43,9 +43,9 @@ export function SeriesCard({ series, showQuickActions = false }: { series: Serie
           ) : null}
           <div className="absolute inset-x-0 bottom-0 space-y-1 p-3">
             <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
-            <div className="flex items-center justify-between gap-1.5">
-              <p className="text-xs text-muted">{series.year || "—"}</p>
-              <PosterBadge variant={getStatusBadgeVariant(series.status)} className="shrink-0 px-1.5 py-0.5 text-[10px]">
+            <p className="text-xs text-muted">{series.year || "—"}</p>
+            <div>
+              <PosterBadge variant={getStatusBadgeVariant(series.status)} className="px-1.5 py-0.5 text-[10px]">
                 {getStatusLabel(series.status)}
               </PosterBadge>
             </div>
