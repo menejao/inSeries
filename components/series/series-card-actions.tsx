@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { MoreVerticalIcon, CheckIcon, HeartIcon } from "@/components/ui/icons";
+import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
 import type { WatchState } from "@/lib/types";
 import { WATCH_STATE_LABELS, WATCH_STATE_ORDER } from "@/lib/progress/labels";
@@ -23,33 +24,11 @@ export function SeriesCardActions({
   initialState?: WatchState;
   initialFavorite?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const [state, setState] = useState(initialState);
   const [isFavorite, setIsFavorite] = useState(initialFavorite ?? false);
   const [isPending, startTransition] = useTransition();
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [open]);
-
-  function handleToggle(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen((v) => !v);
-  }
-
-  function handleSelect(e: React.MouseEvent, newState: WatchState) {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(false);
+  function handleSelect(newState: WatchState) {
     if (newState === state) return;
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/status`, {
@@ -61,20 +40,14 @@ export function SeriesCardActions({
     });
   }
 
-  function handleFavorite(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(false);
+  function handleFavorite() {
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/favorite`, { method: "POST" });
       setIsFavorite((prev) => !prev);
     });
   }
 
-  function handleRemove(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(false);
+  function handleRemove() {
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/status`, { method: "DELETE" });
       setState(undefined);
@@ -83,57 +56,50 @@ export function SeriesCardActions({
   }
 
   return (
-    <div ref={menuRef} className="relative">
-      <button
-        onClick={handleToggle}
-        aria-label="Ações rápidas"
-        aria-expanded={open}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-full bg-canvas/80 shadow backdrop-blur-sm transition",
-          "hover:bg-canvas/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-          isPending && "opacity-60"
-        )}
-      >
-        <MoreVerticalIcon className="h-4 w-4 text-ink" />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-8 z-50 min-w-[160px] overflow-hidden rounded-xl border border-border bg-surface shadow-raised">
-          {WATCH_STATE_ORDER.map((ws) => (
-            <button
-              key={ws}
-              onClick={(e) => handleSelect(e, ws)}
-              className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-surface-strong",
-                state === ws ? WATCH_STATE_COLORS[ws] : "text-ink"
-              )}
-            >
-              {state === ws ? <CheckIcon className="h-3.5 w-3.5 shrink-0" /> : <span className="h-3.5 w-3.5 shrink-0" />}
-              {WATCH_STATE_LABELS[ws]}
-            </button>
-          ))}
-          <div className="mx-2 my-1 border-t border-border" />
+    // O card inteiro e um <Link>; este wrapper para o clique de propagar pra navegacao
+    // (stopPropagation aqui roda DEPOIS do onClick do botao/itens, na fase de bubble).
+    <div
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      <Dropdown
+        trigger={
           <button
-            onClick={handleFavorite}
+            aria-label="Ações rápidas"
             className={cn(
-              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-surface-strong",
-              isFavorite ? "text-error-text" : "text-ink"
+              "flex h-7 w-7 items-center justify-center rounded-full bg-canvas/80 shadow backdrop-blur-sm transition",
+              "hover:bg-canvas/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              isPending && "opacity-60"
             )}
           >
-            <HeartIcon className={cn("h-3.5 w-3.5 shrink-0", isFavorite && "fill-current")} />
-            {isFavorite ? "Remover dos favoritos" : "Favoritar"}
+            <MoreVerticalIcon className="h-4 w-4 text-ink" />
           </button>
-          {state ? (
-            <button
-              onClick={handleRemove}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted transition hover:bg-surface-strong hover:text-ink"
-            >
-              <span className="h-3.5 w-3.5 shrink-0" />
-              Remover da lista
-            </button>
-          ) : null}
-        </div>
-      )}
+        }
+      >
+        {WATCH_STATE_ORDER.map((ws) => (
+          <DropdownItem
+            key={ws}
+            onClick={() => handleSelect(ws)}
+            className={state === ws ? WATCH_STATE_COLORS[ws] : undefined}
+          >
+            {state === ws ? <CheckIcon className="h-3.5 w-3.5 shrink-0" /> : <span className="h-3.5 w-3.5 shrink-0" />}
+            {WATCH_STATE_LABELS[ws]}
+          </DropdownItem>
+        ))}
+        <DropdownSeparator />
+        <DropdownItem onClick={handleFavorite} className={isFavorite ? "text-error-text" : undefined}>
+          <HeartIcon className={cn("h-3.5 w-3.5 shrink-0", isFavorite && "fill-current")} />
+          {isFavorite ? "Remover dos favoritos" : "Favoritar"}
+        </DropdownItem>
+        {state ? (
+          <DropdownItem onClick={handleRemove} className="text-muted">
+            <span className="h-3.5 w-3.5 shrink-0" />
+            Remover da lista
+          </DropdownItem>
+        ) : null}
+      </Dropdown>
     </div>
   );
 }
