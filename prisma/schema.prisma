@@ -124,66 +124,66 @@ enum AchievementRarity {
 }
 
 model User {
-  id                     String                @id @default(cuid())
-  name                   String
-  username               String                @unique
-  email                  String                @unique
-  passwordHash           String
-  avatarUrl              String?
-  bio                    String?
-  role                   UserRole              @default(USER)
-  lastLoginAt            DateTime?
-  isProfilePrivate       Boolean               @default(false)
-  showWatchedSeries      Boolean               @default(true)
-  showWatchingSeries     Boolean               @default(true)
-  showLists              Boolean               @default(true)
-  showReviews            Boolean               @default(true)
-  showActivity           Boolean               @default(true)
+  id                      String                   @id @default(cuid())
+  name                    String
+  username                String                   @unique
+  email                   String                   @unique
+  passwordHash            String
+  avatarUrl               String?
+  bio                     String?
+  role                    UserRole                 @default(USER)
+  lastLoginAt             DateTime?
+  isProfilePrivate        Boolean                  @default(false)
+  showWatchedSeries       Boolean                  @default(true)
+  showWatchingSeries      Boolean                  @default(true)
+  showLists               Boolean                  @default(true)
+  showReviews             Boolean                  @default(true)
+  showActivity            Boolean                  @default(true)
   // INSERIES-SERIES-STATUS-ENGINE-01 — "pausar automaticamente series inativas": preferencia
   // do usuario, nunca aplicada retroativamente por um cron sem consentimento (default ligado,
   // mas sempre reversivel em Configuracoes). `autoPauseInactiveDays: null` = "Nunca" (a
   // automacao fica desligada na pratica sem precisar de um segundo boolean). O periodo
   // sugerido pelo ticket (60 dias) e o default de uma nova conta.
-  autoPauseInactiveSeries Boolean              @default(true)
-  autoPauseInactiveDays  Int?                  @default(60)
+  autoPauseInactiveSeries Boolean                  @default(true)
+  autoPauseInactiveDays   Int?                     @default(60)
   // INSERIES-SUPPORTER-ACTIVATION-01 — replaced the old boolean `isSupporter` with a proper
   // UserSupporter record (status/startedAt/expiresAt): "Nao utilizar apenas um campo
   // booleano". Every benefit reads UserSupporter.status === ACTIVE, never a field on User
   // directly. `showSupporterBadge`/banner/frame remain here since they're cosmetic
   // *preferences*, not eligibility — a user can be an inactive ex-supporter and keep them set.
-  showSupporterBadge     Boolean               @default(true)
-  supporterBannerStyle   String?
-  supporterFrameStyle    String?
-  statuses               UserSeriesStatus[]
-  episodeProgress        UserEpisodeProgress[]
-  followers              Follow[]              @relation("followers")
-  following              Follow[]              @relation("following")
-  reviews                Review[]
-  comments               Comment[]
-  ratings                Rating[]
-  lists                  List[]
-  activities             Activity[]            @relation("ActivityUser")
-  targetedActivities     Activity[]            @relation("ActivityTargetUser")
-  notifications          Notification[]        @relation("NotificationUser")
-  actorNotifications     Notification[]        @relation("NotificationActor")
-  adminAuditLogs         AdminAuditLog[]
-  achievements           UserAchievement[]
+  showSupporterBadge      Boolean                  @default(true)
+  supporterBannerStyle    String?
+  supporterFrameStyle     String?
+  statuses                UserSeriesStatus[]
+  episodeProgress         UserEpisodeProgress[]
+  followers               Follow[]                 @relation("followers")
+  following               Follow[]                 @relation("following")
+  reviews                 Review[]
+  comments                Comment[]
+  ratings                 Rating[]
+  lists                   List[]
+  activities              Activity[]               @relation("ActivityUser")
+  targetedActivities      Activity[]               @relation("ActivityTargetUser")
+  notifications           Notification[]           @relation("NotificationUser")
+  actorNotifications      Notification[]           @relation("NotificationActor")
+  adminAuditLogs          AdminAuditLog[]
+  achievements            UserAchievement[]
   // INSERIES-SOCIAL-NETWORK-EXPERIENCE-01
-  followRequestsSent     FollowRequest[]       @relation("FollowRequestsSent")
-  followRequestsReceived FollowRequest[]       @relation("FollowRequestsReceived")
-  mutesGiven             Mute[]                @relation("MutesGiven")
-  mutesReceived          Mute[]                @relation("MutesReceived")
-  blocksGiven            Block[]               @relation("BlocksGiven")
-  blocksReceived         Block[]               @relation("BlocksReceived")
-  activityLikes          ActivityLike[]
-  activityComments       ActivityComment[]
-  importJobs             ImportJob[]
-  recommendationFeedback RecommendationFeedback[]
-  supportRequests        SupportRequest[]
-  supporterStatus        UserSupporter?
-  supporterPollVotes     SupporterPollVote[]
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
+  followRequestsSent      FollowRequest[]          @relation("FollowRequestsSent")
+  followRequestsReceived  FollowRequest[]          @relation("FollowRequestsReceived")
+  mutesGiven              Mute[]                   @relation("MutesGiven")
+  mutesReceived           Mute[]                   @relation("MutesReceived")
+  blocksGiven             Block[]                  @relation("BlocksGiven")
+  blocksReceived          Block[]                  @relation("BlocksReceived")
+  activityLikes           ActivityLike[]
+  activityComments        ActivityComment[]
+  importJobs              ImportJob[]
+  recommendationFeedback  RecommendationFeedback[]
+  supportRequests         SupportRequest[]
+  supporterStatus         UserSupporter?
+  supporterPollVotes      SupporterPollVote[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   @@index([role])
 }
@@ -287,70 +287,70 @@ model ActivityComment {
 }
 
 model Series {
-  id                  String                  @id @default(cuid())
-  slug                String                  @unique
-  title               String
-  originalTitle       String?
-  overview            String?
-  posterUrl           String?
-  backdropUrl         String?
-  firstAirYear        Int?
-  language            String?
-  network             String?
-  genres              String[]
-  status              SeriesLifecycleStatus
-  popularityScore     Float?
-  voteAverage         Float?
-  voteCount           Int?
+  id                     String                   @id @default(cuid())
+  slug                   String                   @unique
+  title                  String
+  originalTitle          String?
+  overview               String?
+  posterUrl              String?
+  backdropUrl            String?
+  firstAirYear           Int?
+  language               String?
+  network                String?
+  genres                 String[]
+  status                 SeriesLifecycleStatus
+  popularityScore        Float?
+  voteAverage            Float?
+  voteCount              Int?
   // Fase 9 (INSERIES-TMDB-CATALOG-SCALE-01) — richer catalog metadata, all sourced from the
   // same single TMDb details call (network already existed; the rest just wasn't captured
   // before). Nothing here is surfaced in the UI yet — this is data warehousing for future use,
   // not a new user-facing feature.
-  tagline             String?
-  homepage            String?
-  originCountry       String[]                @default([])
-  spokenLanguages     String[]                @default([])
-  numberOfSeasons     Int?
-  numberOfEpisodes    Int?
-  networks            String[]                @default([])
-  productionCountries String[]                @default([])
-  productionCompanies String[]                @default([])
-  createdBy           String[]                @default([])
-  logoUrl             String?
-  keywords            String[]                @default([])
+  tagline                String?
+  homepage               String?
+  originCountry          String[]                 @default([])
+  spokenLanguages        String[]                 @default([])
+  numberOfSeasons        Int?
+  numberOfEpisodes       Int?
+  networks               String[]                 @default([])
+  productionCountries    String[]                 @default([])
+  productionCompanies    String[]                 @default([])
+  createdBy              String[]                 @default([])
+  logoUrl                String?
+  keywords               String[]                 @default([])
   // Fase 2/4/7/8 (INSERIES-TMDB-CATALOG-QUALITY-01) — editorial quality layer on top of the
   // raw metadata above. qualityScore/collectionTags are derived+persisted at upsert time
   // (lib/catalog/quality-score.ts, lib/catalog/collection-tags.ts); watchProviders/type come
   // straight from the same TMDb details call (append_to_response), no extra HTTP call.
-  qualityScore        Float?
-  watchProviders      String[]                @default([])
-  collectionTags      String[]                @default([])
-  type                String?
+  qualityScore           Float?
+  watchProviders         String[]                 @default([])
+  collectionTags         String[]                 @default([])
+  type                   String?
   // Fase 17/18/19 (INSERIES-CATALOG-SERIES-EXPERIENCE-01) — elenco/galeria/trailers, todos
   // vindos do mesmo `tv/{id}` details call (append_to_response: credits/images/videos), sem
   // chamada extra ao TMDb. `cast`/`videos` sao arrays de objeto (poucos campos cada, sem
   // necessidade de tabela propria); `backdropUrls`/`posterUrls` seguem o mesmo padrao
   // String[] ja usado pra genres/keywords/etc.
-  cast                Json[]                  @default([])
-  videos              Json[]                  @default([])
-  backdropUrls        String[]                @default([])
-  posterUrls          String[]                @default([])
+  cast                   Json[]                   @default([])
+  videos                 Json[]                   @default([])
+  backdropUrls           String[]                 @default([])
+  posterUrls             String[]                 @default([])
   // Fase 3 (INSERIES-TRENDING-DISCOVERY-ENGINE-01) — the Premium Discovery Score (0-100):
   // a distinct signal from qualityScore above, weighted towards *discovery* relevance
   // (trending presence, streaming priority, recency) rather than editorial completeness.
   // Computed by lib/discovery/discovery-score.ts, persisted by lib/discovery/engine.ts.
-  discoveryScore      Float?
-  seasons             Season[]
-  reviews             Review[]
-  ratings             Rating[]
-  statuses            UserSeriesStatus[]
-  externalMappings    ExternalSourceMapping[]
-  listItems           ListItem[]
-  activities          Activity[]
-  notifications       Notification[]
+  discoveryScore         Float?
+  seasons                Season[]
+  reviews                Review[]
+  ratings                Rating[]
+  statuses               UserSeriesStatus[]
+  externalMappings       ExternalSourceMapping[]
+  listItems              ListItem[]
+  activities             Activity[]
+  notifications          Notification[]
   recommendationFeedback RecommendationFeedback[]
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
 
   @@index([status])
   @@index([firstAirYear])
@@ -785,13 +785,114 @@ model SupporterPoll {
 }
 
 model SupporterPollVote {
-  id           String        @id @default(cuid())
-  pollId       String
-  userId       String
-  optionIndex  Int
-  poll         SupporterPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime      @default(now())
+  id          String        @id @default(cuid())
+  pollId      String
+  userId      String
+  optionIndex Int
+  poll        SupporterPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
 
   @@unique([pollId, userId])
+}
+
+/// INSERIES-SOCIAL-AUTOMATION-01 — scaffolding for a future content-automation system
+/// (packages/social-automation) that will draft, review, and publish social posts (Instagram
+/// first, more networks later). Nothing in packages/social-automation calls a real social
+/// network API yet or runs real AI generation; these models exist so the manual-review flow
+/// (draft -> approve -> publish) has somewhere real to persist state end-to-end.
+enum SocialContentStatus {
+  DRAFT
+  APPROVED
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+model SocialContent {
+  id           String                    @id @default(cuid())
+  type         String
+  title        String
+  description  String
+  status       SocialContentStatus       @default(DRAFT)
+  templateId   String?
+  template     SocialTemplate?           @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  publications SocialPublication[]
+  history      SocialAutomationHistory[]
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([templateId])
+}
+
+enum SocialNetwork {
+  INSTAGRAM
+}
+
+enum SocialPublicationStatus {
+  PENDING
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+model SocialPublication {
+  id           String                    @id @default(cuid())
+  contentId    String
+  content      SocialContent             @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  network      SocialNetwork
+  caption      String
+  mediaRef     String?
+  scheduledFor DateTime
+  status       SocialPublicationStatus   @default(PENDING)
+  publishedAt  DateTime?
+  externalId   String?
+  history      SocialAutomationHistory[]
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([contentId])
+  @@index([network, status])
+  @@index([status, scheduledFor])
+}
+
+model SocialTemplate {
+  id        String          @id @default(cuid())
+  name      String
+  type      String
+  active    Boolean         @default(true)
+  contents  SocialContent[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([type, active])
+}
+
+enum SocialAutomationAction {
+  CONTENT_GENERATED
+  TEMPLATE_RENDERED
+  MEDIA_GENERATED
+  PUBLISH_ATTEMPTED
+  PUBLISH_SUCCEEDED
+  PUBLISH_FAILED
+  RETRY_SCHEDULED
+}
+
+/// Append-only audit trail — every module in packages/social-automation writes here on every
+/// action (never silent). Nothing is ever deleted from this table.
+model SocialAutomationHistory {
+  id            String                 @id @default(cuid())
+  publicationId String?
+  publication   SocialPublication?     @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  contentId     String?
+  content       SocialContent?         @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  action        SocialAutomationAction
+  detail        Json?
+  createdAt     DateTime               @default(now())
+
+  @@index([publicationId, createdAt])
+  @@index([contentId, createdAt])
+  @@index([action, createdAt])
 }

@@ -30,6 +30,10 @@
     "discovery:run": "tsx scripts/discovery-run.ts",
     "notifications:episodes": "tsx scripts/notify-new-episodes.ts",
     "smoke:test": "tsx scripts/smoke-test.ts",
+    "social:generate": "tsx packages/social-automation/scripts/generate.ts",
+    "social:approve": "tsx packages/social-automation/scripts/approve.ts",
+    "social:publish": "tsx packages/social-automation/scripts/publish.ts",
+    "social:status": "tsx packages/social-automation/scripts/status.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
