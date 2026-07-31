@@ -9,6 +9,10 @@ services:
       POSTGRES_DB: inseries
     ports:
       - "5433:5432"
+    # Local-dev-only DDL audit trail (never apply to production/Neon): logs DROP/CREATE/ALTER/
+    # TRUNCATE so a future migration incident leaves a trace even with log_statement's default
+    # "none" (which only logs statements that error — see docs/database-migrations.md).
+    command: ["postgres", "-c", "log_statement=ddl"]
     volumes:
       - inseries-postgres-data:/var/lib/postgresql/data
     healthcheck:

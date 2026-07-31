@@ -9,6 +9,11 @@ datasource db {
   // `prisma migrate deploy` needs — migrations must run through the direct/unpooled connection.
   // Locally, DATABASE_URL_UNPOOLED just mirrors DATABASE_URL (no pooler in the sandbox).
   directUrl = env("DATABASE_URL_UNPOOLED")
+  // Dedicated database `migrate dev`/`migrate diff` use to compute schema drift. Must NEVER
+  // point at the same database/schema as `url` above — without this, drift resolution targets
+  // the real dev database directly and a non-interactive "reset?" prompt can silently wipe it
+  // (see docs/database-migrations.md for the incident this prevents).
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 enum SeriesLifecycleStatus {
