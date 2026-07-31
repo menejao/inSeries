@@ -11,18 +11,25 @@ export function EpisodeWatchButton({
   episodeId,
   initialWatched,
   authenticated,
-  size = "md"
+  size = "md",
+  onChange
 }: {
   episodeId: string;
   initialWatched: boolean;
   authenticated: boolean;
   size?: "sm" | "md";
+  /** INSERIES-SERIES-LIBRARY-ENGINE-01 — avisa o pai (EpisodeRow) assim que a mutation
+   * confirma, sem esperar um router.refresh() ida-e-volta ao servidor. */
+  onChange?: (watched: boolean, watchedAt: string | null) => void;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [watched, setWatched] = useState(initialWatched);
   const [isPending, startTransition] = useTransition();
-  const { requestMark, dialog } = useMarkEpisodeWatched(episodeId, () => setWatched(true));
+  const { requestMark, dialog } = useMarkEpisodeWatched(episodeId, (watchedAt) => {
+    setWatched(true);
+    onChange?.(true, watchedAt);
+  });
 
   if (!authenticated) {
     return (
@@ -44,6 +51,7 @@ export function EpisodeWatchButton({
         return;
       }
       setWatched(false);
+      onChange?.(false, null);
       toast({ title: "Episodio desmarcado", variant: "success" });
       router.refresh();
     });
