@@ -65,6 +65,8 @@ const envSchema = z.object({
   TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE: optionalNonEmpty(),
   TMDB_TAG_PREMIADA_MIN_VOTE_COUNT: optionalNonEmpty(),
   TMDB_TAG_EM_ALTA_MIN_POPULARITY: optionalNonEmpty(),
+  TMDB_TAG_EM_ALTA_MIN_VOTE_AVERAGE: optionalNonEmpty(),
+  TMDB_TAG_EM_ALTA_MIN_VOTE_COUNT: optionalNonEmpty(),
   TMDB_TAG_LONGA_DURACAO_MIN_SEASONS: optionalNonEmpty(),
   DISCOVERY_SOURCE_WEIGHT_TRENDING: optionalNonEmpty(),
   DISCOVERY_SOURCE_WEIGHT_ON_THE_AIR: optionalNonEmpty(),
@@ -271,6 +273,11 @@ export const config = {
       premiadaMinVoteAverage: parseNumberFlag(rawEnv.TMDB_TAG_PREMIADA_MIN_VOTE_AVERAGE, 8),
       premiadaMinVoteCount: parseNumberFlag(rawEnv.TMDB_TAG_PREMIADA_MIN_VOTE_COUNT, 1000),
       emAltaMinPopularity: parseNumberFlag(rawEnv.TMDB_TAG_EM_ALTA_MIN_POPULARITY, 50),
+      // INSERIES-RECOMMENDATION-ENGINE-01 — "Em alta" nao deve ser so popularidade historica:
+      // exige tambem nota e volume de votos minimos, senao series desconhecidas ou mal
+      // avaliadas (mas com um pico de popularidade pontual) entravam na secao.
+      emAltaMinVoteAverage: parseNumberFlag(rawEnv.TMDB_TAG_EM_ALTA_MIN_VOTE_AVERAGE, 6.5),
+      emAltaMinVoteCount: parseNumberFlag(rawEnv.TMDB_TAG_EM_ALTA_MIN_VOTE_COUNT, 20),
       longaDuracaoMinSeasons: parseNumberFlag(rawEnv.TMDB_TAG_LONGA_DURACAO_MIN_SEASONS, 5)
     }
   },

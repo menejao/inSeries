@@ -74,7 +74,21 @@ const SMART_LISTS: Record<SmartListKey, SmartListDefinition> = {
     where: { numberOfEpisodes: { gt: 0, lte: config.catalogQuality.tags.minisserieMaxEpisodes } },
     orderBy: { qualityScore: "desc" }
   },
-  EM_ALTA: { where: { collectionTags: { has: "Em Alta" } }, orderBy: { popularityScore: "desc" } },
+  // INSERIES-RECOMMENDATION-ENGINE-01 — "combinar alta popularidade, nota elevada e nao
+  // utilizar apenas popularidade historica": alem da tag "Em Alta" (que ja aplica esses
+  // mesmos pisos no momento do sync, ver collection-tags.ts), repete os pisos de nota/votos
+  // diretamente na query — asim series ja sincronizadas ANTES desse piso existir tambem
+  // ficam de fora sem precisar esperar um resync do catalogo pra retaggear.
+  EM_ALTA: {
+    where: {
+      collectionTags: { has: "Em Alta" },
+      voteAverage: { gte: config.catalogQuality.tags.emAltaMinVoteAverage },
+      voteCount: { gte: config.catalogQuality.tags.emAltaMinVoteCount }
+    },
+    // discoveryScore (crescimento/tendencia real, ver lib/discovery/discovery-score.ts) desempata
+    // popularidade — duas series igualmente populares, a que esta "crescendo" aparece primeiro.
+    orderBy: [{ popularityScore: "desc" }, { discoveryScore: "desc" }]
+  },
   MAIS_COMENTADAS: { orderBy: { voteCount: "desc" } },
   BASEADAS_EM_LIVROS: { where: { collectionTags: { has: "Baseada em Livro" } }, orderBy: { qualityScore: "desc" } },
   PREMIADAS: { where: { collectionTags: { has: "Premiada" } }, orderBy: { voteAverage: "desc" } },

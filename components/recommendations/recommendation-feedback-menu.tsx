@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Dropdown, DropdownItem } from "@/components/ui/dropdown";
 import { MoreHorizontalIcon, ThumbsUpIcon, ThumbsDownIcon, CheckIcon, EyeOffIcon } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 type FeedbackAction = "LIKE" | "NOT_INTERESTED" | "ALREADY_WATCHED" | "HIDDEN";
 
@@ -20,7 +21,18 @@ const ACTIONS: Array<{ action: FeedbackAction; label: string; icon: typeof Thumb
  * NOT_INTERESTED/ALREADY_WATCHED/HIDDEN remove the card from view immediately (optimistic —
  * the engine excludes it server-side from now on too), LIKE just confirms without removing.
  */
-export function RecommendationFeedbackMenu({ seriesId, onHide }: { seriesId: string; onHide: () => void }) {
+export function RecommendationFeedbackMenu({
+  seriesId,
+  onHide,
+  hasRatingBadge = false
+}: {
+  seriesId: string;
+  onHide: () => void;
+  /** INSERIES-RECOMMENDATION-ENGINE-01 — o selo de nota (SeriesPosterCard) e o menu de acoes
+   * disputavam o mesmo canto (right-2 top-2), cobrindo a nota. Quando o card mostra nota, o
+   * menu desce abaixo do selo em vez de sobrepor. */
+  hasRatingBadge?: boolean;
+}) {
   const { toast } = useToast();
   const [pending, setPending] = useState(false);
 
@@ -45,7 +57,7 @@ export function RecommendationFeedbackMenu({ seriesId, onHide }: { seriesId: str
   }
 
   return (
-    <div className="absolute right-2 top-2 z-10" onClick={(event) => event.preventDefault()}>
+    <div className={cn("absolute right-2 z-10", hasRatingBadge ? "top-11" : "top-2")} onClick={(event) => event.preventDefault()}>
       <Dropdown
         align="end"
         trigger={

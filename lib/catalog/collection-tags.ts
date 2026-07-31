@@ -61,7 +61,13 @@ export function deriveCollectionTags(input: CollectionTagInput): string[] {
     tags.add("Premiada");
   }
 
-  if ((input.popularity ?? 0) >= thresholds.emAltaMinPopularity) tags.add("Em Alta");
+  if (
+    (input.popularity ?? 0) >= thresholds.emAltaMinPopularity &&
+    (input.voteAverage ?? 0) >= thresholds.emAltaMinVoteAverage &&
+    (input.voteCount ?? 0) >= thresholds.emAltaMinVoteCount
+  ) {
+    tags.add("Em Alta");
+  }
 
   if (seasons >= thresholds.longaDuracaoMinSeasons) tags.add("Longa Duração");
 

@@ -7,7 +7,6 @@ import type { NormalizedCastMember } from "@/lib/catalog/normalize";
 import type { Series } from "@/lib/types";
 
 const RESULT_LIMIT = 5;
-const CANDIDATE_POOL = 8;
 
 /**
  * Fase 20/21/22/23/24 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — a pagina da serie nao deve
@@ -34,14 +33,6 @@ function excludeSelf(items: Series[], seriesId: string) {
   return items.filter((item) => item.id !== seriesId);
 }
 
-function dedupeById(items: Series[]) {
-  const seen = new Map<string, Series>();
-  for (const item of items) {
-    if (!seen.has(item.id)) seen.set(item.id, item);
-  }
-  return [...seen.values()];
-}
-
 async function getTmdbLocalMatches(externalId: string | null, fetcher: (id: string) => Promise<Array<{ id: number }>>): Promise<Series[]> {
   if (!externalId || !getTmdbCredentials().isConfigured || !(await canUseDatabase())) return [];
 
@@ -66,36 +57,67 @@ async function getTmdbLocalMatches(externalId: string | null, fetcher: (id: stri
   }
 }
 
-async function getSameGenreSeries(series: Series): Promise<Series[]> {
-  const topGenre = series.genres[0];
-  if (!topGenre) return [];
-  const result = await searchSeries({ genre: topGenre, sort: "quality", pageSize: CANDIDATE_POOL });
-  return excludeSelf(result.items, series.id);
+const RELATED_CANDIDATE_POOL = 150;
+
+function jaccard(a: string[], b: string[]): number {
+  if (!a.length || !b.length) return 0;
+  const setA = new Set(a.map((value) => value.toLowerCase()));
+  const setB = new Set(b.map((value) => value.toLowerCase()));
+  const intersection = [...setA].filter((value) => setB.has(value)).length;
+  const union = new Set([...setA, ...setB]).size;
+  return union === 0 ? 0 : intersection / union;
 }
 
-async function getSameCreatorSeries(series: Series): Promise<Series[]> {
-  if (!series.createdBy.length || !(await canUseDatabase())) return [];
+/**
+ * INSERIES-RECOMMENDATION-ENGINE-01 — "series nao devem ser consideradas semelhantes apenas
+ * porque compartilham o genero": substitui os antigos passos "mesmo genero" (so o genero
+ * principal), "mesmo criador" e "mesmo elenco" (cada um sua propria query, sem se combinar) por
+ * um unico ranking local ponderando genero, keywords (temas/estilo/ambientacao — a unica fonte
+ * disponivel pra essas dimensoes, ver INSERIES-DASHBOARD-PREMIUM-01), Collection Tags, elenco,
+ * criador, idioma e pais de origem — a mesma logica de "multiplas camadas de similaridade" do
+ * motor de recomendacoes pessoal (lib/recommendations), aqui sem depender do historico do
+ * usuario (a pagina da serie e a mesma pra qualquer visitante).
+ */
+async function getRelatedByAffinity(series: Series, seriesCastIds: number[], excludeIds: Set<string>): Promise<Series[]> {
+  if (!(await canUseDatabase())) return [];
+  if (!series.genres.length && !series.keywords.length && !series.collectionTags.length) return [];
+
+  const orClauses = [
+    series.genres.length ? { genres: { hasSome: series.genres } } : null,
+    series.keywords.length ? { keywords: { hasSome: series.keywords } } : null,
+    series.collectionTags.length ? { collectionTags: { hasSome: series.collectionTags } } : null
+  ].filter((clause): clause is NonNullable<typeof clause> => clause !== null);
+
   const rows = await prisma.series.findMany({
-    where: { id: { not: series.id }, createdBy: { hasSome: series.createdBy } },
-    orderBy: [{ qualityScore: { sort: "desc", nulls: "last" } }],
-    take: CANDIDATE_POOL
+    where: { id: { notIn: [...excludeIds, series.id] }, OR: orClauses },
+    take: RELATED_CANDIDATE_POOL
   });
-  return rows.map((row) => toSeriesSummary(row));
-}
 
-async function getSameCastSeries(seriesId: string, castIds: number[]): Promise<Series[]> {
-  if (!castIds.length || !(await canUseDatabase())) return [];
-  const idSet = new Set(castIds);
-  const candidates = await prisma.series.findMany({ where: { id: { not: seriesId }, cast: { isEmpty: false } }, take: 60 });
-  return candidates
-    .map((candidate) => ({
-      candidate,
-      overlap: (candidate.cast as unknown as NormalizedCastMember[]).filter((member) => idSet.has(member.id)).length
-    }))
-    .filter((item) => item.overlap > 0)
-    .sort((a, b) => b.overlap - a.overlap)
-    .slice(0, CANDIDATE_POOL)
-    .map((item) => toSeriesSummary(item.candidate));
+  const castIdSet = new Set(seriesCastIds);
+
+  const scored = rows.map((row) => {
+    const summary = toSeriesSummary(row);
+    const castOverlap = castIdSet.size
+      ? (row.cast as unknown as NormalizedCastMember[]).filter((member) => castIdSet.has(member.id)).length
+      : 0;
+    const creatorOverlap = series.createdBy.length ? summary.createdBy.filter((name) => series.createdBy.includes(name)).length : 0;
+
+    const score =
+      jaccard(summary.genres, series.genres) * 0.3 +
+      jaccard(summary.keywords, series.keywords) * 0.3 +
+      jaccard(summary.collectionTags, series.collectionTags) * 0.15 +
+      Math.min(1, castOverlap / 3) * 0.1 +
+      (creatorOverlap > 0 ? 1 : 0) * 0.08 +
+      (summary.language && summary.language === series.language ? 1 : 0) * 0.04 +
+      (summary.originCountry.some((country) => series.originCountry.includes(country)) ? 1 : 0) * 0.03;
+
+    return { summary, score };
+  });
+
+  return scored
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.summary);
 }
 
 async function getPopularSeries(seriesId: string): Promise<Series[]> {
@@ -126,9 +148,10 @@ export async function getSeriesRecommendations(series: Series, userId?: string |
   // Fase 23 — ordem de prioridade interna, preenchendo os 5 slots ate esgotar.
   addUnique(await getTmdbLocalMatches(externalIdRow?.externalId ?? null, fetchTmdbSimilarSeries));
   if (picks.length < RESULT_LIMIT) addUnique(await getTmdbLocalMatches(externalIdRow?.externalId ?? null, fetchTmdbRecommendedSeries));
-  if (picks.length < RESULT_LIMIT) addUnique(dedupeById(await getSameGenreSeries(series)));
-  if (picks.length < RESULT_LIMIT) addUnique(await getSameCreatorSeries(series));
-  if (picks.length < RESULT_LIMIT) addUnique(await getSameCastSeries(series.id, seriesCastIds));
+  if (picks.length < RESULT_LIMIT) {
+    const excludeIds = new Set(picks.map((pick) => pick.id));
+    addUnique(await getRelatedByAffinity(series, seriesCastIds, excludeIds));
+  }
   if (picks.length < RESULT_LIMIT) addUnique(await getPopularSeries(series.id));
 
   // Fase 24 — sem fonte de dado curada pra franquias oficiais (TMDb TV nao expoe
