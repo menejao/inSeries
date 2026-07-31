@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ChevronLeftIcon } from "@/components/ui/icons";
-import { EpisodeWatchButton } from "@/components/series/episode-watch-button";
+import { EpisodeDetailWatchButton } from "@/components/series/episode-detail-watch-button";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getCatalogSeriesBySlug } from "@/lib/catalog/repository";
 import { prisma } from "@/lib/db/prisma";
@@ -51,7 +51,7 @@ export default async function EpisodePage({
         <p className="text-sm text-muted">
           Duracao: {selectedEpisode.runtimeMinutes || "n/d"} min · Data: {selectedEpisode.airedOn || "n/d"}
         </p>
-        <EpisodeWatchButton episodeId={selectedEpisode.id} initialWatched={watched} authenticated={Boolean(user)} />
+        <EpisodeDetailWatchButton episodeId={selectedEpisode.id} initialWatched={watched} authenticated={Boolean(user)} />
       </Card>
     </div>
   );

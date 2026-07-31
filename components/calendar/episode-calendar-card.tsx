@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -29,6 +32,10 @@ const STATUS_VARIANTS: Record<CalendarEpisodeStatus, "primary" | "danger" | "sec
  * temporal (Hoje/Atrasado/Em breve/Assistido) - "evitar excesso de badges" significa 1 so,
  * e o temporal e o que responde a pergunta central desta pagina ("o que preciso fazer
  * quando?"), nao o de acompanhamento (que ja vive no Dashboard/Minha Lista).
+ *
+ * INSERIES-SERIES-LIBRARY-ENGINE-01 — `watched` e estado local (sincronizado do prop via
+ * useEffect) pra o badge "Assistido" acompanhar o EpisodeWatchButton na hora, sem esperar
+ * um router.refresh() completar.
  */
 export function EpisodeCalendarCard({
   episode,
@@ -39,7 +46,11 @@ export function EpisodeCalendarCard({
   authenticated: boolean;
   status: CalendarEpisodeStatus;
 }) {
-  const effectiveStatus: CalendarEpisodeStatus = episode.watched ? "assistido" : status;
+  const [watched, setWatched] = useState(episode.watched);
+
+  useEffect(() => setWatched(episode.watched), [episode.watched]);
+
+  const effectiveStatus: CalendarEpisodeStatus = watched ? "assistido" : status;
 
   return (
     <Card className="flex items-center gap-3 overflow-hidden p-3">
@@ -61,7 +72,13 @@ export function EpisodeCalendarCard({
       </div>
 
       <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-        <EpisodeWatchButton episodeId={episode.id} initialWatched={episode.watched} authenticated={authenticated} size="sm" />
+        <EpisodeWatchButton
+          episodeId={episode.id}
+          watched={watched}
+          authenticated={authenticated}
+          size="sm"
+          onChange={(nextWatched) => setWatched(nextWatched)}
+        />
         <Link href={`/series/${episode.series.slug}`} className="link-accent shrink-0 text-sm">
           Abrir serie
         </Link>

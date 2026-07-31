@@ -64,7 +64,7 @@ export function EpisodeRow({
         </div>
         <EpisodeWatchButton
           episodeId={episode.id}
-          initialWatched={episode.watched}
+          watched={watched}
           authenticated={authenticated}
           size="sm"
           onChange={(nextWatched, nextWatchedAt) => {
