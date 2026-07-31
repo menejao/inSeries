@@ -13,7 +13,11 @@ export type Permission =
   | "admin.reviews"
   | "admin.lists"
   | "admin.system"
-  | "admin.supporters";
+  | "admin.supporters"
+  // INSERIES-SOCIAL-ADMIN-PANEL-03 — /admin/social is exclusive to ADMIN. middleware.ts already
+  // gates /admin/* to ADMIN|MODERATOR; this permission is the finer second gate (same two-layer
+  // pattern every other admin section uses), and it is deliberately absent from MODERATOR below.
+  | "admin.social";
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   USER: [],
@@ -26,7 +30,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "admin.reviews",
     "admin.lists",
     "admin.system",
-    "admin.supporters"
+    "admin.supporters",
+    "admin.social"
   ]
 };
 

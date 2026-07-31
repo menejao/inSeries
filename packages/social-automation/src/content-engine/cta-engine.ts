@@ -1,4 +1,5 @@
 import { getDictionary } from "./i18n";
+import { validateCta } from "./cta-validation";
 import { isCtaRepeated, type RecentContentWindow } from "./repetition-guard";
 import type { ContentFormatKey } from "../config";
 
@@ -43,4 +44,23 @@ export function selectCta(window: RecentContentWindow, format: string, title: st
 
   const chosen = pool[0] ?? seedCtas()[0];
   return { id: chosen.id, text: chosen.text.replace("{title}", title) };
+}
+
+/**
+ * INSERIES-SOCIAL-ADMIN-PANEL-03 — the seed CTA library with each entry's validation state, for
+ * the admin Configuracoes screen. Lives here (not in cta-validation.ts) because it needs the i18n
+ * dictionary, and cta-validation.ts must stay dependency-free so a Client Component can import it.
+ */
+export function listSeedCtasWithValidation(): Array<{
+  id: string;
+  text: string;
+  category: string;
+  valid: boolean;
+  warningMessages: string[];
+}> {
+  return seedCtas().map((cta) => {
+    // Seed CTAs carry a "{title}" placeholder — validate a resolved sample, not the raw template.
+    const result = validateCta(cta.text.replace("{title}", "inSeries"));
+    return { id: cta.id, text: cta.text, category: cta.category, valid: result.valid, warningMessages: result.warningMessages };
+  });
 }

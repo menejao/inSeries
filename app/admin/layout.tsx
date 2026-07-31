@@ -10,6 +10,7 @@ import {
   HeartIcon,
   ListIcon,
   SettingsIcon,
+  ShareIcon,
   ShieldIcon,
   TvIcon,
   UserIcon
@@ -23,6 +24,7 @@ const NAV_ITEMS: { href: string; label: string; permission: Permission; icon: ty
   { href: "/admin/reviews", label: "Reviews", permission: "admin.reviews", icon: FilmIcon },
   { href: "/admin/lists", label: "Listas", permission: "admin.lists", icon: ListIcon },
   { href: "/admin/supporters", label: "Apoiadores", permission: "admin.supporters", icon: HeartIcon },
+  { href: "/admin/social", label: "Automacao Social", permission: "admin.social", icon: ShareIcon },
   { href: "/admin/system", label: "Sistema", permission: "admin.system", icon: SettingsIcon },
   { href: "/admin/logs", label: "Logs", permission: "admin.read", icon: ShieldIcon }
 ];
