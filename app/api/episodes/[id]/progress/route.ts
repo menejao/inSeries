@@ -6,7 +6,14 @@ import { withApiObservability } from "@/lib/http/api-handler";
 
 const progressSchema = z.object({
   episodeId: z.string().min(1),
-  watched: z.boolean()
+  watched: z.boolean(),
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — "escolher a data que assisti esse episodio em
+  // especifico": "YYYY-MM-DD", opcional, ignorado quando watched === false. Nunca no futuro.
+  watchedAt: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), "invalid_date")
+    .refine((value) => new Date(value).getTime() <= Date.now(), "future_date")
+    .optional()
 });
 
 async function progressHandler(request: Request) {
@@ -22,7 +29,8 @@ async function progressHandler(request: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const progress = await toggleEpisodeProgress(user.id, payload.data.episodeId, payload.data.watched);
+  const watchedAt = payload.data.watchedAt ? new Date(payload.data.watchedAt) : undefined;
+  const progress = await toggleEpisodeProgress(user.id, payload.data.episodeId, payload.data.watched, watchedAt);
   if (!progress) {
     return NextResponse.json({ error: "episode_not_found" }, { status: 404 });
   }

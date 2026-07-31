@@ -183,7 +183,13 @@ export async function promoteCompletedSeriesWithNewEpisodes(): Promise<{ promote
   return { promotedCount };
 }
 
-export async function toggleEpisodeProgress(userId: string, episodeId: string, watched: boolean) {
+/**
+ * `watchedAt` (INSERIES-SERIES-LIBRARY-ENGINE-01) — "ao marcar um episodio individualmente,
+ * escolher a data que assisti": opcional, so aplicado quando `watched === true`; ignorado ao
+ * desmarcar (watchedAt sempre vira null nesse caso). Sem valor, cai no comportamento anterior
+ * (agora).
+ */
+export async function toggleEpisodeProgress(userId: string, episodeId: string, watched: boolean, watchedAt?: Date) {
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },
     include: { season: { select: { seriesId: true } } }
@@ -204,11 +210,12 @@ export async function toggleEpisodeProgress(userId: string, episodeId: string, w
     select: { watched: true }
   });
   const wasWatched = previousProgress?.watched ?? false;
+  const resolvedWatchedAt = watched ? (watchedAt ?? new Date()) : null;
 
   await prisma.userEpisodeProgress.upsert({
     where: { userId_episodeId: { userId, episodeId } },
-    update: { watched, watchedAt: watched ? new Date() : null },
-    create: { userId, episodeId, watched, watchedAt: watched ? new Date() : null }
+    update: { watched, watchedAt: resolvedWatchedAt },
+    create: { userId, episodeId, watched, watchedAt: resolvedWatchedAt }
   });
 
   const justWatched = watched && !wasWatched;
