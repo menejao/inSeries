@@ -2,21 +2,22 @@ import Link from "next/link";
 import { PosterImage } from "@/components/media/poster-image";
 import { PosterBadge } from "@/components/media/poster-badge";
 import { StarIcon, HeartIcon } from "@/components/ui/icons";
-import { getStatusBadgeVariant, getStatusLabel } from "@/lib/catalog/status-labels";
 import { SeriesCardActions } from "@/components/series/series-card-actions";
 import type { Series } from "@/lib/types";
 
 /**
  * Fase 8 (INSERIES-CATALOG-SERIES-EXPERIENCE-V2) — card reduzido ao minimo exigido: poster,
- * titulo, ano, nota, status, sempre visiveis. No hover: so sinopse curta + "Abrir". Removidos
- * (excesso visual, fora da lista da Fase 8): Quality Score, Collection Tags/generos e
- * provedores de streaming no card — essas informacoes continuam disponiveis na pagina da
- * serie, que e onde o usuario decide "assistir onde".
+ * titulo, ano, nota, sempre visiveis. No hover: so sinopse curta + "Abrir". Removidos (excesso
+ * visual, fora da lista da Fase 8): Quality Score, Collection Tags/generos e provedores de
+ * streaming no card — essas informacoes continuam disponiveis na pagina da serie, que e onde
+ * o usuario decide "assistir onde".
+ *
+ * INSERIES-RECOMMENDATION-ENGINE-01 — o badge de status (Em exibicao/Finalizada/...) saiu do
+ * poster: fica so na pagina da serie, discreto, junto do resumo — o cartaz do catalogo nunca
+ * teve espaco sobrando pra ele sem brigar com nota/acao/titulo.
  *
  * INSERIES-CATALOG-QUICK-ACTIONS-01 — "•••" no canto superior direito, so quando autenticado:
- * abre um menu pra trocar o status de acompanhamento sem sair do Catalogo. `series.userState`
- * (quando presente) tambem vira um badge discreto no canto inferior, pra bater com o que a
- * Minha Lista mostra.
+ * abre um menu pra trocar o status de acompanhamento sem sair do Catalogo.
  */
 export function SeriesCard({ series, showQuickActions = false }: { series: Series; showQuickActions?: boolean }) {
   return (
@@ -44,11 +45,6 @@ export function SeriesCard({ series, showQuickActions = false }: { series: Serie
           <div className="absolute inset-x-0 bottom-0 space-y-1 p-3">
             <p className="line-clamp-1 text-base font-semibold text-ink">{series.title}</p>
             <p className="text-xs text-muted">{series.year || "—"}</p>
-            <div>
-              <PosterBadge variant={getStatusBadgeVariant(series.status)} className="px-1.5 py-0.5 text-[10px]">
-                {getStatusLabel(series.status)}
-              </PosterBadge>
-            </div>
             <div className="hidden opacity-0 transition duration-200 group-hover:opacity-100 sm:block">
               <p className="line-clamp-2 text-xs text-ink/85">{series.overview}</p>
               <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-primary-text">Abrir</span>
