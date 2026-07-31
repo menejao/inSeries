@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ChevronDownIcon, HeartIcon } from "@/components/ui/icons";
+import { Dropdown } from "@/components/ui/dropdown";
+import { FilterIcon, HeartIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { MY_LIST_GROUP_LABELS, type MyListGroupKey } from "@/lib/my-list/types";
 import { EMPTY_MY_LIST_FILTERS, type MyListFilters, type MyListSortDirection, type MyListSortField, type getMyListFilterOptions } from "@/lib/my-list/filter-sort";
@@ -28,10 +28,11 @@ const STATUS_OPTIONS: MyListGroupKey[] = ["WATCHING", "WANT_TO_WATCH", "COMPLETE
 type FilterOptions = ReturnType<typeof getMyListFilterOptions>;
 
 /**
- * INSERIES-MY-LIST-REDESIGN-01 — "exibir inicialmente apenas Status e Ordenacao... adicionar
- * um botao Filtros avancados". Busca continua a ferramenta principal; genero/ano/idioma/
- * pais/provider/tag/keyword ficam escondidos ate o usuario pedir — evita sobrecarregar a
- * interface com 7 selects sempre visiveis (era o comportamento antigo).
+ * INSERIES-SERIES-LIBRARY-ENGINE-01 — "so a barra de pesquisa e um botao Filtros ao lado, na
+ * mesma linha": status/ordenacao/favoritas/genero/ano/idioma/pais/provider/tag/keyword/notas/
+ * data assistida — tudo que antes ficava sempre visivel (ou atras de um segundo botao
+ * "Filtros avancados") agora mora dentro de UM unico painel, atras do botao "Filtros". A
+ * busca continua a ferramenta principal, sempre visivel.
  */
 export function MyListToolbar({
   filters,
@@ -48,86 +49,96 @@ export function MyListToolbar({
   onSortChange: (field: MyListSortField, direction: MyListSortDirection) => void;
   options: FilterOptions;
 }) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-
   function set<K extends keyof MyListFilters>(key: K, value: MyListFilters[K]) {
     onFiltersChange({ ...filters, [key]: value });
   }
 
-  const hasActiveAdvancedFilters = Object.entries(filters).some(([key, value]) => {
-    if (key === "query" || key === "status" || key === "onlyFavorites") return false;
+  const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
+    if (key === "query") return false;
+    if (key === "onlyFavorites") return value === true;
     return value !== null;
   });
 
   return (
-    <div className="space-y-3">
-      <SearchBar
-        label="Buscar nas Minhas Series"
-        placeholder="Buscar por titulo..."
-        value={filters.query}
-        onChange={(event) => set("query", event.target.value)}
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          aria-label="Filtrar por status"
-          value={filters.status ?? ""}
-          onChange={(event) => set("status", (event.target.value || null) as MyListGroupKey | null)}
-        >
-          <option value="">Todos os status</option>
-          {STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {MY_LIST_GROUP_LABELS[status]}
-            </option>
-          ))}
-        </Select>
-
-        <Select aria-label="Ordenar por" value={sortField} onChange={(event) => onSortChange(event.target.value as MyListSortField, sortDirection)}>
-          {SORT_FIELDS.map((field) => (
-            <option key={field} value={field}>
-              {SORT_FIELD_LABELS[field]}
-            </option>
-          ))}
-        </Select>
-        <Button
-          variant="secondary"
-          size="md"
-          onClick={() => onSortChange(sortField, sortDirection === "asc" ? "desc" : "asc")}
-          aria-label={sortDirection === "asc" ? "Ordem ascendente" : "Ordem descendente"}
-        >
-          {sortDirection === "asc" ? "Asc" : "Desc"}
-        </Button>
-
-        <button
-          type="button"
-          onClick={() => set("onlyFavorites", !filters.onlyFavorites)}
-          aria-pressed={filters.onlyFavorites}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition",
-            filters.onlyFavorites
-              ? "border-error/50 bg-error/10 text-error-text"
-              : "border-border text-muted hover:border-border-strong hover:text-ink"
-          )}
-        >
-          <HeartIcon className={cn("h-3.5 w-3.5", filters.onlyFavorites && "fill-current")} />
-          Favoritas
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((value) => !value)}
-          aria-expanded={advancedOpen}
-          className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-sm font-medium text-muted transition hover:border-border-strong hover:text-ink"
-        >
-          Filtros avancados
-          {hasActiveAdvancedFilters ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
-          <ChevronDownIcon className={cn("h-4 w-4 transition duration-200", advancedOpen && "rotate-180")} />
-        </button>
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="min-w-[220px] flex-1">
+        <SearchBar
+          label="Buscar nas Minhas Series"
+          placeholder="Buscar por titulo..."
+          value={filters.query}
+          onChange={(event) => set("query", event.target.value)}
+        />
       </div>
 
-      {advancedOpen ? (
-        <div className="space-y-3 rounded-3xl border border-border bg-surface/70 p-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+      <Dropdown
+        align="end"
+        trigger={
+          <button
+            type="button"
+            aria-label="Filtros"
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-sm font-medium text-muted transition hover:border-border-strong hover:text-ink"
+          >
+            <FilterIcon className="h-4 w-4" />
+            Filtros
+            {hasActiveFilters ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
+          </button>
+        }
+      >
+        <div className="w-[min(90vw,32rem)] space-y-3 p-1">
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              aria-label="Filtrar por status"
+              value={filters.status ?? ""}
+              onChange={(event) => set("status", (event.target.value || null) as MyListGroupKey | null)}
+            >
+              <option value="">Todos os status</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {MY_LIST_GROUP_LABELS[status]}
+                </option>
+              ))}
+            </Select>
+
+            <div className="flex items-center gap-1.5">
+              <Select
+                aria-label="Ordenar por"
+                value={sortField}
+                onChange={(event) => onSortChange(event.target.value as MyListSortField, sortDirection)}
+                className="flex-1"
+              >
+                {SORT_FIELDS.map((field) => (
+                  <option key={field} value={field}>
+                    {SORT_FIELD_LABELS[field]}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => onSortChange(sortField, sortDirection === "asc" ? "desc" : "asc")}
+                aria-label={sortDirection === "asc" ? "Ordem ascendente" : "Ordem descendente"}
+              >
+                {sortDirection === "asc" ? "Asc" : "Desc"}
+              </Button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => set("onlyFavorites", !filters.onlyFavorites)}
+            aria-pressed={filters.onlyFavorites}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+              filters.onlyFavorites
+                ? "border-error/50 bg-error/10 text-error-text"
+                : "border-border text-muted hover:border-border-strong hover:text-ink"
+            )}
+          >
+            <HeartIcon className={cn("h-3.5 w-3.5", filters.onlyFavorites && "fill-current")} />
+            Favoritas
+          </button>
+
+          <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 sm:grid-cols-3">
             <Select aria-label="Filtrar por genero" value={filters.genre ?? ""} onChange={(event) => set("genre", event.target.value || null)}>
               <option value="">Genero</option>
               {options.genres.map((genre) => (
@@ -226,7 +237,7 @@ export function MyListToolbar({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:max-w-xs">
+          <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1 text-xs text-muted">
               <span>Assistido de</span>
               <input
@@ -251,17 +262,17 @@ export function MyListToolbar({
             </label>
           </div>
 
-          {hasActiveAdvancedFilters ? (
+          {hasActiveFilters ? (
             <button
               type="button"
-              onClick={() => onFiltersChange({ ...EMPTY_MY_LIST_FILTERS, query: filters.query, status: filters.status })}
+              onClick={() => onFiltersChange({ ...EMPTY_MY_LIST_FILTERS, query: filters.query })}
               className="link-accent text-sm"
             >
-              Limpar filtros avancados
+              Limpar filtros
             </button>
           ) : null}
         </div>
-      ) : null}
+      </Dropdown>
     </div>
   );
 }

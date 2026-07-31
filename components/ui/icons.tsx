@@ -91,6 +91,8 @@ export const SettingsIcon = createIcon(
   </>
 );
 
+export const FilterIcon = createIcon(<path d="M4 5h16M7 12h10M10 19h4" />);
+
 export const SunIcon = createIcon(
   <>
     <circle cx="12" cy="12" r="4.2" />
