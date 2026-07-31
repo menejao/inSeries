@@ -79,6 +79,12 @@ export type MyListItem = {
   updatedAt: Date;
   isFavorite: boolean;
   reviewRating: number | null;
+  /**
+   * INSERIES-SERIES-LIBRARY-ENGINE-01 — "filtro por data que eu consigo procurar por episodio
+   * dentro das series que eu assisto/concluo": um episodio assistido por dia, "YYYY-MM-DD"
+   * (formato de `<input type="date">`), pra filtrar client-side sem uma nova query por range.
+   */
+  watchedDates: string[];
 };
 
 export type MyListFullData = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -56,6 +56,16 @@ export function SeasonSelector({
   const [loadingNumber, setLoadingNumber] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
   const [isPending, startTransition] = useTransition();
+
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — `episodesByNumber` so inicializa uma vez do prop
+  // `initialEpisodes`; um `router.refresh()` disparado de fora (ex: marcar a serie Concluida
+  // no cabecalho) re-renderiza o Server Component com dados novos, mas sem isto o estado
+  // local ficava preso na versao antiga (episodios aparentando nao-assistidos mesmo depois
+  // do backend ja ter marcado todos). Reaplica sempre que o server manda dados novos pra essa
+  // temporada — nunca sobrescreve temporadas ja buscadas pelo client (troca de aba).
+  useEffect(() => {
+    setEpisodesByNumber((current) => ({ ...current, [initialSeasonNumber]: initialEpisodes }));
+  }, [initialEpisodes, initialSeasonNumber]);
 
   const season = useMemo(() => seasons.find((item) => item.number === selectedNumber) ?? seasons[0], [seasons, selectedNumber]);
   const episodes = season ? episodesByNumber[season.number] : undefined;

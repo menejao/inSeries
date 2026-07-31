@@ -166,7 +166,7 @@ function toSeriesCard(model: {
  * display), both in parallel — never one query per tracked series.
  */
 export async function getMyListFullForUser(userId: string): Promise<MyListFullData> {
-  const [statuses, reviews] = await Promise.all([
+  const [statuses, reviews, watchedRows] = await Promise.all([
     prisma.userSeriesStatus.findMany({
       where: { userId },
       select: {
@@ -184,10 +184,25 @@ export async function getMyListFullForUser(userId: string): Promise<MyListFullDa
     prisma.review.findMany({
       where: { userId },
       select: { seriesId: true, rating: true }
+    }),
+    // INSERIES-SERIES-LIBRARY-ENGINE-01 — "filtro por data": um unico select agrupado (nao
+    // uma query por serie), so `watchedAt`, pra montar o mapa seriesId -> datas assistidas.
+    prisma.userEpisodeProgress.findMany({
+      where: { userId, watched: true, watchedAt: { not: null } },
+      select: { watchedAt: true, episode: { select: { season: { select: { seriesId: true } } } } }
     })
   ]);
 
   const reviewBySeriesId = new Map(reviews.map((review) => [review.seriesId, review]));
+
+  const watchedDatesBySeriesId = new Map<string, Set<string>>();
+  for (const row of watchedRows) {
+    if (!row.watchedAt) continue;
+    const seriesId = row.episode.season.seriesId;
+    const dateSet = watchedDatesBySeriesId.get(seriesId) ?? new Set<string>();
+    dateSet.add(row.watchedAt.toISOString().slice(0, 10));
+    watchedDatesBySeriesId.set(seriesId, dateSet);
+  }
 
   const items: MyListItem[] = statuses.map((status) => {
     const review = reviewBySeriesId.get(status.series.id);
@@ -201,7 +216,8 @@ export async function getMyListFullForUser(userId: string): Promise<MyListFullDa
       addedAt: status.createdAt,
       updatedAt: status.updatedAt,
       isFavorite: status.isFavorite,
-      reviewRating: review?.rating ?? null
+      reviewRating: review?.rating ?? null,
+      watchedDates: [...(watchedDatesBySeriesId.get(status.series.id) ?? [])].sort()
     };
   });
 

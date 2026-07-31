@@ -226,6 +226,31 @@ export function MyListToolbar({
             </Select>
           </div>
 
+          <div className="grid grid-cols-2 gap-2 sm:max-w-xs">
+            <label className="space-y-1 text-xs text-muted">
+              <span>Assistido de</span>
+              <input
+                type="date"
+                aria-label="Assistido a partir de"
+                value={filters.watchedFrom ?? ""}
+                max={filters.watchedTo ?? undefined}
+                onChange={(event) => set("watchedFrom", event.target.value || null)}
+                className="min-h-9 w-full rounded-2xl border border-border bg-surface px-3 py-1 text-sm text-ink"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-muted">
+              <span>Assistido ate</span>
+              <input
+                type="date"
+                aria-label="Assistido ate"
+                value={filters.watchedTo ?? ""}
+                min={filters.watchedFrom ?? undefined}
+                onChange={(event) => set("watchedTo", event.target.value || null)}
+                className="min-h-9 w-full rounded-2xl border border-border bg-surface px-3 py-1 text-sm text-ink"
+              />
+            </label>
+          </div>
+
           {hasActiveAdvancedFilters ? (
             <button
               type="button"

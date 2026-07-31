@@ -30,6 +30,13 @@ export type MyListFilters = {
   /** Filtra itens individualmente em todos os grupos: so exibe series marcadas como favoritas. */
   onlyFavorites: boolean;
   minVoteAverage: number | null;
+  /**
+   * INSERIES-SERIES-LIBRARY-ENGINE-01 — "filtro por data que eu consigo procurar por episodio
+   * dentro das series que eu assisto/concluo": "YYYY-MM-DD", inclusive nas duas pontas. So
+   * mostra series com pelo menos 1 episodio assistido dentro do intervalo.
+   */
+  watchedFrom: string | null;
+  watchedTo: string | null;
 };
 
 export const EMPTY_MY_LIST_FILTERS: MyListFilters = {
@@ -45,7 +52,9 @@ export const EMPTY_MY_LIST_FILTERS: MyListFilters = {
   minQualityScore: null,
   minDiscoveryScore: null,
   onlyFavorites: false,
-  minVoteAverage: null
+  minVoteAverage: null,
+  watchedFrom: null,
+  watchedTo: null
 };
 
 /**
@@ -79,6 +88,12 @@ export function filterMyListItems(items: MyListItem[], filters: MyListFilters): 
     if (filters.minVoteAverage && (item.series.voteAverage ?? 0) < filters.minVoteAverage) return false;
     if (filters.minQualityScore && (item.series.qualityScore ?? 0) < filters.minQualityScore) return false;
     if (filters.minDiscoveryScore && (item.series.discoveryScore ?? 0) < filters.minDiscoveryScore) return false;
+    if (filters.watchedFrom || filters.watchedTo) {
+      const hasMatch = item.watchedDates.some(
+        (date) => (!filters.watchedFrom || date >= filters.watchedFrom) && (!filters.watchedTo || date <= filters.watchedTo)
+      );
+      if (!hasMatch) return false;
+    }
     return true;
   });
 }
