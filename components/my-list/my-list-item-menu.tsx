@@ -1,25 +1,20 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
-import { MoreHorizontalIcon, TrashIcon } from "@/components/ui/icons";
+import { MoreHorizontalIcon, TrashIcon, HeartIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import { WATCH_STATE_ORDER, getWatchStateLabel } from "@/lib/progress/labels";
 import type { MyListItem } from "@/lib/my-list/types";
 import type { WatchState } from "@/lib/types";
 
-/**
- * INSERIES-MY-LIST-REDESIGN-01 — "as acoes devem aparecer apenas quando necessarias... menu de
- * acoes ao card". Substitui o `<select>` de status sempre visivel por um unico gatilho ⋮. Sem
- * "Favoritar" acionavel: favoritar so acontece via review com nota >= 4 (mesma razao ja
- * documentada em my-list-bulk-bar.tsx) — o item aqui e um link explicativo pra pagina da
- * serie, nao uma mutation.
- */
 export function MyListItemMenu({ item }: { item: MyListItem }) {
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const [isFavorite, setIsFavorite] = useState(item.isFavorite);
 
   function changeStatus(state: WatchState) {
     startTransition(async () => {
@@ -49,6 +44,20 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
     });
   }
 
+  function toggleFavorite() {
+    startTransition(async () => {
+      const response = await fetch(`/api/series/${item.series.id}/favorite`, { method: "POST" });
+      if (!response.ok) {
+        toast({ title: "Erro ao atualizar favorito", variant: "error" });
+        return;
+      }
+      const next = !isFavorite;
+      setIsFavorite(next);
+      toast({ title: next ? "Adicionada aos favoritos" : "Removida dos favoritos", description: item.series.title, variant: "success" });
+      router.refresh();
+    });
+  }
+
   return (
     <Dropdown
       trigger={
@@ -68,7 +77,10 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
         </DropdownItem>
       ))}
       <DropdownSeparator />
-      <DropdownItem href={`/series/${item.series.slug}#reviews`}>Favoritar (avalie com nota 4+)</DropdownItem>
+      <DropdownItem onClick={toggleFavorite} className={cn(isFavorite && "text-error-text")}>
+        <HeartIcon className={cn("h-4 w-4 shrink-0", isFavorite && "fill-current")} />
+        {isFavorite ? "Remover dos favoritos" : "Favoritar"}
+      </DropdownItem>
       <DropdownSeparator />
       <DropdownItem onClick={remove} className="text-danger-text hover:bg-danger/10">
         <TrashIcon className="h-4 w-4" /> Remover da lista
