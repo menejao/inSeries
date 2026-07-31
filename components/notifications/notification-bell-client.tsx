@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -9,6 +10,9 @@ import { IconButton } from "@/components/ui/button";
 import { BellIcon, CheckIcon } from "@/components/ui/icons";
 import { formatRelativeDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+
+const PANEL_WIDTH = 352; // 22rem
+const VIEWPORT_MARGIN = 8;
 
 type NotificationItem = {
   id: string;
@@ -71,8 +75,13 @@ export function NotificationBellClient({ initialUnread }: { initialUnread: numbe
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(initialUnread);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  useEffect(() => setMounted(true), []);
 
   async function load() {
     setStatus("loading");
@@ -92,19 +101,44 @@ export function NotificationBellClient({ initialUnread }: { initialUnread: numbe
     if (open) void load();
   }, [open]);
 
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — o painel era `absolute right-0` dentro do proprio
+  // wrapper do sino: no mobile, ficava cortado/fora da tela (mesmo problema ja corrigido no
+  // Dropdown compartilhado — ver components/ui/dropdown.tsx). Portal com `position: fixed`,
+  // calculado a partir do rect do botao e sempre clampado a viewport, igual ao Dropdown.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(rect.right - PANEL_WIDTH, window.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN));
+    setPosition({ top: rect.bottom + 8, left });
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     function handlePointer(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);
     }
+    function handleClose() {
+      setOpen(false);
+    }
     document.addEventListener("mousedown", handlePointer);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleClose);
+    window.addEventListener("scroll", handleClose, true);
     return () => {
       document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleClose);
+      window.removeEventListener("scroll", handleClose, true);
     };
   }, [open]);
 
@@ -131,8 +165,9 @@ export function NotificationBellClient({ initialUnread }: { initialUnread: numbe
   }
 
   return (
-    <div ref={rootRef} className="relative">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -151,46 +186,51 @@ export function NotificationBellClient({ initialUnread }: { initialUnread: numbe
         ) : null}
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-12 z-50 w-[22rem] max-w-[calc(100vw-2rem)] rounded-3xl border border-border bg-surface shadow-raised"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-border p-3">
-            <p className="text-sm font-semibold text-ink">Notificacoes</p>
-            {unread > 0 ? (
-              <button type="button" onClick={() => void markAllRead()} className="text-xs font-medium text-primary-text hover:underline">
-                Marcar todas como lidas
-              </button>
-            ) : null}
-          </div>
+      {mounted && open && position
+        ? createPortal(
+            <div
+              ref={panelRef}
+              role="menu"
+              style={{ top: position.top, left: position.left, width: `min(${PANEL_WIDTH}px, calc(100vw - ${VIEWPORT_MARGIN * 2}px))` }}
+              className="fixed z-50 animate-scale-in rounded-3xl border border-border bg-surface shadow-raised"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-border p-3">
+                <p className="text-sm font-semibold text-ink">Notificacoes</p>
+                {unread > 0 ? (
+                  <button type="button" onClick={() => void markAllRead()} className="text-xs font-medium text-primary-text hover:underline">
+                    Marcar todas como lidas
+                  </button>
+                ) : null}
+              </div>
 
-          <div className="max-h-[26rem] overflow-y-auto p-2">
-            {status === "loading" || status === "idle" ? (
-              <div className="space-y-2 p-2">
-                {[0, 1, 2].map((key) => (
-                  <div key={key} className="h-14 animate-pulse rounded-2xl bg-surface-strong/60" />
-                ))}
+              <div className="max-h-[26rem] overflow-y-auto p-2">
+                {status === "loading" || status === "idle" ? (
+                  <div className="space-y-2 p-2">
+                    {[0, 1, 2].map((key) => (
+                      <div key={key} className="h-14 animate-pulse rounded-2xl bg-surface-strong/60" />
+                    ))}
+                  </div>
+                ) : status === "error" ? (
+                  <div className="p-4 text-center">
+                    <p className="mb-2 text-sm text-muted">Nao foi possivel carregar as notificacoes.</p>
+                    <button type="button" onClick={() => void load()} className="text-xs font-medium text-primary-text hover:underline">
+                      Tentar novamente
+                    </button>
+                  </div>
+                ) : items.length === 0 ? (
+                  <EmptyState icon={<BellIcon className="h-6 w-6" />} title="Nenhuma notificacao ainda" copy="Quando algo acontecer, voce vera aqui." />
+                ) : (
+                  <div className="space-y-1">
+                    {items.map((item) => (
+                      <NotificationRow key={item.id} item={item} onMarkRead={(id) => void markRead(id)} />
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : status === "error" ? (
-              <div className="p-4 text-center">
-                <p className="mb-2 text-sm text-muted">Nao foi possivel carregar as notificacoes.</p>
-                <button type="button" onClick={() => void load()} className="text-xs font-medium text-primary-text hover:underline">
-                  Tentar novamente
-                </button>
-              </div>
-            ) : items.length === 0 ? (
-              <EmptyState icon={<BellIcon className="h-6 w-6" />} title="Nenhuma notificacao ainda" copy="Quando algo acontecer, voce vera aqui." />
-            ) : (
-              <div className="space-y-1">
-                {items.map((item) => (
-                  <NotificationRow key={item.id} item={item} onMarkRead={(id) => void markRead(id)} />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
   );
 }

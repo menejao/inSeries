@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { SearchBar } from "@/components/ui/search-bar";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Dropdown } from "@/components/ui/dropdown";
+import { Dialog } from "@/components/ui/dialog";
 import { FilterIcon, HeartIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { MY_LIST_GROUP_LABELS, type MyListGroupKey } from "@/lib/my-list/types";
@@ -49,6 +50,8 @@ export function MyListToolbar({
   onSortChange: (field: MyListSortField, direction: MyListSortDirection) => void;
   options: FilterOptions;
 }) {
+  const [open, setOpen] = useState(false);
+
   function set<K extends keyof MyListFilters>(key: K, value: MyListFilters[K]) {
     onFiltersChange({ ...filters, [key]: value });
   }
@@ -70,21 +73,19 @@ export function MyListToolbar({
         />
       </div>
 
-      <Dropdown
-        align="end"
-        trigger={
-          <button
-            type="button"
-            aria-label="Filtros"
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-sm font-medium text-muted transition hover:border-border-strong hover:text-ink"
-          >
-            <FilterIcon className="h-4 w-4" />
-            Filtros
-            {hasActiveFilters ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
-          </button>
-        }
+      <button
+        type="button"
+        aria-label="Filtros"
+        onClick={() => setOpen(true)}
+        className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-sm font-medium text-muted transition hover:border-border-strong hover:text-ink"
       >
-        <div className="w-[min(90vw,32rem)] space-y-3 p-1">
+        <FilterIcon className="h-4 w-4" />
+        Filtros
+        {hasActiveFilters ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
+      </button>
+
+      <Dialog open={open} onClose={() => setOpen(false)} title="Filtros" size="lg">
+        <div className="max-h-[70vh] space-y-3 overflow-y-auto">
           <div className="grid grid-cols-2 gap-2">
             <Select
               aria-label="Filtrar por status"
@@ -272,7 +273,7 @@ export function MyListToolbar({
             </button>
           ) : null}
         </div>
-      </Dropdown>
+      </Dialog>
     </div>
   );
 }
