@@ -6,7 +6,14 @@ import { withApiObservability } from "@/lib/http/api-handler";
 
 const statusSchema = z.object({
   seriesId: z.string().min(1),
-  state: z.enum(["WATCHING", "COMPLETED", "PAUSED", "DROPPED", "WANT_TO_WATCH"])
+  state: z.enum(["WATCHING", "COMPLETED", "PAUSED", "DROPPED", "WANT_TO_WATCH"]),
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — "Quando voce terminou esta serie?": data (YYYY-MM-DD)
+  // opcional aplicada ao completedAt/watchedAt quando state === "COMPLETED". Nunca no futuro.
+  completedAt: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), "invalid_date")
+    .refine((value) => new Date(value).getTime() <= Date.now(), "future_date")
+    .optional()
 });
 
 async function statusHandler(request: Request) {
@@ -22,7 +29,8 @@ async function statusHandler(request: Request) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const status = await upsertSeriesStatus(user.id, payload.data.seriesId, payload.data.state);
+  const completedAt = payload.data.completedAt ? new Date(payload.data.completedAt) : undefined;
+  const status = await upsertSeriesStatus(user.id, payload.data.seriesId, payload.data.state, completedAt);
   return NextResponse.json({ data: status });
 }
 

@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { useToast } from "@/components/ui/toast";
-import { MoreHorizontalIcon, TrashIcon, HeartIcon } from "@/components/ui/icons";
+import { useRemoveFromLibrary } from "@/components/series/remove-from-library-dialog";
+import { useMarkCompleted } from "@/components/series/mark-completed-dialog";
+import { MoreHorizontalIcon, TrashIcon, HeartIcon, CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { WATCH_STATE_ORDER, getWatchStateLabel } from "@/lib/progress/labels";
 import type { MyListItem } from "@/lib/my-list/types";
@@ -15,8 +17,20 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [isFavorite, setIsFavorite] = useState(item.isFavorite);
+  const { requestRemove, dialog } = useRemoveFromLibrary(item.series.id);
+  const { requestComplete, dialog: completeDialog } = useMarkCompleted(item.series.id, () => router.refresh());
 
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — clicar de novo no status ja ativo remove a serie da
+  // biblioteca (com confirmacao), mesma regra do menu de tres pontos do Catalogo/Recomendacoes.
   function changeStatus(state: WatchState) {
+    if (state === item.state) {
+      requestRemove();
+      return;
+    }
+    if (state === "COMPLETED") {
+      requestComplete();
+      return;
+    }
     startTransition(async () => {
       const response = await fetch(`/api/series/${item.series.id}/status`, {
         method: "POST",
@@ -28,18 +42,6 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
         return;
       }
       toast({ title: "Status atualizado", description: getWatchStateLabel(state), variant: "success" });
-      router.refresh();
-    });
-  }
-
-  function remove() {
-    startTransition(async () => {
-      const response = await fetch(`/api/series/${item.series.id}/status`, { method: "DELETE" });
-      if (!response.ok) {
-        toast({ title: "Erro ao remover da lista", variant: "error" });
-        return;
-      }
-      toast({ title: "Removida da Minha Lista", description: item.series.title, variant: "success" });
       router.refresh();
     });
   }
@@ -71,8 +73,9 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
         </button>
       }
     >
-      {WATCH_STATE_ORDER.filter((state) => state !== item.state).map((state) => (
+      {WATCH_STATE_ORDER.map((state) => (
         <DropdownItem key={state} onClick={() => changeStatus(state)}>
+          {state === item.state ? <CheckIcon className="h-4 w-4 shrink-0 text-primary-text" /> : <span className="h-4 w-4 shrink-0" />}
           {state === "COMPLETED" ? "Marcar como concluida" : `Mover para ${getWatchStateLabel(state).toLowerCase()}`}
         </DropdownItem>
       ))}
@@ -82,9 +85,11 @@ export function MyListItemMenu({ item }: { item: MyListItem }) {
         {isFavorite ? "Remover dos favoritos" : "Favoritar"}
       </DropdownItem>
       <DropdownSeparator />
-      <DropdownItem onClick={remove} className="text-danger-text hover:bg-danger/10">
+      <DropdownItem onClick={requestRemove} className="text-danger-text hover:bg-danger/10">
         <TrashIcon className="h-4 w-4" /> Remover da lista
       </DropdownItem>
+      {dialog}
+      {completeDialog}
     </Dropdown>
   );
 }

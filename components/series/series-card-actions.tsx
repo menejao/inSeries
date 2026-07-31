@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { MoreVerticalIcon, CheckIcon, HeartIcon } from "@/components/ui/icons";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
+import { useRemoveFromLibrary } from "@/components/series/remove-from-library-dialog";
+import { useMarkCompleted } from "@/components/series/mark-completed-dialog";
 import { cn } from "@/lib/utils";
 import type { WatchState } from "@/lib/types";
 import { WATCH_STATE_LABELS, WATCH_STATE_ORDER } from "@/lib/progress/labels";
@@ -27,9 +29,23 @@ export function SeriesCardActions({
   const [state, setState] = useState(initialState);
   const [isFavorite, setIsFavorite] = useState(initialFavorite ?? false);
   const [isPending, startTransition] = useTransition();
+  const { requestRemove, dialog } = useRemoveFromLibrary(seriesId, () => {
+    setState(undefined);
+    setIsFavorite(false);
+  });
+  const { requestComplete, dialog: completeDialog } = useMarkCompleted(seriesId, () => setState("COMPLETED"));
 
+  // INSERIES-SERIES-LIBRARY-ENGINE-01 — clicar de novo no status ja ativo remove a serie da
+  // biblioteca (com confirmacao), em vez de nao fazer nada.
   function handleSelect(newState: WatchState) {
-    if (newState === state) return;
+    if (newState === state) {
+      requestRemove();
+      return;
+    }
+    if (newState === "COMPLETED") {
+      requestComplete();
+      return;
+    }
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/status`, {
         method: "POST",
@@ -44,14 +60,6 @@ export function SeriesCardActions({
     startTransition(async () => {
       await fetch(`/api/series/${seriesId}/favorite`, { method: "POST" });
       setIsFavorite((prev) => !prev);
-    });
-  }
-
-  function handleRemove() {
-    startTransition(async () => {
-      await fetch(`/api/series/${seriesId}/status`, { method: "DELETE" });
-      setState(undefined);
-      setIsFavorite(false);
     });
   }
 
@@ -94,12 +102,14 @@ export function SeriesCardActions({
           {isFavorite ? "Remover dos favoritos" : "Favoritar"}
         </DropdownItem>
         {state ? (
-          <DropdownItem onClick={handleRemove} className="text-muted">
+          <DropdownItem onClick={requestRemove} className="text-muted">
             <span className="h-3.5 w-3.5 shrink-0" />
             Remover da lista
           </DropdownItem>
         ) : null}
       </Dropdown>
+      {dialog}
+      {completeDialog}
     </div>
   );
 }

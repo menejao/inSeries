@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { WATCH_STATE_ORDER, getWatchStateLabel } from "@/lib/progress/labels";
 import type { WatchState } from "@/lib/types";
 
@@ -33,6 +34,7 @@ export function MyListBulkBar({
   const [isPending, startTransition] = useTransition();
   const [targetState, setTargetState] = useState<WatchState>("WATCHING");
   const [targetListId, setTargetListId] = useState(lists[0]?.id ?? "");
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
 
   if (selectedIds.size === 0) return null;
 
@@ -61,7 +63,8 @@ export function MyListBulkBar({
     );
   }
 
-  function remove() {
+  function confirmRemove() {
+    setConfirmRemoveOpen(false);
     runBulk("removida(s) da Minha Lista", (seriesId) => fetch(`/api/series/${seriesId}/status`, { method: "DELETE" }));
   }
 
@@ -124,13 +127,24 @@ export function MyListBulkBar({
         </div>
       ) : null}
 
-      <Button variant="danger" size="sm" disabled={isPending} onClick={remove}>
+      <Button variant="danger" size="sm" disabled={isPending} onClick={() => setConfirmRemoveOpen(true)}>
         Remover
       </Button>
 
       <Button variant="ghost" size="sm" disabled={isPending} onClick={onClear}>
         Cancelar selecao
       </Button>
+
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        onClose={() => setConfirmRemoveOpen(false)}
+        onConfirm={confirmRemove}
+        title={`Remover ${ids.length} serie(s) da sua biblioteca?`}
+        description="Todos os episodios serao desmarcados e elas deixarao de fazer parte das suas estatisticas."
+        confirmLabel="Remover"
+        confirmVariant="danger"
+        loading={isPending}
+      />
     </div>
   );
 }
