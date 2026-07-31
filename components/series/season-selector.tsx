@@ -61,20 +61,25 @@ export function SeasonSelector({
   // `initialEpisodes`; um `router.refresh()` disparado de fora (ex: marcar a serie Concluida
   // no cabecalho) re-renderiza o Server Component com dados novos, mas sem isto o estado
   // local ficava preso na versao antiga (episodios aparentando nao-assistidos mesmo depois
-  // do backend ja ter marcado todos). Reaplica sempre que o server manda dados novos pra essa
-  // temporada — nunca sobrescreve temporadas ja buscadas pelo client (troca de aba).
+  // do backend ja ter marcado todos). Descarta TODO o cache client (nao so a temporada inicial
+  // — o usuario pode estar vendo outra) e forca um refetch da temporada atualmente selecionada
+  // quando ela nao e a inicial, senao ela ficaria presa na versao antiga pra sempre.
   useEffect(() => {
-    setEpisodesByNumber((current) => ({ ...current, [initialSeasonNumber]: initialEpisodes }));
+    setEpisodesByNumber({ [initialSeasonNumber]: initialEpisodes });
+    setSelectedNumber((current) => {
+      if (current !== initialSeasonNumber) void selectSeason(current, { force: true });
+      return current;
+    });
   }, [initialEpisodes, initialSeasonNumber]);
 
   const season = useMemo(() => seasons.find((item) => item.number === selectedNumber) ?? seasons[0], [seasons, selectedNumber]);
   const episodes = season ? episodesByNumber[season.number] : undefined;
   const isLoadingEpisodes = season ? loadingNumber === season.number : false;
 
-  async function selectSeason(number: number) {
+  async function selectSeason(number: number, options: { force?: boolean } = {}) {
     setSelectedNumber(number);
     setVisibleCount(BATCH_SIZE);
-    if (episodesByNumber[number]) return;
+    if (!options.force && episodesByNumber[number]) return;
 
     setLoadingNumber(number);
     try {
