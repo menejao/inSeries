@@ -13,3 +13,6 @@ tsconfig.tsbuildinfo
 /playwright-report/
 /blob-report/
 /backups/
+
+# Template Engine sandbox output (INSERIES-SOCIAL-TEMPLATE-ENGINE-04)
+packages/social-automation/.sandbox-output/

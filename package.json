@@ -43,6 +43,7 @@
     "social:content:preview": "tsx packages/social-automation/scripts/content-preview.ts",
     "social:content:approve": "tsx packages/social-automation/scripts/content-approve.ts",
     "social:content:reject": "tsx packages/social-automation/scripts/content-reject.ts",
+    "social:template:sandbox": "tsx packages/social-automation/scripts/template-sandbox.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

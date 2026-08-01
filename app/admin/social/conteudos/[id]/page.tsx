@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { ContentReviewActions } from "@/components/admin/social/content-review-actions";
+import { ContentArtPreview, type PreviewFormat } from "@/components/admin/social/content-art-preview";
 import { PublicationRescheduleButton } from "@/components/admin/social/publication-reschedule-button";
 import {
   ContentStatusBadge,
@@ -18,6 +19,7 @@ import {
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { contentRepo } from "@/packages/social-automation/src/db/content-repo";
 import { validateCta } from "@/packages/social-automation/src/content-engine/cta-validation";
+import { availableFormats, getTemplateEntry } from "@/packages/social-automation/src/template-engine";
 import { sanitizeJson, sanitizedJsonString } from "@/packages/social-automation/src/history/sanitize";
 import { noNetworkIsConfigured } from "@/packages/social-automation/src/publisher/status";
 import type { ContentPayload } from "@/packages/social-automation/src/content-engine/types";
@@ -43,6 +45,10 @@ export default async function AdminSocialContentReviewPage({ params }: { params:
   const ctaText = payload?.cta?.text ?? "";
   const ctaCheck = validateCta(ctaText);
   const carouselItems = payload?.items ?? [];
+
+  // Formatos oferecidos pelo toggle de arte: vem do registry do Template Engine, nunca de heuristica.
+  const templateEntry = payload?.templateKey ? getTemplateEntry(payload.templateKey) : null;
+  const previewFormats = (payload?.templateKey ? availableFormats(payload.templateKey) : []) as PreviewFormat[];
   const anyNetworkConfigured = !noNetworkIsConfigured();
 
   // payload.extra carries the engine's own diagnostics (fallback used, repeat warnings, poll
@@ -131,6 +137,20 @@ export default async function AdminSocialContentReviewPage({ params }: { params:
         )}
       </Card>
 
+      {previewFormats.length > 0 ? (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-ink">Arte gerada (Template Engine)</p>
+            <Badge variant="outline">{templateEntry?.nome ?? payload?.templateKey ?? "-"}</Badge>
+          </div>
+          <p className="text-xs text-subtle">
+            PNG real renderizado sob demanda pelo mesmo renderer usado na publicacao — o que aparece aqui e exatamente o
+            arquivo que seria enviado.
+          </p>
+          <ContentArtPreview contentId={content.id} formats={previewFormats} />
+        </Card>
+      ) : null}
+
       <Card className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-ink">Previa estrutural do carrossel</p>
@@ -148,7 +168,7 @@ export default async function AdminSocialContentReviewPage({ params }: { params:
             </div>
           ) : null}
           {carouselItems.map((item, index) => (
-            <div key={item.id} className="w-56 shrink-0 rounded-3xl border border-border bg-surface p-4">
+            <div key={`${item.id}-${index}`} className="w-56 shrink-0 rounded-3xl border border-border bg-surface p-4">
               <p className="text-xs uppercase tracking-wide text-subtle">Card {index + (payload?.sourceSeries ? 2 : 1)}</p>
               <p className="mt-2 text-sm font-semibold text-ink">{item.title}</p>
               <p className="mt-1 text-xs text-muted">
