@@ -1,6 +1,7 @@
 import type { WatchState } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { diffInCalendarDays } from "@/lib/calendar/dates";
+import { resolveEpisodeAvailability } from "@/lib/progress/availability";
 import type { WatchNextItem, WatchNextResult, WatchNextUserState } from "@/lib/watch-next/types";
 
 /** Fase 4 — only series actively being watched or planned; completed/dropped/paused never appear. */
@@ -53,9 +54,12 @@ export async function getWatchNextForUser(userId: string, options: { limit?: num
       season.episodes.map((episode) => ({ episode, seasonNumber: season.number }))
     );
 
-    // Fase 4: an episode that hasn't aired yet is never counted as "pending" — the user simply can't watch it yet.
+    // Fase 4 / INSERIES-WATCH-NEXT-AVAILABILITY-01: only truly AVAILABLE episodes count as
+    // "pending" — a date-only airedAt (the common TMDb case) never counts on its own premiere
+    // day, however early `now` already crossed the UTC-midnight instant it was stored as.
     const airedUnwatched = orderedEpisodes.filter(
-      ({ episode }) => episode.airedAt !== null && episode.airedAt <= now && !episode.progress[0]?.watched
+      ({ episode }) =>
+        resolveEpisodeAvailability({ airedAt: episode.airedAt }, now).status === "AVAILABLE" && !episode.progress[0]?.watched
     );
 
     if (airedUnwatched.length === 0) continue;

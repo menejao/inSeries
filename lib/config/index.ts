@@ -19,6 +19,7 @@ const envSchema = z.object({
   DATABASE_URL: optionalNonEmpty(),
   REDIS_URL: optionalNonEmpty(),
   AUTH_SECRET: optionalNonEmpty(),
+  APP_TIMEZONE: optionalNonEmpty(),
   TMDB_API_KEY: optionalNonEmpty(),
   TMDB_ACCESS_TOKEN: optionalNonEmpty(),
   TMDB_BASE_URL: optionalUrl(),
@@ -180,7 +181,11 @@ export const config = {
     name: "inSeries",
     version: packageJson.version,
     env: nodeEnv,
-    isProduction: nodeEnv === "production"
+    isProduction: nodeEnv === "production",
+    // IANA timezone used whenever we need a "local day" for episode availability/calendar
+    // grouping and don't have a per-user timezone yet (User has none persisted). pt-BR product,
+    // so Brazil's timezone is the sane default until per-user timezones exist.
+    timezone: rawEnv.APP_TIMEZONE ?? "America/Sao_Paulo"
   },
   urls: {
     appUrl: rawEnv.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -482,6 +487,10 @@ export function getTmdbBaseUrl() {
 
 export function getTmdbLanguage() {
   return config.tmdb.language;
+}
+
+export function getDefaultTimezone() {
+  return config.app.timezone;
 }
 
 /** Safe subset for exposure over HTTP/UI — never include secrets (auth.secret, database.url, tmdb keys). */
