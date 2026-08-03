@@ -1,6 +1,7 @@
 import { ConsoleLogPublisher } from "./console-log-publisher";
 import { publisherRegistry } from "./registry";
-import { isNetworkEnabled, isRealPublishAllowed, socialAutomationConfig } from "../config";
+import { InstagramGraphPublisher } from "./instagram/instagram-publisher";
+import { isNetworkEnabled, isRealPublishAllowed, metaConfig, missingMetaCredentials, socialAutomationConfig } from "../config";
 
 /**
  * INSERIES-SOCIAL-ADMIN-PANEL-03 — derives, from the registry + config that already exist, whether
@@ -21,6 +22,14 @@ export interface NetworkPublisherStatus {
   /** True when a registered real publisher would actually be allowed to post (production env). */
   realPublishAllowed: boolean;
   label: string;
+  /**
+   * INSERIES-INSTAGRAM-PUBLISHER-05 — false whenever SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL is
+   * unset. Even a fully credentialed Graph publisher cannot post without it, because the Content
+   * Publishing API fetches `image_url` anonymously. See instagram/image-hosting.ts.
+   */
+  mediaHostingConfigured: boolean;
+  /** Masked-safe list of the env vars still missing for a real publish. Never contains a value. */
+  missingCredentials: string[];
 }
 
 export function getNetworkPublisherStatus(network: string): NetworkPublisherStatus {
@@ -29,13 +38,25 @@ export function getNetworkPublisherStatus(network: string): NetworkPublisherStat
   const configured = Boolean(publisher) && !(publisher instanceof ConsoleLogPublisher);
   const enabled = isNetworkEnabled(key);
 
+  const mediaHostingConfigured = publisher instanceof InstagramGraphPublisher ? publisher.isMediaHostingConfigured() : Boolean(metaConfig.publicMediaBaseUrl);
+
   return {
     network: key,
     configured,
     enabled,
     publisherName: publisher ? publisher.constructor.name : "—",
-    realPublishAllowed: configured && enabled && isRealPublishAllowed(),
-    label: !publisher ? "Sem publisher registrado" : configured ? (enabled ? "Configurado" : "Configurado (rede desabilitada)") : "Nao configurado"
+    realPublishAllowed: configured && enabled && isRealPublishAllowed() && mediaHostingConfigured,
+    label: !publisher
+      ? "Sem publisher registrado"
+      : !configured
+        ? "Nao configurado"
+        : !enabled
+          ? "Configurado (rede desabilitada)"
+          : mediaHostingConfigured
+            ? "Configurado"
+            : "Configurado (sem hospedagem publica de imagem)",
+    mediaHostingConfigured,
+    missingCredentials: missingMetaCredentials()
   };
 }
 

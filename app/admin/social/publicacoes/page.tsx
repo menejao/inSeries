@@ -7,6 +7,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { PublicationRescheduleButton } from "@/components/admin/social/publication-reschedule-button";
+import { PublicationCancelButton } from "@/components/admin/social/publication-cancel-button";
+import { SocialActionButton } from "@/components/admin/social/social-action-button";
 import { PublicationStatusBadge, IntegrationNotActiveWarning, formatDateTime, toDateTimeLocalValue } from "@/components/admin/social/social-shared";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { publicationRepo } from "@/packages/social-automation/src/db/publication-repo";
@@ -15,8 +17,32 @@ import type { SocialNetwork, SocialPublicationStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-const STATUSES: SocialPublicationStatus[] = ["PENDING", "SCHEDULED", "PUBLISHING", "PUBLISHED", "FAILED"];
+/**
+ * INSERIES-INSTAGRAM-PUBLISHER-05 — UPLOADING/CANCELLED entram aqui como `string` porque o enum
+ * gerado do Prisma ainda nao os conhece (a migracao deste ticket e aplicada manualmente, ver
+ * CLAUDE.md). O filtro so precisa comparar texto, entao nao ha perda: quando a migracao rodar,
+ * basta trocar o tipo de volta para SocialPublicationStatus[].
+ */
+const STATUSES: string[] = ["PENDING", "SCHEDULED", "UPLOADING", "PUBLISHING", "PUBLISHED", "FAILED", "CANCELLED"];
 const NETWORKS: SocialNetwork[] = ["INSTAGRAM"];
+
+/** Estados a partir dos quais o cancelamento e legal (espelha CANCELLABLE_STATUSES do pacote). */
+const CANCELLABLE: string[] = ["PENDING", "SCHEDULED", "FAILED"];
+/** Estados em que "Publicar agora" faz sentido. */
+const PUBLISHABLE: string[] = ["PENDING", "SCHEDULED", "FAILED"];
+/** Estados em que ainda faz sentido mover o horario. */
+const RESCHEDULABLE: string[] = ["PENDING", "SCHEDULED", "FAILED"];
+
+/** `attempts`/`lastError` ainda nao existem no client gerado — leitura defensiva ate a migracao. */
+function readAttempts(publication: unknown): number {
+  const value = (publication as { attempts?: unknown }).attempts;
+  return typeof value === "number" ? value : 0;
+}
+
+function readLastError(publication: unknown): string | null {
+  const value = (publication as { lastError?: unknown }).lastError;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
 
 /** INSERIES-SOCIAL-ADMIN-PANEL-03 — publicacoes, com o aviso de integracao inativa sempre visivel. */
 export default async function AdminSocialPublicationsPage({
@@ -29,7 +55,7 @@ export default async function AdminSocialPublicationsPage({
 
   const page = Number(params.page ?? "1");
   const result = await publicationRepo.listPaginated({
-    status: STATUSES.includes(params.status as SocialPublicationStatus) ? (params.status as SocialPublicationStatus) : null,
+    status: params.status && STATUSES.includes(params.status) ? (params.status as SocialPublicationStatus) : null,
     network: NETWORKS.includes(params.network as SocialNetwork) ? (params.network as SocialNetwork) : null,
     page: Number.isFinite(page) ? page : 1,
     perPage: 20
@@ -59,6 +85,16 @@ export default async function AdminSocialPublicationsPage({
             <Badge variant={network.configured ? "success" : "warning"} className="mt-1">
               {network.label}
             </Badge>
+            {/* INSERIES-INSTAGRAM-PUBLISHER-05 — lacuna de infraestrutura explicita, nunca silenciosa. */}
+            {network.mediaHostingConfigured ? null : (
+              <p className="mt-1 max-w-64 text-xs text-muted">
+                Sem hospedagem publica de imagem (SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL) — a Graph API precisa buscar o PNG por URL
+                anonima.
+              </p>
+            )}
+            {network.missingCredentials.length > 0 ? (
+              <p className="mt-1 max-w-64 text-xs text-muted">Credenciais ausentes: {network.missingCredentials.join(", ")}</p>
+            ) : null}
           </div>
         ))}
       </Card>
@@ -101,6 +137,8 @@ export default async function AdminSocialPublicationsPage({
                     <Th>Agendada para</Th>
                     <Th>Publicada em</Th>
                     <Th>ID externo</Th>
+                    <Th>Tentativas</Th>
+                    <Th>Ultimo erro</Th>
                     <Th />
                   </tr>
                 </TableHead>
@@ -119,13 +157,46 @@ export default async function AdminSocialPublicationsPage({
                       <Td className="text-muted">{formatDateTime(publication.scheduledFor)}</Td>
                       <Td className="text-muted">{formatDateTime(publication.publishedAt)}</Td>
                       <Td className="text-muted">{publication.externalId ?? "-"}</Td>
+                      <Td className="text-muted">{readAttempts(publication)}</Td>
+                      <Td className="max-w-64 truncate text-xs text-muted" title={readLastError(publication) ?? undefined}>
+                        {readLastError(publication) ?? "-"}
+                      </Td>
                       <Td>
-                        {publication.status === "PUBLISHED" || publication.status === "PUBLISHING" ? null : (
-                          <PublicationRescheduleButton
-                            publicationId={publication.id}
-                            scheduledFor={toDateTimeLocalValue(publication.scheduledFor)}
-                          />
-                        )}
+                        <div className="flex flex-wrap items-center gap-1">
+                          {PUBLISHABLE.includes(publication.status) ? (
+                            <SocialActionButton
+                              endpoint={`/api/admin/social/publications/${publication.id}/publish`}
+                              body={{ force: true }}
+                              label="Publicar"
+                              size="xs"
+                              confirmTitle="Publicar agora"
+                              confirmMessage={
+                                anyNetworkConfigured
+                                  ? "A publicacao sera enviada a Meta Graph API imediatamente."
+                                  : "Nenhum publisher real esta registrado: a acao percorre todo o fluxo interno sem enviar nada ao Instagram."
+                              }
+                              successMessage="Publicacao processada"
+                            />
+                          ) : null}
+                          {RESCHEDULABLE.includes(publication.status) ? (
+                            <PublicationRescheduleButton
+                              publicationId={publication.id}
+                              scheduledFor={toDateTimeLocalValue(publication.scheduledFor)}
+                            />
+                          ) : null}
+                          {CANCELLABLE.includes(publication.status) ? <PublicationCancelButton publicationId={publication.id} /> : null}
+                          {publication.externalId ? (
+                            <SocialActionButton
+                              endpoint={`/api/admin/social/publications/${publication.id}/refresh-status`}
+                              label="Atualizar status"
+                              size="xs"
+                              variant="ghost"
+                              confirmTitle="Atualizar status"
+                              confirmMessage="Consulta a Meta Graph API o status atual desta publicacao. Nada e publicado."
+                              successMessage="Status atualizado"
+                            />
+                          ) : null}
+                        </div>
                       </Td>
                     </TableRow>
                   ))}

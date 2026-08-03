@@ -23,7 +23,7 @@ on `zod` for its own config validation.
 | `content-generator/` | `ContentGenerator` interface. `NoopContentGenerator` (always throws — proves the shape). `ManualContentGenerator` (creates a `SocialContent` DRAFT from manually supplied text — no AI). |
 | `template-renderer/` | `TemplateRenderer` interface. `PassthroughTemplateRenderer` applies a `SocialTemplate` (or none) to content and produces caption text — no real templating engine yet. |
 | `media-generator/` | `MediaGenerator` interface. `PlaceholderMediaGenerator` returns a fake `placeholder://` media reference — no real media is ever produced. |
-| `publisher/` | `Publisher` interface: `publish(publication): Promise<{ externalId: string }>`. `publisherRegistry` keyed by lowercase network name. `ConsoleLogPublisher` is registered under `"instagram"` — logs what it would post and returns a fake `externalId`. **This is the extension point for future networks**: implement `Publisher`, add one line to `publisherRegistry`. |
+| `publisher/` | `Publisher` interface: `publish(publication): Promise<{ externalId: string }>`. `publisherRegistry` keyed by lowercase network name. `ConsoleLogPublisher` is registered under `"instagram"` in every non-production environment. **This is the extension point for future networks**: implement `Publisher`, add one line to `publisherRegistry`. Since INSERIES-INSTAGRAM-PUBLISHER-05 it also contains the real Meta Graph API integration — see the dedicated section below. |
 | `scheduler/` | Real, unit-testable logic: `computeNextRun()` given configured daily `HH:mm` times, `getDuePublications()`, `scheduleNext()`. Documented-only, like `lib/jobs/registry.ts` in the main app — nothing here is wired to an actual cron. |
 | `history/` | `recordHistory()` — every other module calls into this on every action. Writes a `SocialAutomationHistory` row *and* a structured log line. Nothing is silent. |
 | `config/` | zod-validated config: `environment` (`development`/`homologation`/`production` — only `production` allows a real publish attempt to proceed past the dev-noop warning), `mode` (`manual`/`automatic`), `scheduleTimes`, `dailyPostCount`, `enabledNetworks`. |
@@ -60,6 +60,104 @@ whatever went wrong (a future retry runner could automate this using `scheduler.
   so the shape is architected, but `NotYetEnabledAutomaticRunner.run()` always throws
   `"Automatic mode is not yet enabled"`. There is no cron/queue wiring anywhere in this package —
   same "documented, not executed" pattern the main app uses for `lib/jobs/registry.ts`.
+
+## Instagram Publisher (INSERIES-INSTAGRAM-PUBLISHER-05)
+
+### Where it lives, and why not `src/server/social/publisher/`
+
+The ticket suggested `src/server/social/publisher/`. That path does not exist in this repository and
+creating it would have produced a second, parallel social-automation tree: the `Publisher` interface,
+the registry, the repositories, the history writer, the logger and the config loader all already live
+in `packages/social-automation/src/`, and `manual-flow/index.ts` already calls
+`getPublisher(network).publish(publication)`. The real publisher was therefore built **inside
+`packages/social-automation/src/publisher/`**, with the subfolders the ticket asked for added there:
+
+```
+publisher/
+  types/{index,base}.ts   base.ts is the original types.ts (Publisher/PublishResult), moved into the
+                          folder so `from "./types"` is unambiguous; index.ts adds the new types
+  instagram/
+    graph-client.ts       the ONLY file that speaks HTTP to the Graph API (injectable fetch)
+    instagram-publisher.ts implements Publisher — feed / carousel / story sequencing
+    image-hosting.ts      ImageHostingService + NotConfigured/Configured implementations
+    errors.ts             PublishError + the single retryable/not-retryable classification
+  queue/publish-queue.ts  FIFO semaphore + per-publication idempotency (no Redis, no new dependency)
+  scheduler/publish-scheduler.ts  pure "publish now vs defer vs skip" decisions, absolute-time (UTC)
+  retries/retry-policy.ts exponential backoff, temporary failures only
+  services/publish-service.ts  the orchestrator — the only module here that writes to the database
+  utils/mask.ts           credential masking for logs, history and `lastError`
+```
+
+The existing `console-log-publisher.ts`, `registry.ts`, `status.ts`, `index.ts` were extended, not
+replaced, and `manual-flow/` was not touched at all.
+
+### When the real publisher is actually used
+
+`registry.ts` returns `InstagramGraphPublisher` only when **both** hold:
+
+1. `isRealPublishAllowed()` — `SOCIAL_AUTOMATION_ENVIRONMENT=production`; and
+2. every mandatory Meta credential is present.
+
+Otherwise the registry keeps `ConsoleLogPublisher`, so development and homologation behave exactly as
+before this ticket. In production with an incomplete configuration, `assertMetaConfigured()` throws at
+startup (fail-fast) rather than letting a half-configured publisher attempt a real post.
+
+### Configuration
+
+`INSTAGRAM_BUSINESS_ACCOUNT_ID`, `FACEBOOK_PAGE_ID`, `META_APP_ID`, `META_APP_SECRET`,
+`META_ACCESS_TOKEN`, `META_API_VERSION` (default `v21.0`), `META_REQUEST_TIMEOUT_MS` (15000),
+`META_RETRY_LIMIT` (3), `SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL`.
+
+Credentials are **never persisted to the database and never logged**: the access token travels in the
+`Authorization` header (never a query string), `utils/mask.ts` scrubs anything credential-shaped from
+every log line / history row / `lastError`, and the admin Configuracoes screen shows only
+present/absent via `describeMetaConfig()`.
+
+### Open infrastructure gap: public image hosting
+
+The Content Publishing API does not accept a binary upload in this flow — `POST /{ig-user-id}/media`
+takes an `image_url` that **Meta's servers fetch anonymously from the public internet**. The Template
+Engine returns PNGs as in-memory `Buffer`s, and the only HTTP surface serving them today
+(`/api/admin/social/content/[id]/preview/[format]`) requires an admin session, so it cannot be used as
+`image_url`.
+
+There is no object storage configured anywhere in this repository, and standing one up is an
+infrastructure decision outside this ticket. The gap is therefore stated rather than papered over:
+`NotConfiguredImageHostingService` (the default) throws a clear, non-retryable error naming
+`SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL`, and the publications panel shows a warning per network.
+`ConfiguredImageHostingService` only *composes* URLs under that base — it deliberately performs no
+upload, because there is nothing to upload to yet. **A real production publish is not possible until
+this is resolved.**
+
+### Retry, queue, cancellation
+
+- Retry: exponential backoff (`2^n` seconds, default 3 attempts) for **temporary** failures only —
+  timeout, rate limit (429 / codes 4, 17, 32, 613), 5xx. Auth (code 190), permission (code 10, 200-299)
+  and invalid media (code 100) go straight to `FAILED` with a masked `lastError`, never retried.
+  The classification lives in exactly one file, `instagram/errors.ts`.
+- Queue: in-memory, single process. Concurrent publishes of the same `SocialPublication` collapse into
+  one execution; global concurrency defaults to 1. Across multiple worker processes the real backstop
+  is the DB status guard in `publish-service.ts`, which refuses rows already `UPLOADING`/`PUBLISHING`/
+  `PUBLISHED`/`CANCELLED`.
+- Cancellation: `PENDING`/`SCHEDULED`/`FAILED` -> `CANCELLED` with a mandatory reason. The row is never
+  deleted.
+
+### Pending migration (schema edited, database NOT migrated)
+
+`prisma/schema.prisma` gained `SocialPublicationStatus.UPLOADING` / `.CANCELLED` and
+`SocialPublication.attempts` / `.lastError`. Per `CLAUDE.md`, **no migration was executed** — the
+generated Prisma client still describes the old shape. To keep the package compiling in the meantime:
+
+- `db/publication-repo.ts` funnels every write touching a new column/enum value through one named,
+  documented helper (`pendingSchema`). Delete it and inline the literals once the migration runs.
+- `publisher/types/index.ts` declares `PublicationStatus` locally; it becomes
+  `import type { SocialPublicationStatus }` after the migration.
+- The admin page reads `attempts`/`lastError` defensively and types its status filter as `string[]`.
+
+### Testing
+
+`npx vitest run packages/social-automation/src/publisher` — every test injects a fake `fetch` or a
+fake `Publisher`. **No test reaches the Meta Graph API and no real token is used anywhere.**
 
 ## Extension points for a new social network
 

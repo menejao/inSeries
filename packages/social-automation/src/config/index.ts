@@ -185,6 +185,110 @@ export const socialAutomationConfig = {
 
 export type SocialAutomationConfig = typeof socialAutomationConfig;
 
+// ---------------------------------------------------------------------------
+// INSERIES-INSTAGRAM-PUBLISHER-05 — Meta Graph API credentials/tuning.
+//
+// These are the ONLY place the package reads Meta credentials from. They are
+// never persisted to the database and never logged: `publisher/utils/mask.ts`
+// masks any value before it can reach a log line, and `describeMetaConfig()`
+// below is what the admin Configuracoes screen reads (booleans/lengths only,
+// never the value itself).
+// ---------------------------------------------------------------------------
+
+const metaEnvSchema = z.object({
+  INSTAGRAM_BUSINESS_ACCOUNT_ID: optionalNonEmpty(),
+  FACEBOOK_PAGE_ID: optionalNonEmpty(),
+  META_APP_ID: optionalNonEmpty(),
+  META_APP_SECRET: optionalNonEmpty(),
+  META_ACCESS_TOKEN: optionalNonEmpty(),
+  META_API_VERSION: optionalNonEmpty(),
+  META_REQUEST_TIMEOUT_MS: optionalNonEmpty(),
+  META_RETRY_LIMIT: optionalNonEmpty(),
+  SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL: optionalNonEmpty()
+});
+
+const rawMetaEnv = metaEnvSchema.safeParse(process.env).success
+  ? metaEnvSchema.parse(process.env)
+  : ({} as z.infer<typeof metaEnvSchema>);
+
+/** Graph API version must look like "v21.0" — a malformed value would silently 404 every call. */
+function parseApiVersion(value: string | undefined): string {
+  return value && /^v\d+\.\d+$/.test(value) ? value : "v21.0";
+}
+
+/** Trailing slash stripped so callers can always do `${base}/${path}`. */
+function parseBaseUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return /^https:\/\/.+/.test(trimmed) ? trimmed : null;
+}
+
+export const metaConfig = {
+  instagramBusinessAccountId: rawMetaEnv.INSTAGRAM_BUSINESS_ACCOUNT_ID ?? null,
+  facebookPageId: rawMetaEnv.FACEBOOK_PAGE_ID ?? null,
+  appId: rawMetaEnv.META_APP_ID ?? null,
+  appSecret: rawMetaEnv.META_APP_SECRET ?? null,
+  accessToken: rawMetaEnv.META_ACCESS_TOKEN ?? null,
+  apiVersion: parseApiVersion(rawMetaEnv.META_API_VERSION),
+  requestTimeoutMs: parsePositiveInt(rawMetaEnv.META_REQUEST_TIMEOUT_MS, 15_000),
+  retryLimit: parsePositiveInt(rawMetaEnv.META_RETRY_LIMIT, 3),
+  /**
+   * Base URL the Meta Graph API can fetch the rendered PNGs from. `null` (the default) means
+   * public media hosting is NOT configured — see publisher/instagram/image-hosting.ts and the
+   * "Hospedagem de imagem" section of the package README for why this is an open infrastructure
+   * gap rather than an invented storage service.
+   */
+  publicMediaBaseUrl: parseBaseUrl(rawMetaEnv.SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL)
+};
+
+export type MetaConfig = typeof metaConfig;
+
+/** Credentials without which no real Graph API call can possibly succeed. */
+const REQUIRED_META_KEYS = ["instagramBusinessAccountId", "accessToken", "appId", "appSecret"] as const;
+
+export function missingMetaCredentials(config: MetaConfig = metaConfig): string[] {
+  const envVarByKey: Record<(typeof REQUIRED_META_KEYS)[number], string> = {
+    instagramBusinessAccountId: "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+    accessToken: "META_ACCESS_TOKEN",
+    appId: "META_APP_ID",
+    appSecret: "META_APP_SECRET"
+  };
+  return REQUIRED_META_KEYS.filter((key) => !config[key]).map((key) => envVarByKey[key]);
+}
+
+/** True when every mandatory credential is present. Says nothing about the environment. */
+export function hasMetaCredentials(config: MetaConfig = metaConfig): boolean {
+  return missingMetaCredentials(config).length === 0;
+}
+
+/**
+ * Fail-fast gate. In production (`isRealPublishAllowed()`) an incomplete Meta configuration must
+ * throw early and loudly rather than let a half-configured publisher attempt a real post. Outside
+ * production this is a no-op: dev/homologation never reach the real publisher (registry.ts keeps
+ * ConsoleLogPublisher there).
+ */
+export function assertMetaConfigured(config: MetaConfig = metaConfig): void {
+  if (!isRealPublishAllowed()) return;
+  const missing = missingMetaCredentials(config);
+  if (missing.length > 0) {
+    throw new Error(
+      `Publicacao real esta habilitada (SOCIAL_AUTOMATION_ENVIRONMENT=production) mas faltam credenciais da Meta Graph API: ${missing.join(", ")}.`
+    );
+  }
+}
+
+/** Credential-safe summary for the admin Configuracoes screen — never exposes a value. */
+export function describeMetaConfig(config: MetaConfig = metaConfig) {
+  return {
+    apiVersion: config.apiVersion,
+    requestTimeoutMs: config.requestTimeoutMs,
+    retryLimit: config.retryLimit,
+    hasCredentials: hasMetaCredentials(config),
+    missingCredentials: missingMetaCredentials(config),
+    publicMediaConfigured: Boolean(config.publicMediaBaseUrl)
+  };
+}
+
 /** True only in "production" — every real-publish gate in the package must check this. */
 export function isRealPublishAllowed(): boolean {
   return socialAutomationConfig.environment === "production";

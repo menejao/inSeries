@@ -3,12 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
   // Neon's pooled connection (PgBouncer, transaction mode) doesn't support the advisory locks
   // `prisma migrate deploy` needs — migrations must run through the direct/unpooled connection.
   // Locally, DATABASE_URL_UNPOOLED just mirrors DATABASE_URL (no pooler in the sandbox).
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  directUrl         = env("DATABASE_URL_UNPOOLED")
   // Dedicated database `migrate dev`/`migrate diff` use to compute schema drift. Must NEVER
   // point at the same database/schema as `url` above — without this, drift resolution targets
   // the real dev database directly and a non-interactive "reset?" prompt can silently wipe it
@@ -846,12 +846,18 @@ enum SocialNetwork {
   INSTAGRAM
 }
 
+/// INSERIES-INSTAGRAM-PUBLISHER-05 — UPLOADING e CANCELLED sao exigidos pelo ciclo real da Meta
+/// Graph API (criar media container -> publicar) e pela acao de cancelamento do painel. Nenhum
+/// valor pre-existente foi removido: SCHEDULED continua sendo o estado do fluxo "Aprovar e
+/// agendar" (ticket-03).
 enum SocialPublicationStatus {
   PENDING
   SCHEDULED
+  UPLOADING
   PUBLISHING
   PUBLISHED
   FAILED
+  CANCELLED
 }
 
 model SocialPublication {
@@ -865,6 +871,11 @@ model SocialPublication {
   status       SocialPublicationStatus   @default(PENDING)
   publishedAt  DateTime?
   externalId   String?
+  /// INSERIES-INSTAGRAM-PUBLISHER-05 — contagem de tentativas de publicacao (retry rastreavel) e
+  /// mensagem de erro da ultima falha. `lastError` guarda SOMENTE mensagem ja mascarada pelo
+  /// publisher (utils/mask.ts) — nunca token, secret ou payload bruto da Graph API.
+  attempts     Int                       @default(0)
+  lastError    String?
   history      SocialAutomationHistory[]
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt

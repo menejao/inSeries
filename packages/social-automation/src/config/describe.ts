@@ -1,4 +1,4 @@
-import { socialAutomationConfig, contentEngineConfig } from "./index";
+import { socialAutomationConfig, contentEngineConfig, describeMetaConfig } from "./index";
 
 /**
  * INSERIES-SOCIAL-ADMIN-PANEL-03 — the current configuration paired with the environment variable
@@ -26,6 +26,8 @@ export interface ConfigGroup {
 const yesNo = (value: boolean) => (value ? "Sim" : "Nao");
 
 export function describeConfig(): ConfigGroup[] {
+  const meta = describeMetaConfig();
+
   return [
     {
       title: "Execucao",
@@ -75,6 +77,28 @@ export function describeConfig(): ConfigGroup[] {
           value: yesNo(contentEngineConfig.requireApproval),
           envVar: null,
           note: "Fixo em \"Sim\" — nao existe caminho de auto-publicacao neste pacote."
+        }
+      ]
+    },
+    {
+      // INSERIES-INSTAGRAM-PUBLISHER-05 — NENHUM valor de credencial aparece aqui: apenas
+      // presente/ausente. describeMetaConfig() nunca devolve um token, id ou secret.
+      title: "Meta Graph API (Instagram)",
+      entries: [
+        { label: "Versao da API", value: meta.apiVersion, envVar: "META_API_VERSION" },
+        { label: "Timeout por requisicao (ms)", value: String(meta.requestTimeoutMs), envVar: "META_REQUEST_TIMEOUT_MS" },
+        { label: "Limite de tentativas", value: String(meta.retryLimit), envVar: "META_RETRY_LIMIT" },
+        {
+          label: "Credenciais completas",
+          value: yesNo(meta.hasCredentials),
+          envVar: "INSTAGRAM_BUSINESS_ACCOUNT_ID / META_APP_ID / META_APP_SECRET / META_ACCESS_TOKEN",
+          note: meta.missingCredentials.length > 0 ? `Ausentes: ${meta.missingCredentials.join(", ")}` : "Valores nunca sao exibidos nem logados."
+        },
+        {
+          label: "Hospedagem publica de imagem",
+          value: yesNo(meta.publicMediaConfigured),
+          envVar: "SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL",
+          note: "A Graph API busca o PNG por URL HTTPS anonima. Sem isso, nenhuma publicacao real e possivel."
         }
       ]
     }

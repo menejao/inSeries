@@ -19,9 +19,12 @@ export const CONTENT_STATUS_VARIANT: Record<string, BadgeVariant> = {
 export const PUBLICATION_STATUS_VARIANT: Record<string, BadgeVariant> = {
   PENDING: "default",
   SCHEDULED: "secondary",
+  // INSERIES-INSTAGRAM-PUBLISHER-05 — os dois estados novos do ciclo real da Graph API.
+  UPLOADING: "warning",
   PUBLISHING: "warning",
   PUBLISHED: "success",
-  FAILED: "danger"
+  FAILED: "danger",
+  CANCELLED: "outline"
 };
 
 export function ContentStatusBadge({ status }: { status: string }) {

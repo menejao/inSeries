@@ -29,6 +29,25 @@ export interface CreatePublicationInput {
   scheduledFor: Date;
 }
 
+/**
+ * INSERIES-INSTAGRAM-PUBLISHER-05 — bridge for the schema changes proposed by this ticket that have
+ * NOT been migrated yet (`SocialPublicationStatus.UPLOADING`/`CANCELLED`, `SocialPublication.attempts`,
+ * `SocialPublication.lastError`). Per CLAUDE.md the migration is applied by a human, so the generated
+ * Prisma client still describes the old shape and the compiler would reject these values.
+ *
+ * Rather than leaving the package uncompilable, every such write is funnelled through this ONE
+ * helper: the payload is built as a plain object and cast at a single, named, documented boundary.
+ * After the migration runs, delete this function and inline the literals — the call sites already
+ * read exactly like normal Prisma calls.
+ */
+type PendingSchemaData = Record<string, unknown>;
+function pendingSchema<T>(data: PendingSchemaData): T {
+  return data as T;
+}
+
+/** Statuses the publisher can write, including the two awaiting migration. */
+export type PublisherPublicationStatus = SocialPublicationStatus | "UPLOADING" | "CANCELLED";
+
 export const publicationRepo = {
   create(input: CreatePublicationInput): Promise<SocialPublication> {
     return prisma.socialPublication.create({
@@ -67,6 +86,54 @@ export const publicationRepo = {
 
   markFailed(id: string): Promise<SocialPublication> {
     return prisma.socialPublication.update({ where: { id }, data: { status: "FAILED" } });
+  },
+
+  // -------------------------------------------------------------------------
+  // INSERIES-INSTAGRAM-PUBLISHER-05 — real-publisher state machine. Every write below touches a
+  // column/enum value that only exists after this ticket's migration (see `pendingSchema` above).
+  // -------------------------------------------------------------------------
+
+  /** PENDING/SCHEDULED -> UPLOADING: media containers are being created on the Graph API. */
+  markUploading(id: string): Promise<SocialPublication> {
+    return prisma.socialPublication.update({ where: { id }, data: pendingSchema<Prisma.SocialPublicationUpdateInput>({ status: "UPLOADING" }) });
+  },
+
+  /** Records one publish attempt and the (already masked) reason it failed. Never a token/payload. */
+  markFailedWithError(id: string, lastError: string, attempts: number): Promise<SocialPublication> {
+    return prisma.socialPublication.update({
+      where: { id },
+      data: pendingSchema<Prisma.SocialPublicationUpdateInput>({ status: "FAILED", lastError, attempts })
+    });
+  },
+
+  /** Success also persists the attempt count and clears the stale error message. */
+  markPublishedWithAttempts(id: string, externalId: string, attempts: number): Promise<SocialPublication> {
+    return prisma.socialPublication.update({
+      where: { id },
+      data: pendingSchema<Prisma.SocialPublicationUpdateInput>({
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+        externalId,
+        attempts,
+        lastError: null
+      })
+    });
+  },
+
+  /** Cancels a not-yet-published slot. The row is never deleted — only its status moves. */
+  markCancelled(id: string, reason: string): Promise<SocialPublication> {
+    return prisma.socialPublication.update({
+      where: { id },
+      data: pendingSchema<Prisma.SocialPublicationUpdateInput>({ status: "CANCELLED", lastError: reason })
+    });
+  },
+
+  /** Monotonic attempt counter, incremented at the start of each real attempt. */
+  incrementAttempts(id: string): Promise<SocialPublication> {
+    return prisma.socialPublication.update({
+      where: { id },
+      data: pendingSchema<Prisma.SocialPublicationUpdateInput>({ attempts: { increment: 1 } })
+    });
   },
 
   updateStatus(id: string, status: SocialPublicationStatus): Promise<SocialPublication> {
@@ -114,7 +181,17 @@ export const publicationRepo = {
 
   async countsByStatus(): Promise<Record<SocialPublicationStatus, number>> {
     const rows = await prisma.socialPublication.groupBy({ by: ["status"], _count: { _all: true } });
-    const result = { PENDING: 0, SCHEDULED: 0, PUBLISHING: 0, PUBLISHED: 0, FAILED: 0 } as Record<SocialPublicationStatus, number>;
+    // UPLOADING/CANCELLED included at runtime so the panel's counters are complete the moment the
+    // migration lands; they are not yet in the generated enum, hence the single cast.
+    const result = pendingSchema<Record<SocialPublicationStatus, number>>({
+      PENDING: 0,
+      SCHEDULED: 0,
+      UPLOADING: 0,
+      PUBLISHING: 0,
+      PUBLISHED: 0,
+      FAILED: 0,
+      CANCELLED: 0
+    });
     for (const row of rows) result[row.status] = row._count._all;
     return result;
   }
