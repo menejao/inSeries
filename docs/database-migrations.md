@@ -7,6 +7,57 @@ interativo — esse prompt parece ter sido confirmado silenciosamente, apagando 
 banco de desenvolvimento. Os dados foram restaurados de um backup manual feito minutos antes.
 As proteções abaixo existem para que isso não dependa de sorte/backup manual de novo.
 
+## Como o wrapper resolve `DATABASE_URL`
+
+O `tsx` (usado pelos wrappers `npm run db:*`) não carrega arquivos `.env` sozinho — diferente do
+`next` e do Prisma CLI. A resolução é centralizada em
+[`scripts/db-guard/resolve-env.ts`](../scripts/db-guard/resolve-env.ts), reutilizada por `cli.ts`
+e `backup.ts`.
+
+**Precedência (o primeiro valor *utilizável* vence):**
+
+1. variável já presente no ambiente do processo (`process.env`);
+2. `.env.local`;
+3. `.env`.
+
+"Utilizável" = definida, não vazia e não um placeholder conhecido. Um valor válido vindo do
+ambiente **nunca** é sobrescrito por arquivo — o arquivo só entra como fallback.
+
+**Arquivos `.env.production.local` / `.env.development.local` são ignorados de propósito.**
+
+### O incidente do `"[SENSITIVE]"`
+
+O wrapper chegou a usar `loadEnvConfig(cwd)` do `@next/env`. Sem o segundo argumento (`dev`),
+esse helper assume **modo produção** e carrega `.env.production.local` com a **maior**
+precedência. Esse arquivo é gerado por `vercel env pull` e traz todos os segredos redigidos como
+a string literal `"[SENSITIVE]"` — então `DATABASE_URL` virava essa string de 11 caracteres, e o
+`pg_dump` do backup falhava. O Prisma CLI nunca foi afetado porque lê apenas `.env`.
+
+Hoje, `"[SENSITIVE]"` (e outros placeholders listados em `PLACEHOLDER_VALUES`) é tratado como
+**ausente**: a resolução continua descendo a precedência e, se nada válido for encontrado, o
+comando aborta com um erro que diz explicitamente que a variável está com placeholder redigido.
+
+### O que acontece quando nada é encontrado
+
+O comando falha antes do guard, do backup e de qualquer chamada ao Prisma. As mensagens
+distinguem três casos — ausente, presente porém vazia, presente porém placeholder — e nunca
+incluem o valor tentado. O protocolo também é validado (só `postgresql:`/`postgres:`), sem
+tentar conectar.
+
+### Investigando problema parecido sem vazar credencial
+
+Reporte apenas: presente/ausente, comprimento, se é exatamente `[SENSITIVE]`, protocolo e qual
+arquivo forneceu o valor. Nunca imprima o valor nem o conteúdo integral de um `.env`. Um
+diagnóstico seguro é comparar `resolveEnvVar("DATABASE_URL").source` entre invocações. Erros de
+subprocesso (`docker`, `pg_dump`, Prisma) são sanitizados pelo nosso wrapper para só expor nome
+do binário e código de saída — argv e stderr do filho são descartados porque podem conter a URL.
+
+### Testes seguros
+
+`npm run test -- --run scripts/db-guard` cobre resolução de env, preparação do backup e a ordem
+do fluxo do CLI. Todos os subprocessos são mockados: nenhum teste roda migração, `pg_dump` ou
+toca o banco real, e nenhum teste escreve em arquivos `.env`.
+
 ## Banco principal, `directUrl` e shadow database
 
 - **`DATABASE_URL`** — conexão principal, pooled (PgBouncer em produção/Neon). É o banco real
