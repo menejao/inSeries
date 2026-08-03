@@ -6,7 +6,7 @@
  * that module belongs to the main app's scripts and this package must stay independently
  * runnable (see the package README, "Why a separate package").
  */
-import { metaConfig } from "../../config";
+import { mediaStorageConfig, metaConfig } from "../../config";
 
 /** "EAAB…9f2a" — enough to tell two tokens apart, never enough to use one. */
 export function maskSecret(value: string | null | undefined): string {
@@ -17,7 +17,16 @@ export function maskSecret(value: string | null | undefined): string {
 
 /** Every configured credential value, longest first so substrings never survive a shorter match. */
 function knownSecrets(): string[] {
-  return [metaConfig.accessToken, metaConfig.appSecret, metaConfig.appId, metaConfig.instagramBusinessAccountId, metaConfig.facebookPageId]
+  return [
+    metaConfig.accessToken,
+    metaConfig.appSecret,
+    metaConfig.appId,
+    metaConfig.instagramBusinessAccountId,
+    metaConfig.facebookPageId,
+    // INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — the Vercel Blob read/write token. `@vercel/blob`
+    // echoes it back inside some error messages, so it must be scrubbed by value like any other.
+    mediaStorageConfig.token
+  ]
     .filter((value): value is string => typeof value === "string" && value.length >= 6)
     .sort((a, b) => b.length - a.length);
 }
@@ -30,6 +39,8 @@ const BEARER = /(Bearer\s+)[A-Za-z0-9._\-|]+/gi;
  * currently in config (a rotated token, a token from another environment) — shape is what saves us.
  */
 const META_TOKEN_SHAPE = /\bEAA[A-Za-z0-9._\-]{6,}/g;
+/** Vercel Blob read/write tokens are `vercel_blob_rw_<store>_<secret>`. Matched by shape too. */
+const BLOB_TOKEN_SHAPE = /\bvercel_blob_rw_[A-Za-z0-9_\-]{6,}/gi;
 
 /**
  * Scrubs a free-text string (a Graph API error message, a URL, an exception message) of anything
@@ -39,7 +50,8 @@ export function maskText(value: string): string {
   let result = value
     .replace(TOKEN_QUERY_PARAM, "$1[redacted]")
     .replace(BEARER, "$1[redacted]")
-    .replace(META_TOKEN_SHAPE, "[redacted]");
+    .replace(META_TOKEN_SHAPE, "[redacted]")
+    .replace(BLOB_TOKEN_SHAPE, "[redacted]");
   for (const secret of knownSecrets()) {
     result = result.split(secret).join("[redacted]");
   }

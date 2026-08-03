@@ -14,7 +14,7 @@
 import { logger } from "../../logger";
 import { CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS, InstagramGraphClient } from "./graph-client";
 import { PublishError } from "./errors";
-import { createImageHostingService, type ImageHostingService } from "./image-hosting";
+import { createPublicationMediaResolver, type PublicationMediaResolver } from "./image-hosting";
 import type { ContainerStatus, InstagramMediaKind, InstagramPublishRequest, Publisher, PublishResult } from "../types";
 import type { SocialPublication } from "@prisma/client";
 
@@ -25,7 +25,11 @@ export type PublishStage = "media-resolved" | "uploading" | "uploaded" | "publis
 
 export interface InstagramPublisherOptions {
   client?: InstagramGraphClient;
-  imageHosting?: ImageHostingService;
+  /**
+   * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — renders the PNGs and uploads them to public storage,
+   * returning the HTTPS URLs Meta will fetch. Nothing here reaches the Graph API until it resolves.
+   */
+  mediaResolver?: PublicationMediaResolver;
   /** Lets publish-service.ts move the row through UPLOADING/PUBLISHING as the API progresses. */
   onStage?: (stage: PublishStage, detail: { publicationId: string; creationId?: string }) => void | Promise<void>;
   /** Injected in tests so container polling does not actually wait. */
@@ -85,14 +89,14 @@ export function assertValidRequest(request: InstagramPublishRequest): void {
 
 export class InstagramGraphPublisher implements Publisher {
   private readonly client: InstagramGraphClient;
-  private readonly imageHosting: ImageHostingService;
+  private readonly mediaResolver: PublicationMediaResolver;
   private readonly onStage: InstagramPublisherOptions["onStage"];
   private readonly sleep?: (ms: number) => Promise<void>;
   private readonly containerPollAttempts: number;
 
   constructor(options: InstagramPublisherOptions = {}) {
     this.client = options.client ?? new InstagramGraphClient();
-    this.imageHosting = options.imageHosting ?? createImageHostingService();
+    this.mediaResolver = options.mediaResolver ?? createPublicationMediaResolver();
     this.onStage = options.onStage;
     this.sleep = options.sleep;
     this.containerPollAttempts = options.containerPollAttempts ?? 5;
@@ -100,7 +104,7 @@ export class InstagramGraphPublisher implements Publisher {
 
   /** Whether a real publish could even be attempted. Surfaced by publisher/status.ts. */
   isMediaHostingConfigured(): boolean {
-    return this.imageHosting.isConfigured();
+    return this.mediaResolver.isConfigured();
   }
 
   private async stage(name: PublishStage, publicationId: string, creationId?: string): Promise<void> {
@@ -112,8 +116,17 @@ export class InstagramGraphPublisher implements Publisher {
   async publish(publication: SocialPublication): Promise<PublishResult> {
     const { kind, slideCount } = parseMediaRef(publication.mediaRef);
 
-    const imageUrls = await this.imageHosting.resolvePublicUrls({
+    /**
+     * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — the upload happens HERE, before any Graph call.
+     * If it throws (storage not configured, invalid PNG, provider down) the method rejects and the
+     * Meta Graph API is never touched: the failure lands in `SocialPublication.lastError` /
+     * `attempts` through publish-service.ts, and the retry policy decides from `error.retryable`.
+     * For a carousel, `uploadAll` is all-or-nothing, so a single failed slide aborts the whole post
+     * before a single container is created.
+     */
+    const imageUrls = await this.mediaResolver.resolvePublicUrls({
       publicationId: publication.id,
+      contentId: publication.contentId,
       mediaRef: publication.mediaRef,
       kind,
       slideCount

@@ -16,13 +16,30 @@ export { PUBLICATION_STATUSES, CANCELLABLE_STATUSES, TERMINAL_STATUSES, IN_FLIGH
 export { InstagramGraphClient, CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS } from "./instagram/graph-client";
 export { InstagramGraphPublisher, parseMediaRef, assertValidRequest, CAPTION_MAX_LENGTH } from "./instagram/instagram-publisher";
 export { PublishError, isPublishError, isRetryableError, classifyGraphError } from "./instagram/errors";
+// INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — real public storage. `ImageHostingService` now has a
+// single definition (src/media-hosting); the publisher keeps only the narrower resolver concern.
 export {
-  createImageHostingService,
-  ConfiguredImageHostingService,
+  createPublicationMediaResolver,
+  HostedPublicationMediaResolver,
+  NotConfiguredPublicationMediaResolver,
+  renderPublicationSlides,
+  toPublishError,
+  getImageHostingService,
   NotConfiguredImageHostingService,
-  IMAGE_HOSTING_NOT_CONFIGURED_MESSAGE
+  MediaHostingError,
+  isMediaHostingError,
+  MEDIA_STORAGE_NOT_CONFIGURED_MESSAGE
 } from "./instagram/image-hosting";
-export type { ImageHostingService, MediaReference } from "./instagram/image-hosting";
+export type {
+  PublicationMediaResolver,
+  PublicationSlideRenderer,
+  RenderedSlide,
+  MediaReference,
+  ImageHostingService,
+  HostedMedia,
+  MediaAsset,
+  MediaFormat
+} from "./instagram/image-hosting";
 
 export { PublishQueue, publishQueue } from "./queue/publish-queue";
 export { runWithRetry, computeBackoffMs } from "./retries/retry-policy";

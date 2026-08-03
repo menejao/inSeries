@@ -79,7 +79,7 @@ publisher/
   instagram/
     graph-client.ts       the ONLY file that speaks HTTP to the Graph API (injectable fetch)
     instagram-publisher.ts implements Publisher — feed / carousel / story sequencing
-    image-hosting.ts      ImageHostingService + NotConfigured/Configured implementations
+    image-hosting.ts      bridge to src/media-hosting: PublicationMediaResolver (render -> upload)
     errors.ts             PublishError + the single retryable/not-retryable classification
   queue/publish-queue.ts  FIFO semaphore + per-publication idempotency (no Redis, no new dependency)
   scheduler/publish-scheduler.ts  pure "publish now vs defer vs skip" decisions, absolute-time (UTC)
@@ -106,28 +106,20 @@ startup (fail-fast) rather than letting a half-configured publisher attempt a re
 
 `INSTAGRAM_BUSINESS_ACCOUNT_ID`, `FACEBOOK_PAGE_ID`, `META_APP_ID`, `META_APP_SECRET`,
 `META_ACCESS_TOKEN`, `META_API_VERSION` (default `v21.0`), `META_REQUEST_TIMEOUT_MS` (15000),
-`META_RETRY_LIMIT` (3), `SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL`.
+`META_RETRY_LIMIT` (3). (`SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL` is legacy from this ticket and is
+no longer read to decide whether hosting works — see the media-hosting section below.)
 
 Credentials are **never persisted to the database and never logged**: the access token travels in the
 `Authorization` header (never a query string), `utils/mask.ts` scrubs anything credential-shaped from
 every log line / history row / `lastError`, and the admin Configuracoes screen shows only
 present/absent via `describeMetaConfig()`.
 
-### Open infrastructure gap: public image hosting
+### Public image hosting — see "Media hosting" below
 
-The Content Publishing API does not accept a binary upload in this flow — `POST /{ig-user-id}/media`
-takes an `image_url` that **Meta's servers fetch anonymously from the public internet**. The Template
-Engine returns PNGs as in-memory `Buffer`s, and the only HTTP surface serving them today
-(`/api/admin/social/content/[id]/preview/[format]`) requires an admin session, so it cannot be used as
-`image_url`.
-
-There is no object storage configured anywhere in this repository, and standing one up is an
-infrastructure decision outside this ticket. The gap is therefore stated rather than papered over:
-`NotConfiguredImageHostingService` (the default) throws a clear, non-retryable error naming
-`SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL`, and the publications panel shows a warning per network.
-`ConfiguredImageHostingService` only *composes* URLs under that base — it deliberately performs no
-upload, because there is nothing to upload to yet. **A real production publish is not possible until
-this is resolved.**
+This gap (ticket 05) is **closed** by INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07: the PNGs are now
+really uploaded to public object storage before any Graph call. The URL-composing
+`ConfiguredImageHostingService` is gone — composing a URL for a file nobody uploaded was precisely the
+failure mode that needed removing.
 
 ### Retry, queue, cancellation
 
@@ -159,6 +151,112 @@ generated Prisma client still describes the old shape. To keep the package compi
 `npx vitest run packages/social-automation/src/publisher` — every test injects a fake `fetch` or a
 fake `Publisher`. **No test reaches the Meta Graph API and no real token is used anywhere.**
 
+## Media hosting (INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07)
+
+### The problem it solves
+
+`POST /{ig-user-id}/media` takes an `image_url` that **Meta's servers fetch anonymously from the
+public internet**. The Template Engine returns PNGs as in-memory `Buffer`s and the only HTTP surface
+that served them (`/api/admin/social/content/[id]/preview/[format]`) requires an admin session. So the
+bytes must be uploaded somewhere public *before* the Graph API is ever called.
+
+```
+media-hosting/
+  types.ts                 ImageHostingService (the ONLY definition in the repo) + MediaHostingError
+  vercel-blob-provider.ts  the real provider (@vercel/blob: put/head/del/list)
+  not-configured-provider.ts  the default everywhere without a token — fails fast, never guesses
+  factory.ts               the one place that decides configured vs not-configured (memoised)
+  key.ts                   the deterministic object key — this IS the idempotency mechanism
+  validation.ts            byte-level PNG validation (signature + IHDR dimensions), never contentType
+  cleanup.ts               retention sweep — the only destructive code, prefix-guarded
+```
+
+### Provider decision: Vercel Blob
+
+The app already deploys to Vercel, so this is the one object store that needs no extra account, no
+extra egress bill and no extra secret-management story: one `BLOB_READ_WRITE_TOKEN` (the name
+`@vercel/blob` reads by itself, deliberately not renamed) and public objects served over HTTPS from a
+CDN that Meta's anonymous fetcher can reach. `SOCIAL_MEDIA_STORAGE_PROVIDER` exists so a second
+provider can be added later; any value the package does not implement is treated as **not configured**
+rather than "assume it'll work".
+
+### Environment variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BLOB_READ_WRITE_TOKEN` | *(unset)* | The credential. Never logged, never returned by any API, never persisted. Absent = not configured. |
+| `SOCIAL_MEDIA_STORAGE_PROVIDER` | `vercel-blob` | Only `vercel-blob` is implemented. An unknown value disables hosting (with a warning). |
+| `SOCIAL_MEDIA_STORAGE_PREFIX` | `social-media/` | Every read, write and delete is confined to this prefix. |
+| `SOCIAL_MEDIA_RETENTION_HOURS` | `72` | Minimum `24`. Values below the minimum are **rejected** (thrown), never silently raised. |
+| `SOCIAL_MEDIA_MAX_BYTES` | `8388608` (8 MB) | Defensive upload ceiling. |
+
+### Upload flow, step by step
+
+1. `InstagramGraphPublisher.publish()` parses `mediaRef` into kind + slide count.
+2. `HostedPublicationMediaResolver` (`publisher/instagram/image-hosting.ts`) loads the
+   `SocialContent`, renders the slides through the **same** `renderPreview()` the admin preview uses
+   (no second renderer exists), and derives a `contentVersion` from a hash of the persisted payload.
+3. `validation.ts` reads the actual bytes: PNG signature, then IHDR width/height against the format's
+   expected canvas. A lying `contentType` never passes; an empty or oversized buffer never passes.
+4. `key.ts` computes `<prefix><publicationId>/<format>/<slide>-<versionHash>-<checksum>.png`.
+5. `head()` is consulted. A hit means those exact bytes are already online -> **no upload**,
+   `reused: true`. Otherwise `put(..., { addRandomSuffix: false })` stores the object at that exact key.
+6. Only when every slide has resolved does the publisher touch the Graph API, using the returned
+   `publicUrl` as `image_url`.
+
+**If the upload fails, the Meta Graph API is never called.** The error becomes a `PublishError`
+(`not-configured`/`validation` -> never retried; `upload-failed` -> `temporary`, retried with the
+usual backoff) and lands in the existing `SocialPublication.lastError` / `attempts` columns — no new
+schema, no new table.
+
+**Carousels are all-or-nothing**: slides upload sequentially, in order, and a single failure rejects
+the whole batch before any container is created. Slides already uploaded are left in place on purpose
+— their key is deterministic, so the retry reuses them for free.
+
+### Idempotency without a new table
+
+The ticket forbids a new table, so "have I already uploaded this?" is answered by the key alone: it
+embeds the sha256 of the exact bytes. A retry of an unchanged publication recomputes the identical key
+and reuses the object; edited content produces a different checksum, therefore a different key,
+therefore a new asset — nobody has to *detect* the change.
+
+### When it is not configured
+
+`NotConfiguredImageHostingService` is the default and a **supported** state, not a bug: `upload()`
+throws a clear, non-retryable error naming `BLOB_READ_WRITE_TOKEN`, while `remove()`/`list()` stay
+harmless no-ops so cleanup can never break. The publications panel shows the same warning style as the
+Instagram integration warning, plus a storage card with provider/prefix/retention and a "Testar
+acesso" button (`GET`/`POST /api/admin/social/media-storage/health`). The health check is
+non-destructive by default; the write test (upload + delete of a 1x1 PNG under `_health/`) only runs
+when an admin explicitly asks.
+
+**Provisioning the real Blob Store is a manual step for the operator** — `vercel link` +
+`vercel integration add blob` (or the Vercel dashboard), then set `BLOB_READ_WRITE_TOKEN` in the
+project's environment. Nothing in this package can do that for you.
+
+### Retention and cleanup
+
+Vercel Blob has no native TTL, so expiry is computed from each object's `uploadedAt` and enforced by
+an explicit sweep — never as a side effect of a request:
+
+```
+npm run social:media:cleanup             # dry-run: lists what WOULD be deleted, deletes nothing
+npm run social:media:cleanup -- --apply  # actually deletes
+```
+
+The sweep never lists or deletes outside `SOCIAL_MEDIA_STORAGE_PREFIX`, only considers objects older
+than the retention window (minimum 24h, because a shorter window would delete art of publications
+still retrying), and **skips any object whose publication is still `PENDING`/`SCHEDULED`/`UPLOADING`/
+`PUBLISHING`** regardless of age. It is idempotent, one failing object never aborts the run, and it
+logs pathnames only.
+
+### Testing
+
+`npx vitest run packages/social-automation/src/media-hosting` — `@vercel/blob` is mocked with
+`vi.mock`, so **no test touches a real Blob Store and no real token exists in the test environment**.
+The suite explicitly asserts that the token never appears in a thrown message, in a health payload, or
+in any captured log line.
+
 ## Extension points for a new social network
 
 1. Implement `Publisher` (`publish(publication): Promise<{ externalId: string }>`) in
@@ -179,6 +277,7 @@ npm run social:generate -- --title "..." --description "..." --type post
 npm run social:approve -- --content <id>
 npm run social:publish -- --content <id>
 npm run social:status -- --content <id>
+npm run social:media:cleanup            # varredura de retencao (dry-run; --apply para remover)
 ```
 
 All four scripts call into the real package functions (not static output). Without a live

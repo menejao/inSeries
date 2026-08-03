@@ -68,3 +68,19 @@ export function IntegrationNotActiveWarning({ anyNetworkConfigured }: { anyNetwo
     </Alert>
   );
 }
+
+/**
+ * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — mesmo padrao visual do aviso acima, para a lacuna de
+ * hospedagem publica das artes. A Meta busca `image_url` anonimamente: sem storage publico nenhuma
+ * publicacao real e possivel, entao o aviso e permanente enquanto o token nao existir.
+ */
+export function MediaStorageNotConfiguredWarning({ configured, tokenEnvVar, warning }: { configured: boolean; tokenEnvVar: string; warning?: string | null }) {
+  if (configured) return null;
+
+  return (
+    <Alert variant="warning" title="Hospedagem publica das artes nao esta configurada">
+      A Meta Graph API busca o PNG por uma URL HTTPS anonima, entao nenhuma publicacao real acontece sem storage publico. Defina{" "}
+      <code>{tokenEnvVar}</code> (Vercel Blob) no ambiente. {warning ?? ""}
+    </Alert>
+  );
+}

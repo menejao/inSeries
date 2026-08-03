@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { InstagramGraphClient } from "./graph-client";
 import { InstagramGraphPublisher, parseMediaRef, assertValidRequest, CAPTION_MAX_LENGTH } from "./instagram-publisher";
-import { ConfiguredImageHostingService, NotConfiguredImageHostingService } from "./image-hosting";
+import {
+  HostedPublicationMediaResolver,
+  NotConfiguredPublicationMediaResolver,
+  type MediaReference,
+  type PublicationMediaResolver,
+  type RenderedSlide
+} from "./image-hosting";
 import { PublishError } from "./errors";
+import { MediaHostingError, type HostedMedia, type ImageHostingService, type MediaAsset } from "../../media-hosting";
 import type { MetaConfig } from "../../config";
 import type { SocialPublication } from "@prisma/client";
 
@@ -52,13 +59,70 @@ function fakeGraph(overrides: { failOn?: string; error?: unknown } = {}) {
   return { calls, fetchImpl };
 }
 
+/**
+ * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — resolver de teste: devolve URLs publicas fixas sem
+ * renderizar nada e sem storage real. As URLs sao o que o Publisher DEVE mandar para a Graph API.
+ */
+function staticResolver(urls: string[] = ["https://blob.example.com/social-media/pub-1/feed/00-a-b.png"]): PublicationMediaResolver {
+  return {
+    isConfigured: () => true,
+    resolvePublicUrls: async (reference: MediaReference) =>
+      reference.kind === "carousel" ? urls.slice(0, Math.max(reference.slideCount ?? urls.length, 2)) : [urls[0]]
+  };
+}
+
 function publisherWith(fetchImpl: (url: string, init?: RequestInit) => Promise<Response>, slideCount?: number) {
   return new InstagramGraphPublisher({
     client: new InstagramGraphClient({ config, fetchImpl }),
-    imageHosting: new ConfiguredImageHostingService(config.publicMediaBaseUrl as string),
+    mediaResolver: staticResolver([
+      "https://blob.example.com/social-media/pub-1/feed/00-a-b.png",
+      "https://blob.example.com/social-media/pub-1/carousel/01-a-b.png",
+      "https://blob.example.com/social-media/pub-1/carousel/02-a-b.png",
+      "https://blob.example.com/social-media/pub-1/carousel/03-a-b.png"
+    ]),
     sleep: async () => undefined,
     containerPollAttempts: slideCount ?? 3
   });
+}
+
+/** Um `ImageHostingService` totalmente falso — nenhum byte sai da maquina. */
+function fakeHosting(overrides: Partial<ImageHostingService> = {}): ImageHostingService {
+  return {
+    provider: "fake",
+    isConfigured: () => true,
+    upload: async (asset: MediaAsset) => hostedFor(asset),
+    uploadAll: async (assets: MediaAsset[]) => assets.map(hostedFor),
+    remove: async () => true,
+    list: async () => [],
+    health: async () => {
+      throw new Error("nao usado");
+    },
+    ...overrides
+  } as ImageHostingService;
+}
+
+function hostedFor(asset: MediaAsset): HostedMedia {
+  const id = `social-media/${asset.publicationId}/${asset.format}/${String(asset.slideIndex).padStart(2, "0")}.png`;
+  return {
+    id,
+    publicUrl: `https://blob.example.com/${id}`,
+    contentType: "image/png",
+    size: 10,
+    checksum: "c".repeat(64),
+    createdAt: new Date(),
+    expiresAt: new Date(),
+    provider: "fake",
+    reused: false
+  };
+}
+
+/** Renderizador de teste: nunca abre Chromium, nunca toca o banco. */
+function fakeRenderer(slideCount: number): (reference: MediaReference) => Promise<RenderedSlide[]> {
+  return async (reference: MediaReference) =>
+    Array.from({ length: reference.kind === "carousel" ? slideCount : 1 }, () => ({
+      buffer: Buffer.from("png"),
+      contentVersion: "v1"
+    }));
 }
 
 function publicationRow(overrides: Partial<SocialPublication> = {}): SocialPublication {
@@ -145,7 +209,7 @@ describe("InstagramGraphPublisher", () => {
     const stages: string[] = [];
     const publisher = new InstagramGraphPublisher({
       client: new InstagramGraphClient({ config, fetchImpl: graph.fetchImpl }),
-      imageHosting: new ConfiguredImageHostingService(config.publicMediaBaseUrl as string),
+      mediaResolver: staticResolver(),
       sleep: async () => undefined,
       onStage: (stage) => {
         stages.push(stage);
@@ -161,7 +225,7 @@ describe("InstagramGraphPublisher", () => {
     const graph = fakeGraph();
     const publisher = new InstagramGraphPublisher({
       client: new InstagramGraphClient({ config, fetchImpl: graph.fetchImpl }),
-      imageHosting: new NotConfiguredImageHostingService()
+      mediaResolver: new NotConfiguredPublicationMediaResolver()
     });
 
     await expect(publisher.publish(publicationRow())).rejects.toMatchObject({ kind: "not-configured", retryable: false });
@@ -193,18 +257,153 @@ describe("InstagramGraphPublisher", () => {
   });
 });
 
-describe("ImageHostingService", () => {
-  it("compoe URLs por slide para carrossel", async () => {
-    const service = new ConfiguredImageHostingService("https://cdn.example.com/social/");
-    await expect(service.resolvePublicUrls({ publicationId: "p1", mediaRef: null, kind: "carousel", slideCount: 2 })).resolves.toEqual([
-      "https://cdn.example.com/social/p1/carousel-01.png",
-      "https://cdn.example.com/social/p1/carousel-02.png"
+/**
+ * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — integracao Publisher <-> media-hosting.
+ * Storage falso, Graph API falsa: nada e enviado para lugar nenhum.
+ */
+describe("HostedPublicationMediaResolver", () => {
+  it("renderiza, envia e devolve a URL publica do storage", async () => {
+    const resolver = new HostedPublicationMediaResolver({ hosting: fakeHosting(), renderSlides: fakeRenderer(1) });
+
+    await expect(resolver.resolvePublicUrls({ publicationId: "pub-1", contentId: "c-1", mediaRef: null, kind: "feed" })).resolves.toEqual([
+      "https://blob.example.com/social-media/pub-1/feed/00.png"
     ]);
   });
 
-  it("a implementacao nao-configurada explica a lacuna de infraestrutura", async () => {
-    const service = new NotConfiguredImageHostingService();
-    expect(service.isConfigured()).toBe(false);
-    await expect(service.resolvePublicUrls()).rejects.toThrow(/SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL/);
+  it("numera os slides do carrossel em ordem", async () => {
+    const resolver = new HostedPublicationMediaResolver({ hosting: fakeHosting(), renderSlides: fakeRenderer(3) });
+
+    await expect(
+      resolver.resolvePublicUrls({ publicationId: "pub-1", contentId: "c-1", mediaRef: null, kind: "carousel", slideCount: 3 })
+    ).resolves.toEqual([
+      "https://blob.example.com/social-media/pub-1/carousel/00.png",
+      "https://blob.example.com/social-media/pub-1/carousel/01.png",
+      "https://blob.example.com/social-media/pub-1/carousel/02.png"
+    ]);
+  });
+
+  it("storage nao configurado falha antes de renderizar qualquer coisa", async () => {
+    const renderSlides = vi.fn(fakeRenderer(1));
+    const resolver = new HostedPublicationMediaResolver({ hosting: fakeHosting({ isConfigured: () => false }), renderSlides });
+
+    await expect(resolver.resolvePublicUrls({ publicationId: "pub-1", contentId: "c-1", mediaRef: null, kind: "feed" })).rejects.toMatchObject({
+      kind: "not-configured",
+      retryable: false
+    });
+    expect(renderSlides).not.toHaveBeenCalled();
+  });
+
+  it("traduz falha de upload em erro retentavel (backoff igual ao de uma chamada Graph instavel)", async () => {
+    const resolver = new HostedPublicationMediaResolver({
+      hosting: fakeHosting({
+        uploadAll: async () => {
+          throw new MediaHostingError("upload-failed", "provider fora do ar");
+        }
+      }),
+      renderSlides: fakeRenderer(1)
+    });
+
+    await expect(resolver.resolvePublicUrls({ publicationId: "pub-1", contentId: "c-1", mediaRef: null, kind: "feed" })).rejects.toMatchObject({
+      kind: "temporary",
+      retryable: true
+    });
+  });
+
+  it("PNG invalido vira erro de validacao nao-retentavel", async () => {
+    const resolver = new HostedPublicationMediaResolver({
+      hosting: fakeHosting({
+        uploadAll: async () => {
+          throw new MediaHostingError("validation", "Assinatura de bytes invalida");
+        }
+      }),
+      renderSlides: fakeRenderer(1)
+    });
+
+    await expect(resolver.resolvePublicUrls({ publicationId: "pub-1", contentId: "c-1", mediaRef: null, kind: "feed" })).rejects.toMatchObject({
+      kind: "validation",
+      retryable: false
+    });
+  });
+});
+
+describe("Publisher <-> media-hosting", () => {
+  it("usa exatamente a publicUrl devolvida pelo storage ao montar a chamada da Graph API", async () => {
+    const graph = fakeGraph();
+    const bodies: string[] = [];
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ""));
+      return graph.fetchImpl(url, init);
+    };
+
+    const publisher = new InstagramGraphPublisher({
+      client: new InstagramGraphClient({ config, fetchImpl }),
+      mediaResolver: new HostedPublicationMediaResolver({ hosting: fakeHosting(), renderSlides: fakeRenderer(1) }),
+      sleep: async () => undefined
+    });
+
+    await publisher.publish(publicationRow());
+
+    const expected = encodeURIComponent("https://blob.example.com/social-media/pub-1/feed/00.png");
+    expect(bodies[0]).toContain(expected);
+  });
+
+  it("a Meta NUNCA e chamada quando o upload falha", async () => {
+    const graph = fakeGraph();
+    const fetchSpy = vi.fn(graph.fetchImpl);
+
+    const publisher = new InstagramGraphPublisher({
+      client: new InstagramGraphClient({ config, fetchImpl: fetchSpy }),
+      mediaResolver: new HostedPublicationMediaResolver({
+        hosting: fakeHosting({
+          uploadAll: async () => {
+            throw new MediaHostingError("upload-failed", "Falha ao enviar no Vercel Blob");
+          }
+        }),
+        renderSlides: fakeRenderer(1)
+      }),
+      sleep: async () => undefined
+    });
+
+    await expect(publisher.publish(publicationRow())).rejects.toThrow(PublishError);
+    expect(fetchSpy).toHaveBeenCalledTimes(0);
+    expect(graph.calls).toEqual([]);
+  });
+
+  it("carrossel aborta inteiro se um slide falhar o upload — nenhum container e criado", async () => {
+    const graph = fakeGraph();
+    const fetchSpy = vi.fn(graph.fetchImpl);
+    let uploaded = 0;
+
+    const hosting = fakeHosting({
+      uploadAll: async (assets: MediaAsset[]) => {
+        // Espelha o contrato tudo-ou-nada do provider real: falhou no meio, rejeita o lote.
+        const done: HostedMedia[] = [];
+        for (const asset of assets) {
+          if (asset.slideIndex === 1) throw new MediaHostingError("upload-failed", "slide 2 falhou");
+          uploaded += 1;
+          done.push(hostedFor(asset));
+        }
+        return done;
+      }
+    });
+
+    const publisher = new InstagramGraphPublisher({
+      client: new InstagramGraphClient({ config, fetchImpl: fetchSpy }),
+      mediaResolver: new HostedPublicationMediaResolver({ hosting, renderSlides: fakeRenderer(3) }),
+      sleep: async () => undefined
+    });
+
+    await expect(publisher.publish(publicationRow({ mediaRef: "placeholder://pub-1#carousel:3" }))).rejects.toMatchObject({
+      kind: "temporary"
+    });
+    expect(uploaded).toBe(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(graph.calls).toEqual([]);
+  });
+
+  it("o resolver nao-configurado explica a lacuna e nomeia a variavel de ambiente correta", async () => {
+    const resolver = new NotConfiguredPublicationMediaResolver();
+    expect(resolver.isConfigured()).toBe(false);
+    await expect(resolver.resolvePublicUrls()).rejects.toThrow(/BLOB_READ_WRITE_TOKEN/);
   });
 });

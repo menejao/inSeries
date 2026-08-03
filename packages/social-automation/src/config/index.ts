@@ -233,10 +233,10 @@ export const metaConfig = {
   requestTimeoutMs: parsePositiveInt(rawMetaEnv.META_REQUEST_TIMEOUT_MS, 15_000),
   retryLimit: parsePositiveInt(rawMetaEnv.META_RETRY_LIMIT, 3),
   /**
-   * Base URL the Meta Graph API can fetch the rendered PNGs from. `null` (the default) means
-   * public media hosting is NOT configured — see publisher/instagram/image-hosting.ts and the
-   * "Hospedagem de imagem" section of the package README for why this is an open infrastructure
-   * gap rather than an invented storage service.
+   * LEGADO (ticket 05). Public media hosting is now provided by `mediaStorageConfig` /
+   * `src/media-hosting` (Vercel Blob), which uploads the PNGs instead of assuming somebody else
+   * published them. Kept only so an existing deployment that set this var does not fail to parse;
+   * nothing reads it to decide whether hosting works — `isMediaStorageConfigured()` does.
    */
   publicMediaBaseUrl: parseBaseUrl(rawMetaEnv.SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL)
 };
@@ -285,7 +285,117 @@ export function describeMetaConfig(config: MetaConfig = metaConfig) {
     retryLimit: config.retryLimit,
     hasCredentials: hasMetaCredentials(config),
     missingCredentials: missingMetaCredentials(config),
-    publicMediaConfigured: Boolean(config.publicMediaBaseUrl)
+    // INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — real object storage replaced the base-URL guess.
+    publicMediaConfigured: isMediaStorageConfigured()
+  };
+}
+
+// ---------------------------------------------------------------------------
+// INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — public object storage for the PNGs
+// the Template Engine renders.
+//
+// `BLOB_READ_WRITE_TOKEN` is the name `@vercel/blob` itself reads — it is NOT
+// renamed here on purpose, so `put()`/`del()`/`list()` keep working with zero
+// wiring. It is a credential: it is never logged, never returned by
+// `describeMediaStorageConfig()`, and never persisted.
+//
+// Absence of the token is a SUPPORTED state, not a broken one: the factory
+// returns `NotConfiguredImageHostingService` and every real publish fails fast
+// with a clear, non-retryable message instead of half-publishing.
+// ---------------------------------------------------------------------------
+
+const MEDIA_STORAGE_PROVIDERS = ["vercel-blob"] as const;
+export type MediaStorageProvider = (typeof MEDIA_STORAGE_PROVIDERS)[number];
+
+/** Below this the retention window would start deleting assets of publications still retrying. */
+export const MEDIA_RETENTION_MIN_HOURS = 24;
+export const MEDIA_RETENTION_DEFAULT_HOURS = 72;
+/** 8 MB. Instagram itself refuses far smaller; this is a defensive upload ceiling. */
+export const MEDIA_MAX_BYTES_DEFAULT = 8 * 1024 * 1024;
+
+const mediaStorageEnvSchema = z.object({
+  SOCIAL_MEDIA_STORAGE_PROVIDER: optionalNonEmpty(),
+  SOCIAL_MEDIA_STORAGE_PREFIX: optionalNonEmpty(),
+  SOCIAL_MEDIA_RETENTION_HOURS: optionalNonEmpty(),
+  SOCIAL_MEDIA_MAX_BYTES: optionalNonEmpty(),
+  BLOB_READ_WRITE_TOKEN: optionalNonEmpty()
+});
+
+const rawMediaStorageEnv = mediaStorageEnvSchema.safeParse(process.env).success
+  ? mediaStorageEnvSchema.parse(process.env)
+  : ({} as z.infer<typeof mediaStorageEnvSchema>);
+
+/**
+ * Retention is validated by zod and REJECTED (thrown) when set below the minimum — a silent
+ * fallback would mean an operator who typed `2` believes assets live 2h while they live 72h, and
+ * the cleanup job is destructive. Unset simply uses the default.
+ */
+const retentionSchema = z.coerce.number().int().min(MEDIA_RETENTION_MIN_HOURS).max(24 * 365);
+
+export function parseRetentionHours(value: string | undefined): number {
+  if (value === undefined) return MEDIA_RETENTION_DEFAULT_HOURS;
+  const parsed = retentionSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `SOCIAL_MEDIA_RETENTION_HOURS invalido ("${value}"): precisa ser um inteiro de horas >= ${MEDIA_RETENTION_MIN_HOURS}. ` +
+        "Um valor menor apagaria assets de publicacoes ainda em retry."
+    );
+  }
+  return parsed.data;
+}
+
+/** Always ends with exactly one "/" and never escapes into an absolute/parent path. */
+export function normalizeStoragePrefix(value: string | undefined): string {
+  const fallback = "social-media/";
+  if (!value) return fallback;
+  const cleaned = value.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!cleaned || cleaned.includes("..")) return fallback;
+  return `${cleaned}/`;
+}
+
+function parseStorageProvider(value: string | undefined): { provider: MediaStorageProvider | null; warning: string | null } {
+  if (!value) return { provider: "vercel-blob", warning: null };
+  const normalized = value.trim().toLowerCase();
+  if ((MEDIA_STORAGE_PROVIDERS as readonly string[]).includes(normalized)) {
+    return { provider: normalized as MediaStorageProvider, warning: null };
+  }
+  return {
+    provider: null,
+    warning: `SOCIAL_MEDIA_STORAGE_PROVIDER="${normalized}" nao e suportado (validos: ${MEDIA_STORAGE_PROVIDERS.join(", ")}) — hospedagem tratada como NAO configurada.`
+  };
+}
+
+const parsedProvider = parseStorageProvider(rawMediaStorageEnv.SOCIAL_MEDIA_STORAGE_PROVIDER);
+
+export const mediaStorageConfig = {
+  /** `null` when the env var names an unsupported provider — never guessed. */
+  provider: parsedProvider.provider,
+  providerWarning: parsedProvider.warning,
+  prefix: normalizeStoragePrefix(rawMediaStorageEnv.SOCIAL_MEDIA_STORAGE_PREFIX),
+  retentionHours: parseRetentionHours(rawMediaStorageEnv.SOCIAL_MEDIA_RETENTION_HOURS),
+  maxBytes: parsePositiveInt(rawMediaStorageEnv.SOCIAL_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES_DEFAULT),
+  /** The credential. NEVER logged, NEVER surfaced by describeMediaStorageConfig(). */
+  token: rawMediaStorageEnv.BLOB_READ_WRITE_TOKEN ?? null
+};
+
+export type MediaStorageConfig = typeof mediaStorageConfig;
+
+/** Configured means: a supported provider AND a token. Anything else = not configured. */
+export function isMediaStorageConfigured(config: MediaStorageConfig = mediaStorageConfig): boolean {
+  return Boolean(config.provider) && Boolean(config.token);
+}
+
+/** Credential-safe summary for the admin panel. Returns booleans/lengths, never the token. */
+export function describeMediaStorageConfig(config: MediaStorageConfig = mediaStorageConfig) {
+  return {
+    configured: isMediaStorageConfigured(config),
+    provider: config.provider ?? "nao-configurado",
+    prefix: config.prefix,
+    retentionHours: config.retentionHours,
+    maxBytes: config.maxBytes,
+    hasToken: Boolean(config.token),
+    warning: config.providerWarning,
+    tokenEnvVar: "BLOB_READ_WRITE_TOKEN"
   };
 }
 

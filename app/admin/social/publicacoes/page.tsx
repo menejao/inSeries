@@ -9,8 +9,15 @@ import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { PublicationRescheduleButton } from "@/components/admin/social/publication-reschedule-button";
 import { PublicationCancelButton } from "@/components/admin/social/publication-cancel-button";
 import { SocialActionButton } from "@/components/admin/social/social-action-button";
-import { PublicationStatusBadge, IntegrationNotActiveWarning, formatDateTime, toDateTimeLocalValue } from "@/components/admin/social/social-shared";
+import {
+  PublicationStatusBadge,
+  IntegrationNotActiveWarning,
+  MediaStorageNotConfiguredWarning,
+  formatDateTime,
+  toDateTimeLocalValue
+} from "@/components/admin/social/social-shared";
 import { requireAdminUser } from "@/lib/admin/rbac";
+import { describeMediaStorageConfig } from "@/packages/social-automation/src/config";
 import { publicationRepo } from "@/packages/social-automation/src/db/publication-repo";
 import { listNetworkPublisherStatuses, noNetworkIsConfigured } from "@/packages/social-automation/src/publisher/status";
 import type { SocialNetwork, SocialPublicationStatus } from "@prisma/client";
@@ -63,6 +70,12 @@ export default async function AdminSocialPublicationsPage({
 
   const networks = listNetworkPublisherStatuses();
   const anyNetworkConfigured = !noNetworkIsConfigured();
+  /**
+   * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — apenas a CONFIGURACAO e lida aqui (booleanos, nunca o
+   * token, nunca uma URL assinada). O health check de verdade toca a rede, entao fica atras do botao
+   * "Testar acesso" -> POST /api/admin/social/media-storage/health.
+   */
+  const mediaStorage = describeMediaStorageConfig();
 
   function pageHref(target: number) {
     const query = new URLSearchParams();
@@ -78,6 +91,72 @@ export default async function AdminSocialPublicationsPage({
 
       <IntegrationNotActiveWarning anyNetworkConfigured={anyNetworkConfigured} />
 
+      <MediaStorageNotConfiguredWarning
+        configured={mediaStorage.configured}
+        tokenEnvVar={mediaStorage.tokenEnvVar}
+        warning={mediaStorage.warning}
+      />
+
+      <Card padding="sm" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-ink">Hospedagem publica das artes</p>
+            <p className="text-xs text-muted">
+              Onde os PNGs do Template Engine ficam acessiveis para a Meta buscar por URL anonima.
+            </p>
+          </div>
+          <Badge variant={mediaStorage.configured ? "success" : "warning"}>
+            {mediaStorage.configured ? "Configurada" : "Nao configurada"}
+          </Badge>
+        </div>
+
+        <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted">
+          <div>
+            <dt className="inline font-medium text-ink">Provider: </dt>
+            <dd className="inline">{mediaStorage.provider}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-ink">Prefixo: </dt>
+            <dd className="inline">{mediaStorage.prefix}</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-ink">Retencao: </dt>
+            <dd className="inline">{mediaStorage.retentionHours}h</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-ink">Limite por arquivo: </dt>
+            <dd className="inline">{Math.round(mediaStorage.maxBytes / 1024 / 1024)} MB</dd>
+          </div>
+          <div>
+            <dt className="inline font-medium text-ink">{mediaStorage.tokenEnvVar}: </dt>
+            <dd className="inline">{mediaStorage.hasToken ? "presente" : "ausente"}</dd>
+          </div>
+        </dl>
+
+        <div className="flex flex-wrap gap-2">
+          <SocialActionButton
+            endpoint="/api/admin/social/media-storage/health"
+            label="Testar acesso"
+            size="xs"
+            variant="ghost"
+            confirmTitle="Testar acesso ao storage"
+            confirmMessage="Somente leitura: confere a configuracao e se o prefixo pode ser listado. Nada e enviado nem apagado."
+            successMessage="Acesso verificado"
+          />
+          <SocialActionButton
+            endpoint="/api/admin/social/media-storage/health"
+            body={{ write: true }}
+            label="Testar escrita"
+            size="xs"
+            variant="secondary"
+            disabled={!mediaStorage.configured}
+            confirmTitle="Testar escrita no storage"
+            confirmMessage="Envia um PNG 1x1 sob o prefixo _health/ e o apaga em seguida. Nenhuma publicacao e feita."
+            successMessage="Escrita verificada"
+          />
+        </div>
+      </Card>
+
       <Card padding="sm" className="flex flex-wrap gap-3">
         {networks.map((network) => (
           <div key={network.network} className="rounded-2xl border border-border px-3 py-2">
@@ -88,8 +167,7 @@ export default async function AdminSocialPublicationsPage({
             {/* INSERIES-INSTAGRAM-PUBLISHER-05 — lacuna de infraestrutura explicita, nunca silenciosa. */}
             {network.mediaHostingConfigured ? null : (
               <p className="mt-1 max-w-64 text-xs text-muted">
-                Sem hospedagem publica de imagem (SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL) — a Graph API precisa buscar o PNG por URL
-                anonima.
+                Sem hospedagem publica de imagem ({mediaStorage.tokenEnvVar}) — a Graph API precisa buscar o PNG por URL anonima.
               </p>
             )}
             {network.missingCredentials.length > 0 ? (

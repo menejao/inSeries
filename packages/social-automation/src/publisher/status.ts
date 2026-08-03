@@ -1,7 +1,7 @@
 import { ConsoleLogPublisher } from "./console-log-publisher";
 import { publisherRegistry } from "./registry";
 import { InstagramGraphPublisher } from "./instagram/instagram-publisher";
-import { isNetworkEnabled, isRealPublishAllowed, metaConfig, missingMetaCredentials, socialAutomationConfig } from "../config";
+import { isMediaStorageConfigured, isNetworkEnabled, isRealPublishAllowed, missingMetaCredentials, socialAutomationConfig } from "../config";
 
 /**
  * INSERIES-SOCIAL-ADMIN-PANEL-03 — derives, from the registry + config that already exist, whether
@@ -23,9 +23,10 @@ export interface NetworkPublisherStatus {
   realPublishAllowed: boolean;
   label: string;
   /**
-   * INSERIES-INSTAGRAM-PUBLISHER-05 — false whenever SOCIAL_AUTOMATION_PUBLIC_MEDIA_BASE_URL is
-   * unset. Even a fully credentialed Graph publisher cannot post without it, because the Content
-   * Publishing API fetches `image_url` anonymously. See instagram/image-hosting.ts.
+   * INSERIES-SOCIAL-PUBLIC-MEDIA-STORAGE-07 — false whenever `BLOB_READ_WRITE_TOKEN` is unset (or
+   * the provider is unsupported). Even a fully credentialed Graph publisher cannot post without
+   * public storage, because the Content Publishing API fetches `image_url` anonymously.
+   * See src/media-hosting/.
    */
   mediaHostingConfigured: boolean;
   /** Masked-safe list of the env vars still missing for a real publish. Never contains a value. */
@@ -38,7 +39,8 @@ export function getNetworkPublisherStatus(network: string): NetworkPublisherStat
   const configured = Boolean(publisher) && !(publisher instanceof ConsoleLogPublisher);
   const enabled = isNetworkEnabled(key);
 
-  const mediaHostingConfigured = publisher instanceof InstagramGraphPublisher ? publisher.isMediaHostingConfigured() : Boolean(metaConfig.publicMediaBaseUrl);
+  const mediaHostingConfigured =
+    publisher instanceof InstagramGraphPublisher ? publisher.isMediaHostingConfigured() : isMediaStorageConfigured();
 
   return {
     network: key,
