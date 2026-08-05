@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 import { REQUEST_ID_HEADER, getOrCreateRequestId } from "@/lib/observability/request-id";
 
-const protectedRoutes = ["/me", "/settings", "/recommendations"];
+const protectedRoutes = ["/me", "/settings", "/recommendations", "/change-password"];
 const adminRoles = new Set(["ADMIN", "MODERATOR"]);
 
 /**
@@ -70,6 +70,13 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminRoute && !adminRoles.has(session.role ?? "USER")) {
     return withRequestId(NextResponse.redirect(new URL("/", request.url)));
+  }
+
+  // INSERIES-ADMIN-PASSWORD-RESET-01 — "quando ele logar, pede pra criar uma nova senha":
+  // qualquer rota protegida redireciona pra /change-password ate a troca acontecer. A propria
+  // /change-password (e o logout) precisam continuar acessiveis, senao o usuario fica preso.
+  if (session.mustChangePassword && pathname !== "/change-password") {
+    return withRequestId(NextResponse.redirect(new URL("/change-password", request.url)));
   }
 
   return withRequestId(NextResponse.next({ request: { headers: forwardedHeaders } }));

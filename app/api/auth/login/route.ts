@@ -52,7 +52,8 @@ async function loginHandler(request: Request) {
     email: user.email,
     username: user.username,
     name: user.name,
-    role: user.role
+    role: user.role,
+    mustChangePassword: user.mustChangePassword
   });
 
   await prisma.user.update({
@@ -63,7 +64,7 @@ async function loginHandler(request: Request) {
   incrementLogin();
   logger.info("user_login", { requestId, route: "auth.login", userId: user.id });
 
-  const response = NextResponse.json({ ok: true, next: "/" });
+  const response = NextResponse.json({ ok: true, next: user.mustChangePassword ? "/change-password" : "/" });
   response.cookies.set(SESSION_COOKIE, token, getSessionCookieOptions());
   return response;
 }

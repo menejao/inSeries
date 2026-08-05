@@ -9,6 +9,10 @@ type SessionPayload = {
   username: string;
   name: string;
   role?: string;
+  /** INSERIES-ADMIN-PASSWORD-RESET-01 — espelha `User.mustChangePassword` no momento do
+   * login/troca de senha (mesmo padrao do `role`: claim rapida no middleware, sem consulta
+   * ao banco a cada request). */
+  mustChangePassword?: boolean;
   exp: number;
 };
 

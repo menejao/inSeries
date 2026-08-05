@@ -5,6 +5,7 @@ import { SearchBar } from "@/components/ui/search-bar";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableContainer, TableHead, TableRow, Th, Td } from "@/components/ui/table";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
+import { ResetPasswordButton } from "@/components/admin/reset-password-button";
 import { requireAdminUser } from "@/lib/admin/rbac";
 import { prisma } from "@/lib/db/prisma";
 import { formatDate } from "@/lib/utils";
@@ -60,6 +61,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                   <Th>Listas</Th>
                   <Th>Seguidores</Th>
                   <Th>Seguindo</Th>
+                  <Th>Acoes</Th>
                 </tr>
               </TableHead>
               <TableBody>
@@ -77,6 +79,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                     <Td className="text-muted">{user._count.lists}</Td>
                     <Td className="text-muted">{user._count.followers}</Td>
                     <Td className="text-muted">{user._count.following}</Td>
+                    <Td>
+                      <ResetPasswordButton userId={user.id} username={user.username} />
+                    </Td>
                   </TableRow>
                 ))}
               </TableBody>
